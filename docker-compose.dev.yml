@@ -1,0 +1,29 @@
+# 开发热重载覆盖层：
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d backend
+#
+# 原理：把宿主机 backend/quant 挂到 /app/backend/quant（`python -m` 优先从 cwd 导入，
+# 覆盖 site-packages 里的安装副本），uvicorn --reload 监听该目录，保存即自动重启。
+# 前端仍需重建镜像：docker compose build frontend && docker compose up -d frontend
+#
+# 恢复正常模式（卸掉挂载）：docker compose up -d backend（不加 dev 覆盖层）。
+
+services:
+  backend:
+    volumes:
+      - ./backend/quant:/app/backend/quant
+      - ./backend/tests:/app/backend/tests
+    environment:
+      QUANT_ENV: development
+      QUANT_DEBUG: "true"
+    command:
+      [
+        "python",
+        "-m",
+        "quant.cli",
+        "serve",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+      ]

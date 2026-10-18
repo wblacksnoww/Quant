@@ -1,0 +1,77 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quant-trading"
+version = "1.0.0"
+description = "A 股量化交易系统：回测 / 纸盘 / 风控 / 加密 / Web"
+readme = { text = "A 股量化交易系统：事件驱动回测、模拟盘、风控、加密与 Web 终端。", content-type = "text/markdown" }
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "quant-trading" }]
+keywords = ["quant", "backtest", "trading", "a-share", "fastapi"]
+
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.6",
+  "python-multipart>=0.0.12",
+  "sqlalchemy>=2.0.36",
+  "alembic>=1.14",
+  "cryptography>=43.0",
+  "argon2-cffi>=23.1",
+  "pyjwt>=2.9",
+  "pyotp>=2.9",
+  "pandas>=2.2",
+  "numpy>=1.26",
+  "pyarrow>=17",
+  "httpx>=0.27",
+  "orjson>=3.10",
+  "websockets>=13",
+  "akshare>=1.16",
+]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.2"]
+dev = [
+  "pytest>=8",
+  "pytest-asyncio>=0.24",
+  "pytest-cov>=5",
+  "ruff>=0.7",
+  "mypy>=1.12",
+  "respx>=0.21",
+]
+crypto-exchange = ["ccxt>=4.4"]
+us = ["yfinance>=0.2"]
+
+[project.scripts]
+quant = "quant.cli:main"
+quant-server = "quant.cli:serve"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["quant*"]
+
+[tool.setuptools.package-data]
+quant = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+extend-exclude = ["tests/fixtures"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
+ignore = ["B008", "E501"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = false
+ignore_missing_imports = true

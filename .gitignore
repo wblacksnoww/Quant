@@ -1,0 +1,34 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# 本地数据（保留 data/cache 的 CSV 种子）
+data/store/
+data/*.db
+data/*.db-journal
+data/master.key
+reports/
+backups/
+
+# 前端
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# 密钥与本地环境
+.env
+.env.*
+!.env.example
+*.pem
+
+# 编辑器
+.idea/
+.vscode/
+.DS_Store

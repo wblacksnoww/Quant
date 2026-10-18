@@ -1,0 +1,306 @@
+"""ORM 模型。
+
+数据分级：
+
+* **敏感**：``users.password_hash`` / ``users.totp_secret`` / ``credentials.payload``
+  —— 口令用 Argon2id 不可逆哈希；TOTP 种子与券商凭据用 AES-256-GCM 加密。
+* **审计**：``audit_logs`` 为哈希链，只追加不改写。
+* **业务**：``runs`` 等，含大块 JSON（权益曲线/成交），用 zlib 压缩后存 BLOB，
+  单条回测通常从 ~2MB 压到 ~200KB。
+"""
+
+from __future__ import annotations
+
+import json
+import zlib
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    TypeDecorator,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+def utcnow_naive() -> datetime:
+    """数据库统一存 naive UTC，避免 SQLite/Postgres 时区行为差异。"""
+    return datetime.utcnow()
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class CompressedJSON(TypeDecorator):
+    """zlib 压缩的 JSON 列，用于大块只读数据（权益曲线、成交明细）。"""
+
+    impl = LargeBinary
+    cache_ok = True
+
+    def process_bind_param(self, value: Any, dialect: Any) -> bytes | None:
+        if value is None:
+            return None
+        raw = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        return zlib.compress(raw, level=6)
+
+    def process_result_value(self, value: bytes | None, dialect: Any) -> Any:
+        if value is None:
+            return None
+        try:
+            return json.loads(zlib.decompress(value).decode("utf-8"))
+        except (zlib.error, ValueError):
+            return None
+
+
+# --------------------------------------------------------------------------- #
+# 用户与认证
+# --------------------------------------------------------------------------- #
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), default="user", nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    totp_secret: Mapped[str | None] = mapped_column(String(512), nullable=True)  # AES-GCM 密文
+    totp_recovery: Mapped[list | None] = mapped_column(JSON, nullable=True)  # 恢复码 SHA-256 列表
+    totp_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False
+    )
+
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == "admin"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "username": self.username,
+            "role": self.role,
+            "is_active": self.is_active,
+            "totp_enabled": self.totp_enabled,
+            "last_login_at": self.last_login_at.isoformat() if self.last_login_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    jti: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    user_agent: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    ip: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
+
+    user: Mapped[User] = relationship(back_populates="refresh_tokens")
+
+    @property
+    def is_valid(self) -> bool:
+        return self.revoked_at is None and self.expires_at > datetime.utcnow()
+
+
+# --------------------------------------------------------------------------- #
+# 审计
+# --------------------------------------------------------------------------- #
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ts: Mapped[str] = mapped_column(String(40), nullable=False)
+    actor: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    action: Mapped[str] = mapped_column(String(80), index=True, nullable=False)
+    target: Mapped[str] = mapped_column(String(160), default="", nullable=False)
+    detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    ip: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    prev_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "ts": self.ts,
+            "actor": self.actor,
+            "action": self.action,
+            "target": self.target,
+            "detail": self.detail or {},
+            "ip": self.ip,
+            "prev_hash": self.prev_hash,
+            "hash": self.hash,
+        }
+
+
+# --------------------------------------------------------------------------- #
+# 加密凭据
+# --------------------------------------------------------------------------- #
+
+
+class Credential(Base):
+    """券商/数据源凭据。``payload`` 是 AES-256-GCM 密文，明文永不落库。"""
+
+    __tablename__ = "credentials"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)  # broker | datasource
+    payload: Mapped[str] = mapped_column(Text, nullable=False)  # 密文
+    description: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False
+    )
+
+    def to_dict(self) -> dict[str, Any]:
+        """注意：**不返回 payload**。"""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "kind": self.kind,
+            "description": self.description,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+# --------------------------------------------------------------------------- #
+# 运行记录（回测 / 纸盘）
+# --------------------------------------------------------------------------- #
+
+
+class Run(Base):
+    __tablename__ = "runs"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True)
+    kind: Mapped[str] = mapped_column(String(16), default="backtest", nullable=False)
+    strategy_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    symbols: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="running", index=True, nullable=False)
+    config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    metrics: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    equity_curve: Mapped[list | None] = mapped_column(CompressedJSON, nullable=True)
+    trades: Mapped[list | None] = mapped_column(CompressedJSON, nullable=True)
+    orders_data: Mapped[list | None] = mapped_column("orders_json", CompressedJSON, nullable=True)
+    positions: Mapped[list | None] = mapped_column(CompressedJSON, nullable=True)
+    logs: Mapped[list | None] = mapped_column(CompressedJSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    progress: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    elapsed_seconds: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, index=True, nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    __table_args__ = (Index("ix_runs_user_created", "user_id", "created_at"),)
+
+    def to_summary(self) -> dict[str, Any]:
+        return {
+            "run_id": self.id,
+            "kind": self.kind,
+            "strategy_id": self.strategy_id,
+            "symbols": self.symbols or [],
+            "status": self.status,
+            "progress": round(self.progress, 3),
+            "metrics": self.metrics or {},
+            "error": self.error,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
+            "elapsed_seconds": round(self.elapsed_seconds, 2),
+        }
+
+    def to_detail(self) -> dict[str, Any]:
+        data = self.to_summary()
+        data.update(
+            {
+                "config": self.config or {},
+                "equity_curve": self.equity_curve or [],
+                "trades": self.trades or [],
+                "orders": self.orders_data or [],
+                "positions": self.positions or [],
+                "logs": self.logs or [],
+            }
+        )
+        return data
+
+
+# --------------------------------------------------------------------------- #
+# 用户自建策略（条件拼装）
+# --------------------------------------------------------------------------- #
+
+
+class UserCustomStrategy(Base):
+    """网页拼装的策略 spec。``spec`` 是经过白名单校验的 JSON，不包含可执行代码。"""
+
+    __tablename__ = "user_strategies"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    description: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    category: Mapped[str] = mapped_column(String(32), default="trend", nullable=False)
+    spec: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False
+    )
+
+    __table_args__ = (
+        Index("uq_user_strategies_user_name", "user_id", "name", unique=True),
+    )
+
+    def to_dict(self, *, with_spec: bool = True) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "name": self.name,
+            "description": self.description,
+            "category": self.category,
+            "spec": self.spec if with_spec else None,
+            "enabled": self.enabled,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+__all__ = [
+    "AuditLog",
+    "Base",
+    "CompressedJSON",
+    "Credential",
+    "RefreshToken",
+    "Run",
+    "User",
+    "UserCustomStrategy",
+    "utcnow_naive",
+]

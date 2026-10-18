@@ -1,0 +1,27 @@
+# 前端镜像：Node 构建静态资源，Nginx 提供 SPA 与 API/WS 反代。
+
+# 基础镜像：daocloud 502 时用 docker.1ms.run（2026-10 实测可达；npm 拉取走 npmmirror）
+FROM docker.1ms.run/library/node:20-alpine AS build
+
+WORKDIR /web
+
+# 国内 npm 镜像；CI 中可改回 registry.npmjs.org
+RUN npm config set registry https://registry.npmmirror.com
+
+COPY frontend/package.json ./
+RUN npm install --no-audit --no-fund
+
+COPY frontend/ ./
+RUN npm run build
+
+# 基础镜像：daocloud 镜像站 502 时用 docker.1ms.run（2026-10 实测可达）
+FROM docker.1ms.run/library/nginx:1.27-alpine AS runtime
+
+RUN rm -f /etc/nginx/conf.d/default.conf
+COPY deploy/nginx.conf /etc/nginx/conf.d/quant.conf
+COPY --from=build /web/dist /usr/share/nginx/html
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -q --spider http://127.0.0.1/ || exit 1

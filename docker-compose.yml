@@ -1,0 +1,52 @@
+# 单机部署：backend + frontend（nginx）。
+# 生产 TLS 叠加 docker-compose.prod.yml；PostgreSQL 叠加 docker-compose.postgres.yml。
+name: quant-trading
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: deploy/backend.Dockerfile
+    image: quant-trading-backend:1.0.0
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      QUANT_ENV: ${QUANT_ENV:-production}
+      QUANT_HOST: 0.0.0.0
+      QUANT_PORT: "8000"
+      QUANT_DATA_DIR: /app/data
+      QUANT_DATABASE_URL: ${QUANT_DATABASE_URL:-sqlite:////app/data/quant.db}
+      QUANT_ALLOWED_ORIGINS: ${QUANT_ALLOWED_ORIGINS:-["https://localhost"]}
+      QUANT_SECURE_COOKIES: "true"
+      QUANT_DEBUG: "false"
+    volumes:
+      - quant-data:/app/data
+    expose:
+      - "8000"
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: deploy/frontend.Dockerfile
+    image: quant-trading-frontend:1.0.0
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${QUANT_HTTP_PORT:-8080}:80"
+    restart: unless-stopped
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  quant-data:
+    name: quant-trading-data

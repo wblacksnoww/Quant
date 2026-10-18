@@ -1,0 +1,45 @@
+# 生产 TLS 覆盖层：
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Caddy 自动申请证书（需域名已解析到本机、80/443 可达）。
+# 前置要求：Compose v2.24+（使用 !reset 清空基础层端口映射）。
+
+services:
+  backend:
+    ports: !reset []
+    environment:
+      QUANT_ENV: production
+      QUANT_SECURE_COOKIES: "true"
+
+  frontend:
+    ports: !reset []
+
+  caddy:
+    image: docker.m.daocloud.io/library/caddy:2.8-alpine
+    depends_on:
+      frontend:
+        condition: service_healthy
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      QUANT_DOMAIN: ${QUANT_DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  caddy-data:
+    name: quant-trading-caddy-data
+  caddy-config:
+    name: quant-trading-caddy-config

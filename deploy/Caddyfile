@@ -1,0 +1,24 @@
+# 生产入口：Caddy 自动申请/续期 TLS 证书，反代到内部 nginx。
+# 域名通过 QUANT_DOMAIN 环境变量注入；本地测试可用 localhost（Caddy 内部 CA）。
+
+{$QUANT_DOMAIN:localhost} {
+    encode zstd gzip
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        -Server
+    }
+
+    # Caddy 自己处理 WS 升级与超时，内部再交给 nginx
+    reverse_proxy frontend:80 {
+        flush_interval -1
+    }
+
+    log {
+        output stdout
+        format console
+    }
+}

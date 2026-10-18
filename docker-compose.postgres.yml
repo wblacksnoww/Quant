@@ -1,0 +1,36 @@
+# PostgreSQL 覆盖层（推荐用于多实例/长期运行）：
+#   docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build
+#
+# 注意：POSTGRES_PASSWORD 会进入 QUANT_DATABASE_URL，请避免使用含 $ 的字符
+#（Compose 会把它当变量插值）。已有 SQLite 数据不会自动迁移。
+
+services:
+  backend:
+    environment:
+      QUANT_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-quant}:${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-quant}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: docker.m.daocloud.io/library/postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-quant}
+      POSTGRES_USER: ${POSTGRES_USER:-quant}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  pg-data:
+    name: quant-trading-pg

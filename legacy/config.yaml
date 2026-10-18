@@ -1,0 +1,24 @@
+# 量化工程全局配置
+data:
+  source: akshare              # akshare | tushare（tushare 需 .env 中 TUSHARE_TOKEN）
+  start: "2020-01-01"
+  end: "2026-08-31"
+  symbols:
+    - 600519
+    - 000001
+    - 300059
+
+cost:
+  commission_rate: 0.0003     # 佣金 0.03%
+  min_commission: 5.0         # 最低 5 元
+  stamp_tax_rate: 0.0005      # 卖出印花税 0.05%（买入免）
+  slippage: 0.0                # 滑点（小数，0.0001=1bp）
+
+paper:
+  initial_cash: 100000
+  position_fraction: 0.15     # 单笔仓位上限（占净值比例）
+
+backtest:
+  cash: 100000
+  log: false
+  print: true

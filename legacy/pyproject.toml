@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quant-trading"
+version = "0.1.0"
+description = "量化学习工程：A股回测 + 自托管纸盘交易（backtrader）"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "backtrader>=1.0",
+    "akshare>=0.10",
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "requests>=2.28",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+    "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+us = ["yfinance>=0.2"]
+crypto = ["ccxt>=4.0"]
+
+[project.scripts]
+quant-backtest = "quant.cli:main"
+quant-paper = "quant.cli:main"
+quant-fetch = "quant.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["quant*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
