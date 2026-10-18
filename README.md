@@ -51,7 +51,8 @@
 └──────────────────────────────────────────────────────────────┘
 ```
 
-更详细的分层、事件顺序与扩展点见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
+更详细的分层、事件顺序与扩展点见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)；
+框架目录地图与结构审查清单见 [`docs/PROJECT_MAP.md`](docs/PROJECT_MAP.md)。
 
 ## 快速开始（Docker，推荐）
 
@@ -139,8 +140,9 @@ QUANT_ENV=development QUANT_DATA_PROVIDER=csv ../.venv/bin/python -m quant.cli s
 ```bash
 quant serve --host 0.0.0.0 --port 8000     # 启动 Web 服务
 quant backtest --strategy dual_ma --symbols 600519,000001 \
-               --start 2020-01-01 --end 2026-10-01 --cash 1000000 \
-               --output report.json         # 命令行回测
+               --start 2024-01-02 --end 2024-06-28 --cash 1000000 \
+               --output report.json         # 命令行回测（默认 data provider=csv 时，
+                                            # 区间需落在 data/cache 种子内，见目录结构说明）
 quant fetch --symbols 600519,000001 --years 5   # 预拉行情
 quant doctor                                # 环境、密钥、数据库自检
 quant keygen --file master.key              # 生成主密钥
@@ -241,7 +243,8 @@ cd backend
 
 覆盖：加密 AAD 防篡改、密码哈希、JWT 类型隔离、撮合与费用（含港美预设）、回测确定性、
 风控规则、多市场符号解析与 API 契约、实时快照三市场解析、API 认证、
-条件拼装策略（spec 白名单 + 用户隔离 + 引擎端到端；v1 条件与 v2 蓝图节点图，共 141 项）。
+条件拼装策略（spec 白名单 + 用户隔离 + 引擎端到端；v1 条件与 v2 蓝图节点图）。
+后端 pytest 全套 **143 项**（`pytest --collect-only` 与 README/文档口径一致）。
 
 ## 许可
 

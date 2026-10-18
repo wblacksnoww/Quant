@@ -78,14 +78,7 @@ def momentum(series: pd.Series, period: int) -> pd.Series:
     return series.pct_change(period)
 
 
-def annualized_volatility(returns: pd.Series, periods: int = 252) -> float:
-    if len(returns) < 2:
-        return 0.0
-    return float(returns.std(ddof=0) * np.sqrt(periods))
-
-
 __all__ = [
-    "annualized_volatility",
     "atr",
     "bollinger",
     "crossover",

@@ -35,6 +35,8 @@ const FIELD_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'open', label: '开盘价' },
   { value: 'high', label: '最高价' },
   { value: 'low', label: '最低价' },
+  { value: 'volume', label: '成交量' },
+  { value: 'amount', label: '成交额' },
 ]
 
 const INDICATOR_META: Record<string, { label: string; params: string[] }> = {

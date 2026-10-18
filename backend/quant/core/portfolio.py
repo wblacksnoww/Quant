@@ -199,16 +199,4 @@ class Account:
         )
 
 
-def fee_from_dict(data: Mapping[str, float] | None) -> FeeBreakdown:
-    """从字典还原费用明细（回放历史成交时用）。"""
-    if not data:
-        return FeeBreakdown.zero()
-    return FeeBreakdown(
-        commission=float(data.get("commission", 0.0)),
-        stamp_tax=float(data.get("stamp_tax", 0.0)),
-        transfer_fee=float(data.get("transfer_fee", 0.0)),
-        slippage=float(data.get("slippage", 0.0)),
-    )
-
-
-__all__ = ["Account", "fee_from_dict"]
+__all__ = ["Account"]

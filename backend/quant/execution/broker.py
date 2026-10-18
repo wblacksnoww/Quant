@@ -18,11 +18,10 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime
 
 from ..core.events import EventBus
 from ..core.portfolio import Account
-from ..core.types import Bar, Fill, Order, OrderStatus, OrderType, Side, utcnow
+from ..core.types import Bar, Fill, Order, OrderStatus, OrderType, Side
 from .cost import CostModel
 from .matching import BlockReason, MatchingEngine
 from .rules import is_valid_lot, rules_for
@@ -187,48 +186,14 @@ class SimBroker(Broker):
                 self._drop(order)
         return fills
 
-    def on_tick(self, symbol: str, price: float, dt: datetime | None = None) -> list[Fill]:
-        """纸盘专用：用最新价更新重估，并在允许时撮合挂单。"""
-        self.account.mark_price(symbol, price)
-        fills: list[Fill] = []
-        for order in list(self._live):
-            if order.symbol != symbol or order.status.is_final:
-                continue
-            bar = Bar(
-                symbol=symbol,
-                dt=dt or utcnow(),
-                open=price,
-                high=price,
-                low=price,
-                close=price,
-                volume=0.0,
-                prev_close=price,
-                freq="tick",
-            )
-            fill = self._try_match(order, bar, allow_zero_volume=True)
-            if fill is not None:
-                fills.append(fill)
-                if order.status.is_final:
-                    self._drop(order)
-        return fills
-
     # ------------------------------------------------------------------ #
     # 撮合
     # ------------------------------------------------------------------ #
-    def _try_match(self, order: Order, bar: Bar, *, allow_zero_volume: bool = False) -> Fill | None:
+    def _try_match(self, order: Order, bar: Bar) -> Fill | None:
         if not order.is_open or order.symbol != bar.symbol:
             return None
-        if allow_zero_volume:
-            # tick 撮合跳过"停牌/量能"校验
-            engine = self.matching
-            saved = engine.volume_limit_pct
-            engine.volume_limit_pct = 0.0
-            try:
-                outcome = engine.match(order, _bar_with_volume(bar))
-            finally:
-                engine.volume_limit_pct = saved
-        else:
-            outcome = self.matching.match(order, bar)
+
+        outcome = self.matching.match(order, bar)
 
         if not outcome.filled:
             if outcome.reason in (BlockReason.SUSPENDED, BlockReason.LIMIT_UP, BlockReason.LIMIT_DOWN):
@@ -371,24 +336,6 @@ class SimBroker(Broker):
             "fills": len(self._fills),
             "frozen_cash": round(self.account.frozen_cash, 2),
         }
-
-
-def _bar_with_volume(bar: Bar) -> Bar:
-    """tick 撮合时给一个虚拟成交量，避免被"停牌"判定拦掉。"""
-    return Bar(
-        symbol=bar.symbol,
-        dt=bar.dt,
-        open=bar.open,
-        high=bar.high,
-        low=bar.low,
-        close=bar.close,
-        volume=max(bar.volume, 1e9),
-        amount=bar.amount,
-        prev_close=bar.prev_close,
-        limit_up=bar.limit_up,
-        limit_down=bar.limit_down,
-        freq=bar.freq,
-    )
 
 
 __all__ = ["Broker", "SimBroker"]

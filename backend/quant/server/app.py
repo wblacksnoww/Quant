@@ -313,9 +313,6 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
     return app
 
 
-app = create_app()
-
-
 if __name__ == "__main__":  # pragma: no cover
     import uvicorn
 

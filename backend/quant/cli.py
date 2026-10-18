@@ -95,7 +95,7 @@ def backtest(args: argparse.Namespace) -> int:
         initial_cash=args.cash,
         params=params,
         benchmark=args.benchmark,
-        risk=None if args.no_risk else None,
+        risk=[] if args.no_risk else None,
     )
     engine = BacktestEngine(config, data)
     engine.on_progress(lambda p, m: print(f"\r[{p * 100:5.1f}%] {m[:60]:<60}", end="", flush=True))

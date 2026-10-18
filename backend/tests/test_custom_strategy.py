@@ -725,3 +725,10 @@ def test_v2_save_and_run_via_api(client):
         headers=headers,
     )
     assert resp.status_code == 202
+
+
+def test_parse_spec_v2_string_byte_limit():
+    """v2 字符串超 16KB → 中文上限文案（此前曾因缺 import 触发 NameError）。"""
+    spec = json.dumps({"version": 2, "description": "x" * 17000})
+    with pytest.raises(ValueError, match="16384"):
+        parse_spec(spec)

@@ -331,7 +331,7 @@ class RiskManager:
     @classmethod
     def from_config(cls, config: Iterable[dict[str, Any]] | None, **kwargs: Any) -> RiskManager:
         """用 ``[{id, enabled, ...params}]`` 构造。未知 id 会被忽略并告警。"""
-        entries = list(config) if config else list(DEFAULT_RULES)
+        entries = list(config) if config is not None else list(DEFAULT_RULES)
         rules: list[RiskRule] = []
         for entry in entries:
             rule_id = str(entry.get("id", ""))

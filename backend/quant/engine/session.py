@@ -195,8 +195,4 @@ class TradingSession:
         return list(self.broker.all_orders)
 
 
-def make_snapshot_dict(snapshot: AccountSnapshot) -> dict[str, Any]:
-    return snapshot.to_dict()
-
-
-__all__ = ["SessionStats", "TradingSession", "bar_from_frame", "make_snapshot_dict"]
+__all__ = ["SessionStats", "TradingSession", "bar_from_frame"]

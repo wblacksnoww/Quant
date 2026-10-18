@@ -11,7 +11,6 @@ import json
 import logging
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Iterable
 
 log = logging.getLogger(__name__)
 
@@ -148,13 +147,7 @@ def is_market_open(market: str = "CN", moment: datetime | None = None) -> bool:
     )
 
 
-def filter_trading_days(days: Iterable[date]) -> list[date]:
-    allowed = set(trading_days(min(days), max(days))) if days else set()
-    return [d for d in days if d in allowed]
-
-
 __all__ = [
-    "filter_trading_days",
     "is_market_open",
     "is_trading_day",
     "next_trading_day",

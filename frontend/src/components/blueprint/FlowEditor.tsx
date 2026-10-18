@@ -225,7 +225,8 @@ function Editor() {
       setPositionPct(tpl.spec.position_pct ?? 0.9)
       setStopLoss(tpl.spec.stop_loss ?? 0.08)
       setTakeProfit(tpl.spec.take_profit ?? 0)
-      setNodes([...canvas.nodes, ...markerNodes()])
+      // graphToCanvas 返回的 nodes 已含两个输出哨兵；空白模板手动补哨兵
+      setNodes(canvas.nodes.length > 0 ? canvas.nodes : markerNodes())
       setEdges(canvas.edges)
       window.setTimeout(() => flowRef.current?.fitView({ padding: 0.25 }), 50)
       notify('success', `已套用模板「${tpl.name}」`)

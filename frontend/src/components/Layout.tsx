@@ -19,6 +19,7 @@ const PAGES: Record<string, { title: string; sub: string }> = {
   '/': { title: '总览', sub: '账户、运行与系统状态一屏掌握' },
   '/market': { title: '行情研究', sub: 'A 股日线与本地数据缓存' },
   '/strategies': { title: '策略库', sub: '内置策略与参数说明' },
+  '/strategies/blueprint': { title: '蓝图编辑器', sub: '节点数据流图，编译为 spec v2' },
   '/backtest': { title: '回测', sub: '事件驱动引擎，下一根 K 线撮合，杜绝未来函数' },
   '/paper': { title: '模拟盘', sub: '与回测共用撮合与会话，仅时间驱动不同' },
   '/risk': { title: '风控', sub: '下单前逐条校验，拒绝原因全程留痕' },

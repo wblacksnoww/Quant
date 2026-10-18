@@ -334,7 +334,8 @@ src/
   EngineConfig 单一市场校验、缓存文件迁移、smartbox 解析、API 422 契约。
 - `test_realtime.py`：三市场快照解析 fixture（真实抓包数据）、腾讯端点/后缀选择、
   量纲换算（手→股）、快照降级与 stale 标记。
-- `test_risk.py`：各规则命中/放行、窗口滑过恢复、熔断只拦买。
+- `test_paper_manager.py`：多用户纸盘并行/互斥隔离、EventHub 事件按用户定向投递与 replay。
+- `test_risk.py`：各规则命中/放行、窗口滑过恢复、熔断只拦买、空规则集语义（`risk=[]` 无风控）。
 - `test_custom_strategy.py`：拼装 spec 白名单校验（参数化 17 种非法输入）、
   交叉/比较信号语义、与内置 `dual_ma` 金叉信号的等价性（同一数据交易日一致）、
   引擎端到端确定性、CRUD 用户隔离（404/409）、提交路径的 spec 注入与停用拦截。

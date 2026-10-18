@@ -96,3 +96,11 @@ def test_presets_reference_known_rules():
     ids = {rule.rule_id for rule in manager.rules}
     assert ids <= set(RULE_TYPES)
     assert {"max_position_pct", "max_drawdown", "blacklist"} <= ids
+
+
+def test_empty_config_disables_all_rules():
+    """"risk=[] 显式空列表 = 无风控；None = 默认规则集。CLI `--no-risk` 依赖此语义。"""
+    account = Account(100_000)
+    manager = RiskManager.from_config([])
+    assert manager.rules == []
+    assert manager.pre_trade(Order("600519", Side.BUY, 100), account).allowed

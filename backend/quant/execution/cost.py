@@ -64,10 +64,6 @@ class CostModel:
             slippage=0.0,
         )
 
-    def slippage_cost(self, price: float, quantity: int) -> float:
-        """滑点造成的金额损失（用于展示，已体现在成交价中）。"""
-        return abs(price * quantity) * self._slippage_rate()
-
     # ------------------------------------------------------------------ #
     def estimate_buy_cost(self, price: float, quantity: int) -> float:
         """买入所需现金总额（成交额 + 费用），用于资金校验与下单量折算。"""

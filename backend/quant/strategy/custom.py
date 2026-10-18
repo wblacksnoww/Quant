@@ -38,7 +38,14 @@ import pandas as pd
 
 from .base import ParamSpec, Strategy
 from . import indicators as ta
-from .custom_graph import GRAPH_VERSION, GraphSpec, graph_lookback, graph_signals, parse_graph_spec
+from .custom_graph import (
+    GRAPH_VERSION,
+    MAX_GRAPH_SPEC_BYTES,
+    GraphSpec,
+    graph_lookback,
+    graph_signals,
+    parse_graph_spec,
+)
 from .registry import register_strategy
 
 STRATEGY_ID = "custom_rule"

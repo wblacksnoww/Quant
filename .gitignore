@@ -10,6 +10,7 @@ build/
 dist/
 
 # 本地数据（保留 data/cache 的 CSV 种子）
+backend/data/
 data/store/
 data/*.db
 data/*.db-journal
@@ -27,6 +28,8 @@ frontend/.vite/
 .env.*
 !.env.example
 *.pem
+data/*.db-wal
+data/*.db-shm
 
 # 编辑器
 .idea/

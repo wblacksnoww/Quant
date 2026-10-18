@@ -294,9 +294,4 @@ def _tencent_daily(symbol: str, start: date, end: date, *, adjust: str = "qfq") 
     return normalize_frame(frame, symbol=inst.id)
 
 
-def quote_row_to_dict(row: Any) -> dict[str, Any]:
-    """实时快照行的便捷转换（保留给上层做扩展字段）。"""
-    return {str(k): v for k, v in dict(row).items()}
-
-
 __all__ = ["AkShareProvider"]
