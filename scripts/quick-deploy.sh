@@ -45,7 +45,11 @@ set_env() {
 }
 
 set_env "QUANT_DOMAIN" "$DOMAIN"
-set_env "COMPOSE_FILE" "docker-compose.yml:docker-compose.prod.yml:docker-compose.postgres.yml"
+# COMPOSE_FILE 只在首次生成时写默认三层；已有配置（例如 nginx 共存的两层）
+# 必须保留，否则脚本会把 Caddy 加回来抢 80 端口
+if ! grep -q "^COMPOSE_FILE=" "$ENV_FILE"; then
+  set_env "COMPOSE_FILE" "docker-compose.yml:docker-compose.prod.yml:docker-compose.postgres.yml"
+fi
 # 默认关闭虚拟货币（国内服务器通常无境外出口）；有代理时手动改 true 并配置代理
 if ! grep -q "^QUANT_ENABLE_CRYPTO=" "$ENV_FILE"; then
   set_env "QUANT_ENABLE_CRYPTO" "false"
