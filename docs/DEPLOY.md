@@ -257,13 +257,24 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d backend
 ```bash
 git clone --depth 1 https://github.com/wblacksnoww/Quant.git quant-trading
 cd quant-trading
-./scripts/quick-deploy.sh quant.example.com          # 拉 CI 镜像（默认 latest；已在 docker 组时无需 sudo）
-./scripts/quick-deploy.sh quant.example.com --build  # 或服务器本地构建
+
+# 默认：不启用内置 Caddy，前端监听 127.0.0.1:8080，交给宿主机 nginx 反代
+./scripts/quick-deploy.sh quant.example.com
+
+# 需要内置 Caddy 自动 HTTPS（会占用 80/443）时：
+./scripts/quick-deploy.sh quant.example.com --caddy
+
+# 服务器本地构建（不走 GHCR）：
+./scripts/quick-deploy.sh quant.example.com --build
 ```
 
-脚本会：生成 `.env`（随机主密钥/管理员口令）→ 写入三层 compose 与镜像变量 →
+脚本会：生成 `.env`（随机主密钥/管理员口令）→ 写入 compose 与镜像变量 →
 拉取（或构建）→ 启动 → 自检，并打印登录账号。**镜像方式不需要在服务器上构建代码。**
-前置：域名 A 记录已指向本机、80/443 已放行、Docker Compose v2.24+。
+
+默认（无 Caddy）模式下，需要在宿主机 nginx 加反向代理（WebSocket 头见 §11.2），
+应用本身只监听 `QUANT_HTTP_PORT`。`COMPOSE_FILE` 一旦存在，脚本不会覆盖，
+除非显式传 `--caddy`。
+前置：域名 A 记录已指向本机、Docker Compose v2.24+。
 
 ### 11.2 首次部署
 

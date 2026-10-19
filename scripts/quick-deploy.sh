@@ -1,21 +1,37 @@
 #!/usr/bin/env bash
-# 一键部署：默认拉取 CI 构建好的 GHCR 镜像并启动，不在服务器构建。
+# 一键部署：默认拉取 CI 构建的 GHCR 镜像并启动，不在服务器构建。
+#
+# 默认不启用内置 Caddy（适合已有 nginx / 反向代理的服务器）：
+#   前端容器监听 127.0.0.1:<QUANT_HTTP_PORT>，由宿主机反代到公网。
+# 需要内置 Caddy 自动 HTTPS 时加 --caddy（会占用 80/443）。
 #
 # 用法：
-#   sudo ./scripts/quick-deploy.sh quant.example.com            # 拉最新镜像
-#   sudo ./scripts/quick-deploy.sh quant.example.com <commit-sha> # 拉指定版本
-#   sudo ./scripts/quick-deploy.sh quant.example.com --build    # 服务器本地构建
-#
-# 前置：域名 A 记录已指向本机，80/443 已放行。
+#   ./scripts/quick-deploy.sh quant.example.com                  # 默认：nginx 共存模式
+#   ./scripts/quick-deploy.sh quant.example.com --caddy          # 启用内置 Caddy（80/443）
+#   ./scripts/quick-deploy.sh quant.example.com <commit-sha>     # 指定镜像版本
+#   ./scripts/quick-deploy.sh quant.example.com --build          # 服务器本地构建
+#   ./scripts/quick-deploy.sh quant.example.com --caddy --build  # 本地构建 + Caddy
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-DOMAIN="${1:-}"
-MODE="${2:-}"
+DOMAIN=""
+MODE="latest"
+USE_CADDY=0
+for arg in "$@"; do
+  case "$arg" in
+    --caddy) USE_CADDY=1 ;;
+    --build) MODE="--build" ;;
+    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    -*) echo "未知参数：$arg" >&2; exit 2 ;;
+    *)
+      if [[ -z "$DOMAIN" ]]; then DOMAIN="$arg"; else MODE="$arg"; fi
+      ;;
+  esac
+done
 if [[ -z "$DOMAIN" ]]; then
-  echo "用法: sudo $0 <域名> [镜像tag|--build]" >&2
+  echo "用法: $0 <域名> [--caddy] [--build] [镜像tag]" >&2
   exit 2
 fi
 if ! docker compose version >/dev/null 2>&1; then
@@ -45,12 +61,20 @@ set_env() {
 }
 
 set_env "QUANT_DOMAIN" "$DOMAIN"
-# COMPOSE_FILE 只在首次生成时写默认三层；已有配置（例如 nginx 共存的两层）
-# 必须保留，否则脚本会把 Caddy 加回来抢 80 端口
-if ! grep -q "^COMPOSE_FILE=" "$ENV_FILE"; then
-  set_env "COMPOSE_FILE" "docker-compose.yml:docker-compose.prod.yml:docker-compose.postgres.yml"
+# 默认两层（无 Caddy）；--caddy 才叠加 prod 层。
+# 已有 COMPOSE_FILE 时：只有显式 --caddy 才改，否则保留用户选择。
+BASE_COMPOSE="docker-compose.yml:docker-compose.postgres.yml"
+CADDY_COMPOSE="docker-compose.yml:docker-compose.prod.yml:docker-compose.postgres.yml"
+if [[ "$USE_CADDY" -eq 1 ]]; then
+  set_env "COMPOSE_FILE" "$CADDY_COMPOSE"
+elif ! grep -q "^COMPOSE_FILE=" "$ENV_FILE"; then
+  set_env "COMPOSE_FILE" "$BASE_COMPOSE"
 fi
-# 默认关闭虚拟货币（国内服务器通常无境外出口）；有代理时手动改 true 并配置代理
+# 外部始终是 HTTPS（Caddy 或宿主机 nginx），cookie 需要 Secure
+if ! grep -q "^QUANT_SECURE_COOKIES=" "$ENV_FILE"; then
+  set_env "QUANT_SECURE_COOKIES" "true"
+fi
+# 默认关闭虚拟货币（国内服务器通常无境外出口）；有代理时手动改 true
 if ! grep -q "^QUANT_ENABLE_CRYPTO=" "$ENV_FILE"; then
   set_env "QUANT_ENABLE_CRYPTO" "false"
 fi
@@ -70,7 +94,7 @@ else
     echo "  2) 海外服务器拉不动国内基础镜像：在 .env 追加"
     echo "       QUANT_POSTGRES_IMAGE=postgres:16-alpine"
     echo "       QUANT_CADDY_IMAGE=caddy:2.8-alpine"
-    echo "  3) 服务器访问不了 GHCR：改用 ./scripts/quick-deploy.sh $DOMAIN --build"
+    echo "  3) 服务器访问不了 GHCR：改用 $0 $DOMAIN --build"
     exit 1
   fi
   echo "== 启动（不构建）=="
@@ -80,8 +104,18 @@ fi
 echo "== 自检 =="
 ./scripts/verify.sh || true
 
+PORT="$(grep -E '^QUANT_HTTP_PORT=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '[:space:]')"
+PORT="${PORT:-8080}"
 echo
-echo "部署完成：https://${DOMAIN}"
-echo "管理员账号：$(grep -E '^QUANT_ADMIN_USERNAME=' "$ENV_FILE" | cut -d= -f2-)"
-echo "管理员密码：$(grep -E '^QUANT_ADMIN_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)"
+echo "部署完成。"
+if [[ "$USE_CADDY" -eq 1 ]]; then
+  echo "  模式：内置 Caddy 自动 HTTPS（占用 80/443）"
+  echo "  访问：https://${DOMAIN}"
+else
+  echo "  模式：nginx 共存（未启用 Caddy）"
+  echo "  前端监听：http://127.0.0.1:${PORT}"
+  echo "  请在你的 nginx 中把 ${DOMAIN} 反代到该端口（需带 WebSocket 头，见 docs/DEPLOY.md §11）"
+fi
+echo "  管理员账号：$(grep -E '^QUANT_ADMIN_USERNAME=' "$ENV_FILE" | cut -d= -f2-)"
+echo "  管理员密码：$(grep -E '^QUANT_ADMIN_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)"
 echo "⚠ 立刻登录修改密码、开启两步验证；并离线备份 .env（主密钥不可恢复）。"
