@@ -1,9 +1,11 @@
 # 后端镜像：Python 3.12 + 量化引擎 + FastAPI。
 # 国内拉取基础镜像走 daocloud 镜像站；如网络允许也可换回官方镜像名。
 
-FROM docker.m.daocloud.io/library/python:3.12-slim AS runtime
+ARG PYTHON_IMAGE=docker.m.daocloud.io/library/python:3.12-slim
 
-# 默认走国内 PyPI 镜像（构建时可用 --build-arg PIP_INDEX_URL=... 覆盖）
+FROM ${PYTHON_IMAGE} AS runtime
+
+# 默认走国内 PyPI 镜像（CI/海外构建用 --build-arg 换成官方源）
 ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
