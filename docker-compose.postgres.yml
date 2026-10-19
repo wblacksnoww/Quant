@@ -13,7 +13,7 @@ services:
         condition: service_healthy
 
   db:
-    image: docker.m.daocloud.io/library/postgres:16-alpine
+    image: ${QUANT_POSTGRES_IMAGE:-docker.m.daocloud.io/library/postgres:16-alpine}
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-quant}
       POSTGRES_USER: ${POSTGRES_USER:-quant}

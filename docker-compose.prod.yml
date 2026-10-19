@@ -15,7 +15,7 @@ services:
     ports: !reset []
 
   caddy:
-    image: docker.m.daocloud.io/library/caddy:2.8-alpine
+    image: ${QUANT_CADDY_IMAGE:-docker.m.daocloud.io/library/caddy:2.8-alpine}
     depends_on:
       frontend:
         condition: service_healthy
