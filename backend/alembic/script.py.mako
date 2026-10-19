@@ -10,6 +10,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+import quant.storage.models  # noqa: F401 —— 自定义列类型（CompressedJSON）需要该模块
 ${imports if imports else ""}
 
 revision: str = ${repr(up_revision)}
