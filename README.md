@@ -39,7 +39,6 @@
   miniQMT（A股骨架，需 Windows + QMT 权限）。默认测试网、真实资金二次确认、
   服务端总开关三道闸门；启动对账、逐单撤单、全链路审计。
 - **模拟盘双模式**：`replay` 按倍速回放历史行情；`live` 盘中轮询快照（数据源不支持时回退最新收盘价并告警）。**每个账号一份独立会话**，同一账号同时只能开一个。
-- **实时行情自选**：行情页自选列表实时快照（腾讯 → 东财 → 新浪 多源聚合，单源限流自动切换），3/5/10/30 秒自动刷新可暂停；代码/名称搜索联想加入自选（带市场徽标），单源全挂时回退最近一次成功快照并标注。
 - **策略可插拔**：`ParamSpec` 自描述参数，前端自动渲染表单；新增策略无需改 API 或前端。
   另有「条件拼装策略」：网页下拉框拼买卖规则（spec v1）或 **蓝图编辑器**拖节点连线
   （spec v2 节点数据流图，React Flow 画布 + 三模板），免代码创建、存库、直接回测/纸盘。
@@ -85,7 +84,8 @@
 更详细的分层、事件顺序与扩展点见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)；
 框架目录地图与结构审查清单见 [`docs/PROJECT_MAP.md`](docs/PROJECT_MAP.md)；
 可渲染的框架图（Mermaid）见 [`docs/FRAMEWORK.md`](docs/FRAMEWORK.md)；
-实盘接入步骤与安全边界见 [`docs/LIVE_TRADING.md`](docs/LIVE_TRADING.md)。
+实盘接入步骤与安全边界见 [`docs/LIVE_TRADING.md`](docs/LIVE_TRADING.md)；
+部署与持续更新见 [`docs/DEPLOY.md`](docs/DEPLOY.md)（含 §11 云端部署）。
 
 ## 快速开始（Docker，推荐）
 
@@ -130,35 +130,53 @@ QUANT_CRYPTO_EXCHANGE=okx
 
 登录后建议立即：修改密码 → 启用两步验证 → 保存恢复码。
 
-## 生产部署（HTTPS）
+## 生产部署（云端）
+
+推荐用一键脚本部署：直接拉 CI 构建好的镜像，**不在服务器编译**。
 
 ```bash
-./scripts/init-secrets.sh quant.example.com
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+git clone --depth 1 <repo> quant-trading && cd quant-trading
+./scripts/quick-deploy.sh quant.example.com
 ```
 
-- Caddy 自动申请/续期证书（80/443 必须可达，域名已解析）。
-- 内部 Nginx 提供静态资源，并把 `/api`、`/ws` 反代到后端，无跨域。
-- 默认只暴露 80/443；基础 compose 的 8080 端口在 prod 覆盖层中被清除。
-- 若 `.env` 设置了 `COMPOSE_FILE`（叠加 PostgreSQL），显式 `-f` 会覆盖它，
-  三个文件都要写：
-  `docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.postgres.yml up -d --build`。
+脚本会生成 `.env`（随机主密钥/管理员口令）、拉取 GHCR 镜像、启动 PostgreSQL 栈，
+并自检后打印登录账号。**默认不启用内置 Caddy**：
 
-### PostgreSQL（推荐）
+- 适合服务器上**已有 nginx / 反向代理**：前端只监听 `127.0.0.1:8080`，
+  由宿主机 nginx 把域名反代过去（WebSocket 头配置见
+  [docs/DEPLOY.md](docs/DEPLOY.md) §11.2）；
+- 需要内置 Caddy 自动 HTTPS（占用 80/443）时加参数：
+  `./scripts/quick-deploy.sh quant.example.com --caddy`；
+- 从 Caddy 切回 nginx 共存：`--no-caddy`；
+- 服务器本地构建（不走 GHCR）：`--build`。
+
+首次启动会自动完成：PostgreSQL 初始化 → alembic 建表 → 创建管理员。
+生产模式不再使用 `create_all`，模型改动需提交迁移（流程见 DEPLOY §7）。
+
+### 持续更新
 
 ```bash
-# .env 中设置强口令 POSTGRES_PASSWORD
-docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d --build
+./scripts/quick-deploy.sh quant.example.com          # 拉最新镜像并重启
+./scripts/quick-deploy.sh quant.example.com <sha>    # 固定版本 / 回滚
 ```
 
-已有 SQLite 数据不会自动迁移；需要迁移时先在旧库导出运行记录，或使用 Alembic 自行迁移。
+也可以在服务器上 `git pull` 后本地构建更新：`./scripts/update.sh main`
+（自动备份 → 拉取 → 构建 → 迁移 → 自检）。
+
+更新注意事项：
+
+- 只支持单实例（纸盘/实盘会话与 WebSocket 在进程内存），重启会有数秒中断；
+- **不要** `docker compose down -v`（会删除数据库卷）；
+- **不要** 重新运行 `init-secrets.sh --force`（主密钥变化后 TOTP/凭据无法解密）；
+- 更新前建议 `./scripts/backup.sh` + `pg_dump`，并离线备份 `.env`。
 
 ### 运维
 
 ```bash
 docker compose logs -f backend     # 日志
 ./scripts/verify.sh                # 容器/API/审计自检
-./scripts/backup.sh                # 备份 /app/data（SQLite、行情缓存）
+./scripts/backup.sh                # 备份 /app/data（行情缓存、SQLite）
+./scripts/migrate.sh               # 手动执行数据库迁移（幂等，通常不需要）
 ```
 
 **务必备份 `QUANT_MASTER_KEY`**：丢失后所有加密凭据与 TOTP 种子不可恢复。
@@ -217,11 +235,12 @@ quant-trading/
 │   │   ├── storage/      # SQLAlchemy 模型/仓储
 │   │   ├── server/       # FastAPI、路由、WS、任务管理
 │   │   └── cli.py
+│   ├── alembic/        # 数据库迁移（生产启动自动 upgrade）
 │   └── tests/
 ├── frontend/             # React + TypeScript + Vite + ECharts
 ├── deploy/               # Dockerfile、Nginx、Caddy
 ├── docs/                 # 架构、安全、部署
-├── scripts/              # 密钥初始化、开发、备份、自检
+├── scripts/              # 密钥初始化、开发、更新、备份、自检、迁移、依赖锁
 ├── legacy/               # 重写前的 backtrader 学习版（归档，不参与构建）
 ├── data/cache/           # 旧版 CSV 行情种子
 ├── docker-compose*.yml
@@ -256,7 +275,7 @@ quant-trading/
 - 两步验证：TOTP + 一次性恢复码；种子用字段密钥加密。
 - 字段加密：HKDF-SHA256 派生子密钥，AES-256-GCM，AAD 绑定字段上下文，密文带版本。
 - 审计：SHA-256 哈希链，提供完整性校验接口。
-- 传输：生产由 Caddy 终结 TLS；Nginx 注入 CSP、X-Frame-Options 等响应头。
+- 传输：TLS 由内置 Caddy 或宿主机 nginx 终结；前端 Nginx 注入 CSP、X-Frame-Options 等响应头。
 - 容器：非 root、无源码热挂载、主密钥不写入镜像。
 
 细节与威胁模型见 [`docs/SECURITY.md`](docs/SECURITY.md)。
@@ -271,10 +290,16 @@ POST /api/backtests              提交回测（异步，202；symbols 用 MARKE
 GET  /api/backtests/{id}         结果：指标、权益曲线、成交、委托
 GET  /api/market/markets         市场元信息（CN/US/HK：名称、币种、货币符号）
 GET  /api/market/bars            日线（symbol=MARKET:CODE）
+GET  /api/market/klines          任意周期 K 线（1m/5m/15m/30m/60m/1d/1w/1M）
+GET  /api/market/indices         指数快照（12 个常用指数）
+GET  /api/market/ranking         排行榜（今日/本周/本月 × 涨幅/成交额）
 GET  /api/market/quote           实时快照（多源聚合，含名称/涨跌/量额/market/currency）
 GET  /api/market/search          标的检索（代码/名称，可带 market=CN|US|HK）
 POST /api/paper/start            启动模拟盘
+POST /api/paper/switch           运行中切换策略
 GET  /api/paper/state            实时状态
+POST /api/live/start             启动实盘（测试网默认，三重闸门）
+GET  /api/funds/holdings         场外基金持仓与收益
 GET  /api/risk/rules             风控规则目录
 GET  /api/strategies/custom      我的拼装策略（免代码策略 CRUD，仅本人可见）
 POST /api/strategies/custom      创建拼装策略（spec 白名单校验）
@@ -292,8 +317,10 @@ cd backend
 
 覆盖：加密 AAD 防篡改、密码哈希、JWT 类型隔离、撮合与费用（含港美预设）、回测确定性、
 风控规则、多市场符号解析与 API 契约、实时快照三市场解析、API 认证、
-条件拼装策略（spec 白名单 + 用户隔离 + 引擎端到端；v1 条件与 v2 蓝图节点图）。
-后端 pytest 全套 **143 项**（`pytest --collect-only` 与 README/文档口径一致）。
+条件拼装策略（spec 白名单 + 用户隔离 + 引擎端到端；v1 条件与 v2 蓝图节点图）、
+虚拟货币数据源与 T+0/TIF、场外基金申赎聚合、实盘适配器与 LiveBroker 状态机、
+运行中策略切换、指数/排行榜/分钟线契约。
+后端 pytest 全套 **236 项**（`pytest --collect-only` 与 README/文档口径一致）。
 
 ## 许可
 
