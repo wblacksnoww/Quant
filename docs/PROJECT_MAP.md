@@ -41,8 +41,8 @@
 ```
 
 进程模型：**无消息队列、无调度器**——回测 = `BacktestManager` 每任务一线程（并发上限
-`QUANT_MAX_CONCURRENT_BACKTESTS`，超限 429）；纸盘 = `PaperManager` 每用户一条后台线程；
-实盘 = `LiveManager` 每用户一条后台线程（同一账号只允许一个会话）；lifespan 统一 shutdown。
+`QUANT_MAX_CONCURRENT_BACKTESTS`，超限 429）；纸盘 = `PaperManager` 每会话一条后台线程（同用户可多开）；
+实盘 = `LiveManager` 每（用户, 凭证）一条后台线程（同一凭证只允许一个会话）；lifespan 统一 shutdown。
 
 ## 2. 目录地图（180 个 tracked 文件）
 

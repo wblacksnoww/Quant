@@ -42,9 +42,6 @@ def start_paper(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_db),
 ):
-    if ctx.paper.running(user.id):
-        raise HTTPException(status_code=409, detail="你已有纸盘会话在运行，请先停止")
-
     resolved_params = inject_custom_spec(body.params, user=user, session=session)
     config = build_engine_config(
         body,
@@ -115,28 +112,39 @@ def start_paper(
     return RunAccepted(run_id=config.run_id, status="running")
 
 
-@router.post("/stop", response_model=Message, summary="停止纸盘会话")
+@router.post("/stop", response_model=Message, summary="停止纸盘会话（可指定 run_id）")
 def stop_paper(
-    request_body: dict | None = None,
+    run_id: str | None = Query(default=None, description="不传则停止该用户全部纸盘会话"),
     ctx: AppContext = Depends(get_ctx),
     user: User = Depends(get_current_user),
     session: Session = Depends(get_db),
 ):
-    engine = ctx.paper.engine(user.id)
-    if engine is None:
-        raise HTTPException(status_code=409, detail="没有运行中的纸盘会话")
-    stopped = ctx.paper.stop(user.id)
+    if not ctx.paper.running(user.id, run_id):
+        raise HTTPException(
+            status_code=409,
+            detail="没有运行中的纸盘会话" if run_id is None else f"运行 {run_id} 不在运行",
+        )
+    stopped = ctx.paper.stop(user.id, run_id)
     audit(
         session,
         request=None,
         actor=user.username,
         action="paper.stop",
-        target=engine.config.run_id,
+        target=run_id or "all",
+        detail={"count": stopped},
     )
     return Message(
-        message="纸盘已停止" if stopped else "已发送停止信号，等待当前轮询结束",
-        detail={"stopped": stopped},
+        message=f"已停止 {stopped} 个纸盘会话",
+        detail={"stopped": stopped, "run_id": run_id},
     )
+
+
+@router.get("/sessions", response_model=list[PaperStateOut], summary="运行中的纸盘会话")
+def paper_sessions(
+    ctx: AppContext = Depends(get_ctx),
+    user: User = Depends(get_current_user),
+):
+    return [PaperStateOut(**state) for state in ctx.paper.sessions(user.id)]
 
 
 @router.post("/switch", response_model=Message, summary="切换运行中的策略（下一轮生效）")
@@ -175,9 +183,13 @@ def switch_paper(
     )
 
 
-@router.get("/state", response_model=PaperStateOut | None, summary="纸盘实时状态（仅自己的会话）")
-def paper_state(ctx: AppContext = Depends(get_ctx), user: User = Depends(get_current_user)):
-    state = ctx.paper.state(user.id)
+@router.get("/state", response_model=PaperStateOut | None, summary="纸盘实时状态（可指定 run_id）")
+def paper_state(
+    run_id: str | None = Query(default=None, description="不传则返回最近一个运行中的会话"),
+    ctx: AppContext = Depends(get_ctx),
+    user: User = Depends(get_current_user),
+):
+    state = ctx.paper.state(user.id, run_id)
     if state is None:
         return None
     return PaperStateOut(**state)

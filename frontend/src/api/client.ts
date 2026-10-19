@@ -314,7 +314,9 @@ export const backtestApi = {
 
 export const paperApi = {
   start: (body: PaperStartRequest) => request<RunAccepted>('/paper/start', { method: 'POST', body }),
-  stop: () => request<Message>('/paper/stop', { method: 'POST' }),
+  stop: (runId?: string) =>
+    request<Message>('/paper/stop', { method: 'POST', query: { run_id: runId } }),
+  sessions: () => request<PaperState[]>('/paper/sessions'),
   state: () => request<PaperState | null>('/paper/state'),
   runs: () => request<RunSummary[]>('/paper/runs'),
   switchStrategy: (body: {
@@ -354,7 +356,9 @@ export const fundApi = {
 export const liveApi = {
   adapters: () => request<LiveAdapter[]>('/live/adapters'),
   start: (body: LiveStartRequest) => request<RunAccepted>('/live/start', { method: 'POST', body }),
-  stop: () => request<Message>('/live/stop', { method: 'POST' }),
+  stop: (credentialId?: number) =>
+    request<Message>('/live/stop', { method: 'POST', query: { credential_id: credentialId } }),
+  sessions: () => request<LiveState[]>('/live/sessions'),
   state: () => request<LiveState | null>('/live/state'),
   runs: () => request<RunSummary[]>('/live/runs'),
   switchStrategy: (body: {

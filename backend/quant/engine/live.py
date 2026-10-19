@@ -62,10 +62,12 @@ class LiveEngine(BaseEngine):
         options: LiveOptions | None = None,
         bus: EventBus | None = None,
         recorder: Any = None,
+        credential_id: int | None = None,
     ) -> None:
         super().__init__(config)
         self.data = data
         self.adapter = adapter
+        self.credential_id = credential_id
         self.options = options or LiveOptions()
         self.bus = bus or EventBus(f"live:{config.run_id}")
         self.recorder = recorder
@@ -354,6 +356,7 @@ class LiveEngine(BaseEngine):
             "mode": "live",
             "adapter": self.adapter.name,
             "sandbox": self.adapter.sandbox,
+            "credential_id": self.credential_id,
             "status": self.status.value,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "last_prices": self.last_prices,
@@ -425,58 +428,103 @@ class LiveRunner:
 
 
 class LiveManager:
-    """按用户隔离的实盘会话池（与 PaperManager 同构）。
+    """按（用户, 券商凭证）隔离的实盘会话池。
 
-    实盘的隔离要求比纸盘更严格：同一账号不允许并发会话，否则会出现两套策略
-    争抢同一笔资金。
+    **同一凭证（同一个真实资金账户）同时只允许一个会话**，避免两套策略各自
+    从交易所读到同一份余额、重复下单、互相抢资金；同一用户的不同凭证可以并行。
     """
 
     def __init__(self) -> None:
-        self._runners: dict[int, LiveRunner] = {}
+        self._runners: dict[tuple[int, int], LiveRunner] = {}
         self._lock = threading.RLock()
 
-    def runner(self, user_id: int) -> LiveRunner | None:
+    # ------------------------------------------------------------------ #
+    def runner(self, user_id: int, credential_id: int | None = None) -> LiveRunner | None:
         with self._lock:
-            return self._runners.get(user_id)
+            if credential_id is not None:
+                return self._runners.get((user_id, int(credential_id)))
+            for (uid, _cid), runner in self._runners.items():
+                if uid == user_id and runner.running:
+                    return runner
+            return None
 
-    def _slot(self, user_id: int) -> LiveRunner:
+    def running(self, user_id: int, credential_id: int | None = None) -> bool:
+        if credential_id is not None:
+            runner = self.runner(user_id, credential_id)
+            return bool(runner and runner.running)
+        return any(
+            runner.running for (uid, _cid), runner in self._runners.items() if uid == user_id
+        )
+
+    def start(self, user_id: int, credential_id: int, engine: LiveEngine) -> None:
+        key = (user_id, int(credential_id))
         with self._lock:
-            runner = self._runners.get(user_id)
-            if runner is None:
-                runner = LiveRunner()
-                self._runners[user_id] = runner
-            return runner
+            for stale in [k for k, runner in self._runners.items() if not runner.running]:
+                self._runners.pop(stale, None)
+            existing = self._runners.get(key)
+            if existing is not None and existing.running:
+                raise RuntimeError("该券商凭证已有实盘会话在运行，请先停止")
+            runner = LiveRunner()
+            self._runners[key] = runner
+        runner.start(engine)
 
-    def running(self, user_id: int) -> bool:
-        runner = self.runner(user_id)
-        return bool(runner and runner.running)
+    def stop(self, user_id: int, credential_id: int | None = None, timeout: float = 15.0) -> int:
+        """停止指定凭证的会话；不传 ``credential_id`` 时停止该用户全部实盘会话。"""
+        with self._lock:
+            keys = [
+                k
+                for k, runner in self._runners.items()
+                if k[0] == user_id
+                and (credential_id is None or k[1] == int(credential_id))
+                and runner.running
+            ]
+            targets = [(k, self._runners[k]) for k in keys]
+        stopped = 0
+        for key, runner in targets:
+            try:
+                if runner.stop(timeout=timeout):
+                    stopped += 1
+            except Exception:  # noqa: BLE001
+                log.exception("停止用户 %s 的实盘会话（凭证 %s）失败", key[0], key[1])
+        with self._lock:
+            for key, _ in targets:
+                self._runners.pop(key, None)
+        return stopped
 
-    def start(self, user_id: int, engine: LiveEngine) -> None:
-        self._slot(user_id).start(engine)
-
-    def stop(self, user_id: int, timeout: float = 15.0) -> bool:
-        runner = self.runner(user_id)
-        return runner.stop(timeout=timeout) if runner is not None else False
-
-    def engine(self, user_id: int) -> LiveEngine | None:
-        runner = self.runner(user_id)
+    def engine(self, user_id: int, credential_id: int | None = None) -> LiveEngine | None:
+        runner = self.runner(user_id, credential_id)
         return runner.engine if runner is not None else None
 
-    def state(self, user_id: int) -> dict[str, Any] | None:
-        runner = self.runner(user_id)
+    def state(self, user_id: int, credential_id: int | None = None) -> dict[str, Any] | None:
+        runner = self.runner(user_id, credential_id)
         return runner.state() if runner is not None else None
+
+    def sessions(self, user_id: int) -> list[dict[str, Any]]:
+        """运行中的实盘会话列表（每个凭证最多一个）。"""
+        out: list[dict[str, Any]] = []
+        with self._lock:
+            items = [
+                runner
+                for (uid, _cid), runner in self._runners.items()
+                if uid == user_id and runner.running
+            ]
+        for runner in items:
+            state = runner.state()
+            if state:
+                out.append(state)
+        return out
 
     @property
     def active_users(self) -> list[int]:
         with self._lock:
-            return [uid for uid, runner in self._runners.items() if runner.running]
+            return sorted({uid for (uid, _cid), runner in self._runners.items() if runner.running})
 
     def stop_all(self, timeout: float = 15.0) -> None:
         with self._lock:
-            runners = list(self._runners.items())
-        for user_id, runner in runners:
+            users = sorted({uid for (uid, _cid) in self._runners})
+        for user_id in users:
             try:
-                runner.stop(timeout=timeout)
+                self.stop(user_id, timeout=timeout)
             except Exception:  # noqa: BLE001
                 log.exception("停止用户 %s 的实盘会话失败", user_id)
 

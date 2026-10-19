@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from types import SimpleNamespace
 
 import pytest
 
@@ -16,6 +17,7 @@ class FakeEngine:
 
     def __init__(self, run_id: str) -> None:
         self.run_id = run_id
+        self.config = SimpleNamespace(run_id=run_id)
         self._stop = threading.Event()
         self.started = threading.Event()
 
@@ -53,16 +55,37 @@ def test_two_users_can_run_paper_simultaneously():
     assert not manager.running(1) and not manager.running(2)
 
 
-def test_same_user_cannot_start_twice():
+def test_same_user_can_run_multiple_sessions():
     manager = PaperManager()
-    engine = FakeEngine("paper:a")
-    manager.start(7, engine)
-    _wait_started(engine)
-    try:
-        with pytest.raises(RuntimeError):
-            manager.start(7, FakeEngine("paper:again"))
-    finally:
-        manager.stop(7)
+    first, second = FakeEngine("paper:a"), FakeEngine("paper:b")
+    manager.start(7, first)
+    manager.start(7, second)
+    _wait_started(first)
+    _wait_started(second)
+
+    assert manager.running(7)
+    assert len(manager.sessions(7)) == 2
+    assert {item["run_id"] for item in manager.sessions(7)} == {"paper:a", "paper:b"}
+
+    # 同一 run_id 不允许重复启动
+    with pytest.raises(RuntimeError):
+        manager.start(7, FakeEngine("paper:a"))
+
+    # 指定 run_id 只停一个
+    assert manager.stop(7, "paper:a") == 1
+    assert manager.running(7, "paper:b")
+    assert not manager.running(7, "paper:a")
+    manager.stop(7)
+
+
+def test_session_limit_per_user():
+    manager = PaperManager(max_sessions_per_user=2)
+    engines = [FakeEngine(f"paper:{i}") for i in range(3)]
+    manager.start(1, engines[0])
+    manager.start(1, engines[1])
+    with pytest.raises(RuntimeError, match="不能超过"):
+        manager.start(1, engines[2])
+    manager.stop(1)
 
 
 def test_state_is_per_user():
@@ -73,7 +96,7 @@ def test_state_is_per_user():
     try:
         assert manager.state(2) is None
         assert manager.engine(2) is None
-        assert not manager.stop(2)
+        assert manager.stop(2) == 0
     finally:
         manager.stop(1)
 

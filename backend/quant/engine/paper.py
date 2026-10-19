@@ -426,61 +426,114 @@ class PaperRunner:
 
 
 class PaperManager:
-    """按用户隔离的纸盘会话池：每个用户一个 :class:`PaperRunner`。
+    """按用户隔离的纸盘会话池：**同一用户可同时运行多个会话**。
 
-    同一用户同一时间只允许一个会话；不同用户互不影响（各自线程、各自记录）。
-    每个会话的事件在 WebSocket 层按 ``user_id`` 定向投递，不会广播给其他人。
+    每个会话有独立的虚拟账户与后台线程（虚拟资金互不影响），用 ``run_id`` 区分；
+    事件在 WebSocket 层仍按 ``user_id`` 定向投递。同一用户并发会话数有上限
+    （默认 5），防止误开一堆会话占满线程与行情请求。
     """
 
-    def __init__(self) -> None:
-        self._runners: dict[int, PaperRunner] = {}
+    def __init__(self, max_sessions_per_user: int = 5) -> None:
+        self._runners: dict[int, dict[str, PaperRunner]] = {}
         self._lock = threading.RLock()
-
-    def runner(self, user_id: int) -> PaperRunner | None:
-        with self._lock:
-            return self._runners.get(user_id)
-
-    def _slot(self, user_id: int) -> PaperRunner:
-        with self._lock:
-            runner = self._runners.get(user_id)
-            if runner is None:
-                runner = PaperRunner()
-                self._runners[user_id] = runner
-            return runner
+        self.max_sessions_per_user = max(1, int(max_sessions_per_user))
 
     # ------------------------------------------------------------------ #
-    def running(self, user_id: int) -> bool:
-        runner = self.runner(user_id)
-        return bool(runner and runner.running)
+    def runners(self, user_id: int) -> dict[str, PaperRunner]:
+        with self._lock:
+            return dict(self._runners.get(user_id, {}))
+
+    def runner(self, user_id: int, run_id: str | None = None) -> PaperRunner | None:
+        with self._lock:
+            slots = self._runners.get(user_id, {})
+            if run_id:
+                return slots.get(run_id)
+            running = [item for item in slots.values() if item.running]
+            if running:
+                return running[-1]
+            return next(iter(slots.values()), None)
+
+    def running(self, user_id: int, run_id: str | None = None) -> bool:
+        if run_id:
+            runner = self.runner(user_id, run_id)
+            return bool(runner and runner.running)
+        return any(item.running for item in self.runners(user_id).values())
 
     @property
     def active_users(self) -> list[int]:
         with self._lock:
-            return [uid for uid, runner in self._runners.items() if runner.running]
+            return [
+                uid
+                for uid, slots in self._runners.items()
+                if any(item.running for item in slots.values())
+            ]
 
+    # ------------------------------------------------------------------ #
     def start(self, user_id: int, engine: PaperEngine) -> None:
-        """``RuntimeError``：该用户已有会话在运行。"""
-        self._slot(user_id).start(engine)
+        """启动一个会话；同 run_id 重复启动或超过并发上限时抛 ``RuntimeError``。"""
+        run_id = engine.config.run_id
+        with self._lock:
+            slots = self._runners.setdefault(user_id, {})
+            # 顺手清理已经结束的会话，避免字典无限增长
+            for stale in [rid for rid, item in slots.items() if not item.running]:
+                slots.pop(stale, None)
+            if run_id in slots:
+                raise RuntimeError("该运行已在运行")
+            if len(slots) >= self.max_sessions_per_user:
+                raise RuntimeError(
+                    f"同时运行的模拟盘不能超过 {self.max_sessions_per_user} 个，请先停止一些"
+                )
+            runner = PaperRunner()
+            slots[run_id] = runner
+        runner.start(engine)
 
-    def stop(self, user_id: int, timeout: float = 10.0) -> bool:
-        runner = self.runner(user_id)
-        return runner.stop(timeout=timeout) if runner is not None else False
+    def stop(self, user_id: int, run_id: str | None = None, timeout: float = 10.0) -> int:
+        """停止指定会话；不传 ``run_id`` 时停止该用户全部会话。返回停止数量。"""
+        with self._lock:
+            slots = self._runners.get(user_id, {})
+            targets = [
+                (rid, item)
+                for rid, item in slots.items()
+                if item.running and (run_id is None or rid == run_id)
+            ]
+        stopped = 0
+        for rid, runner in targets:
+            try:
+                if runner.stop(timeout=timeout):
+                    stopped += 1
+            except Exception:  # noqa: BLE001
+                log.exception("停止用户 %s 的纸盘会话 %s 失败", user_id, rid)
+        with self._lock:
+            for rid, _ in targets:
+                slots.pop(rid, None)
+        return stopped
 
-    def engine(self, user_id: int) -> PaperEngine | None:
-        runner = self.runner(user_id)
+    def engine(self, user_id: int, run_id: str | None = None) -> PaperEngine | None:
+        runner = self.runner(user_id, run_id)
         return runner.engine if runner is not None else None
 
-    def state(self, user_id: int) -> dict[str, Any] | None:
-        runner = self.runner(user_id)
+    def state(self, user_id: int, run_id: str | None = None) -> dict[str, Any] | None:
+        runner = self.runner(user_id, run_id)
         return runner.state() if runner is not None else None
+
+    def sessions(self, user_id: int) -> list[dict[str, Any]]:
+        """运行中的会话状态列表（多会话页面用）。"""
+        out: list[dict[str, Any]] = []
+        for runner in self.runners(user_id).values():
+            if not runner.running:
+                continue
+            state = runner.state()
+            if state:
+                out.append(state)
+        return out
 
     def stop_all(self, timeout: float = 10.0) -> None:
         """服务关闭时停掉所有用户的会话。"""
         with self._lock:
-            runners = list(self._runners.items())
-        for user_id, runner in runners:
+            users = list(self._runners)
+        for user_id in users:
             try:
-                runner.stop(timeout=timeout)
+                self.stop(user_id, timeout=timeout)
             except Exception:  # noqa: BLE001
                 log.exception("停止用户 %s 的纸盘会话失败", user_id)
 

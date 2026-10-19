@@ -35,7 +35,8 @@ export function LivePage() {
   const [strategies, setStrategies] = useState<Strategy[]>([])
   const [adapters, setAdapters] = useState<LiveAdapter[]>([])
   const [credentials, setCredentials] = useState<Credential[]>([])
-  const [state, setState] = useState<LiveState | null>(null)
+  const [sessions, setSessions] = useState<LiveState[]>([])
+  const [activeCredential, setActiveCredential] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [starting, setStarting] = useState(false)
@@ -61,15 +62,35 @@ export function LivePage() {
     () => credentials.filter((item) => item.kind === 'broker'),
     [credentials],
   )
-  const active = state?.status === 'running'
+  const active = sessions.length > 0
+  // 当前选中凭证的会话；没有选中时回落到第一个运行中的会话
+  const state = useMemo(
+    () =>
+      sessions.find((item) => item.credential_id === activeCredential) ?? sessions[0] ?? null,
+    [sessions, activeCredential],
+  )
   const adapterMeta = adapters.find((item) => item.name === adapter)
 
+  const loadSessions = useCallback(async () => {
+    try {
+      const list = await liveApi.sessions()
+      setSessions(list)
+      setActiveCredential((current) =>
+        current !== null && list.some((item) => item.credential_id === current)
+          ? current
+          : (list[0]?.credential_id ?? null),
+      )
+    } catch {
+      // 轮询失败不弹窗，下一次重试
+    }
+  }, [])
+
   const loadAll = useCallback(async () => {
-    const [strategyResult, adapterResult, credentialResult, stateResult] = await Promise.allSettled([
+    const [strategyResult, adapterResult, credentialResult, sessionResult] = await Promise.allSettled([
       strategyApi.list(),
       liveApi.adapters(),
       credentialApi.list(),
-      liveApi.state(),
+      liveApi.sessions(),
     ])
     if (strategyResult.status === 'fulfilled') {
       setStrategies(strategyResult.value)
@@ -85,7 +106,15 @@ export function LivePage() {
       const firstBroker = credentialResult.value.find((item) => item.kind === 'broker')
       if (firstBroker) setCredentialId((current) => current ?? firstBroker.id)
     }
-    if (stateResult.status === 'fulfilled') setState(stateResult.value)
+    if (sessionResult.status === 'fulfilled') {
+      const list = sessionResult.value
+      setSessions(list)
+      setActiveCredential((current) =>
+        current !== null && list.some((item) => item.credential_id === current)
+          ? current
+          : (list[0]?.credential_id ?? null),
+      )
+    }
     setLoading(false)
   }, [strategyId])
 
@@ -98,14 +127,11 @@ export function LivePage() {
     const interval = active ? 2000 : 15000
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') {
-        liveApi
-          .state()
-          .then(setState)
-          .catch(() => undefined)
+        void loadSessions()
       }
     }, interval)
     return () => window.clearInterval(timer)
-  }, [active])
+  }, [active, loadSessions])
 
   const changeStrategy = (id: string) => {
     setStrategyId(id)
@@ -152,7 +178,8 @@ export function LivePage() {
     }
     setStarting(true)
     try {
-      await liveApi.start(body)
+      const accepted = await liveApi.start(body)
+      setActiveCredential(body.credential_id)
       notify('success', `实盘已启动（${sandbox ? '测试网' : '真实资金'}）`)
       window.setTimeout(() => void loadAll(), 800)
     } catch (err) {
@@ -164,10 +191,10 @@ export function LivePage() {
     }
   }
 
-  const stop = async () => {
+  const stop = async (targetCredential?: number) => {
     setStopping(true)
     try {
-      const message = await liveApi.stop()
+      const message = await liveApi.stop(targetCredential)
       notify('info', message.message)
       window.setTimeout(() => void loadAll(), 800)
     } catch (err) {
@@ -187,6 +214,76 @@ export function LivePage() {
           当前选择<strong>真实资金</strong>：委托会直接发往交易所/券商。请确认额度、标的与策略逻辑，
           并自行承担交易结果。
         </Banner>
+      )}
+
+      {sessions.length > 0 && (
+        <Card
+          title="运行中会话"
+          description="同一券商凭证只允许一个会话；不同凭证（不同资金账户）可以并行"
+          actions={<Badge tone="success">{sessions.length} 个运行中</Badge>}
+          flush
+        >
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>凭证</th>
+                  <th>策略</th>
+                  <th>标的</th>
+                  <th>通道</th>
+                  <th>环境</th>
+                  <th className="right">权益</th>
+                  <th className="right">收益率</th>
+                  <th className="right">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sessions.map((item) => {
+                  const selected = item.credential_id === state?.credential_id
+                  const name =
+                    credentials.find((entry) => entry.id === item.credential_id)?.name ??
+                    `#${item.credential_id}`
+                  return (
+                    <tr
+                      key={item.run_id}
+                      style={{
+                        cursor: 'pointer',
+                        background: selected ? 'var(--accent-soft)' : undefined,
+                      }}
+                      onClick={() => setActiveCredential(item.credential_id ?? null)}
+                    >
+                      <td className="strong">{name}</td>
+                      <td>{item.strategy_id}</td>
+                      <td className="mono tiny">{item.symbols.join(' · ')}</td>
+                      <td className="mono tiny">{item.adapter}</td>
+                      <td>
+                        <Badge tone={item.sandbox ? 'accent' : 'danger'}>
+                          {item.sandbox ? '测试网' : '真实'}
+                        </Badge>
+                      </td>
+                      <td className="right num">{fmtMoney(item.equity)}</td>
+                      <td className={`right num ${item.total_return >= 0 ? 'up' : 'down'}`}>
+                        {fmtSignedPct(item.total_return)}
+                      </td>
+                      <td className="right">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void stop(item.credential_id ?? undefined)
+                          }}
+                        >
+                          停止
+                        </Button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
 
       <div className="grid grid-sidebar">
@@ -320,7 +417,7 @@ export function LivePage() {
                 </Field>
               ))}
 
-            <Button type="submit" block loading={starting} disabled={active}>
+            <Button type="submit" block loading={starting}>
               <IconPlay /> 启动实盘
             </Button>
             {active && (
@@ -328,8 +425,13 @@ export function LivePage() {
                 <Button block onClick={() => setSwitchOpen(true)}>
                   切换策略（下一轮生效）
                 </Button>
-                <Button variant="danger" block loading={stopping} onClick={() => void stop()}>
-                  <IconStop /> 停止（逐单撤单）
+                <Button
+                  variant="danger"
+                  block
+                  loading={stopping}
+                  onClick={() => void stop(state?.credential_id ?? undefined)}
+                >
+                  <IconStop /> 停止当前凭证（逐单撤单）
                 </Button>
               </>
             )}

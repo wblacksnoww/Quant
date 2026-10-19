@@ -495,6 +495,7 @@ export interface LiveStartRequest extends BacktestRequest {
 export interface LiveState extends PaperState {
   adapter: string
   sandbox: boolean
+  credential_id?: number | null
   reconcile_at?: string | null
 }
 

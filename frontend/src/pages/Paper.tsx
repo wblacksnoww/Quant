@@ -38,7 +38,8 @@ function defaultsFor(strategy: Strategy | undefined): Record<string, unknown> {
 export function PaperPage() {
   const [strategies, setStrategies] = useState<Strategy[]>([])
   const [presets, setPresets] = useState<RiskPresets | null>(null)
-  const [state, setState] = useState<PaperState | null>(null)
+  const [sessions, setSessions] = useState<PaperState[]>([])
+  const [activeRun, setActiveRun] = useState<string | null>(null)
   const [runs, setRuns] = useState<RunSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
@@ -73,12 +74,22 @@ export function PaperPage() {
     [strategy],
   )
 
-  const running = state?.status === 'running'
+  const running = sessions.length > 0
+  // 当前选中的会话；没有选中时回落到第一个运行中的会话
+  const state = useMemo(
+    () => sessions.find((item) => item.run_id === activeRun) ?? sessions[0] ?? null,
+    [sessions, activeRun],
+  )
 
-  const loadState = useCallback(async () => {
+  const loadSessions = useCallback(async () => {
     try {
-      const next = await paperApi.state()
-      setState(next)
+      const list = await paperApi.sessions()
+      setSessions(list)
+      setActiveRun((current) =>
+        current && list.some((item) => item.run_id === current)
+          ? current
+          : (list[0]?.run_id ?? null),
+      )
     } catch {
       // 状态轮询失败不弹窗，下一次重试
     }
@@ -110,22 +121,22 @@ export function PaperPage() {
         setStrategyId(strategyValue[0].id)
         setParams(defaultsFor(strategyValue[0]))
       }
-      await Promise.all([loadState(), loadRuns()])
+      await Promise.all([loadSessions(), loadRuns()])
       if (alive) setLoading(false)
     })()
     return () => {
       alive = false
     }
-  }, [loadState, loadRuns])
+  }, [loadSessions, loadRuns])
 
   // 运行中高频轮询，结束后降低频率
   useEffect(() => {
     const interval = running ? 2000 : 10000
     const timer = window.setInterval(() => {
-      void loadState()
+      void loadSessions()
     }, interval)
     return () => window.clearInterval(timer)
-  }, [running, loadState])
+  }, [running, loadSessions])
 
   // 事件驱动的即时刷新
   const lastEvent = useEvents((store) => store.last)
@@ -133,16 +144,16 @@ export function PaperPage() {
     if (!lastEvent) return
     const payload = lastEvent.payload as { run_id?: string; status?: string }
     if (lastEvent.type === 'run.finished' || lastEvent.type === 'run.failed') {
-      void loadState()
+      void loadSessions()
       void loadRuns()
       return
     }
     if (state && payload.run_id && payload.run_id === state.run_id) {
       // 成交/状态事件：稍等一拍再拉快照，确保引擎已写入
-      const timer = window.setTimeout(() => void loadState(), 250)
+      const timer = window.setTimeout(() => void loadSessions(), 250)
       return () => window.clearTimeout(timer)
     }
-  }, [lastEvent, state, loadState, loadRuns])
+  }, [lastEvent, state, loadSessions, loadRuns])
 
   const start = async (event: FormEvent) => {
     event.preventDefault()
@@ -195,9 +206,10 @@ export function PaperPage() {
 
     setStarting(true)
     try {
-      await paperApi.start(body)
+      const accepted = await paperApi.start(body)
+      setActiveRun(accepted.run_id)
       notify('success', '模拟盘已启动')
-      window.setTimeout(() => void loadState(), 600)
+      window.setTimeout(() => void loadSessions(), 600)
       window.setTimeout(() => void loadRuns(), 1500)
     } catch (err) {
       const message = err instanceof ApiError ? err.message : '启动失败'
@@ -208,13 +220,13 @@ export function PaperPage() {
     }
   }
 
-  const stop = async () => {
+  const stop = async (runId?: string) => {
     setStopping(true)
     try {
-      const message = await paperApi.stop()
+      const message = await paperApi.stop(runId)
       notify('info', message.message)
       window.setTimeout(() => {
-        void loadState()
+        void loadSessions()
         void loadRuns()
       }, 800)
     } catch (err) {
@@ -233,10 +245,71 @@ export function PaperPage() {
 
   return (
     <div className="col" style={{ gap: 18 }}>
+      {sessions.length > 0 && (
+        <Card
+          title="运行中会话"
+          description="同一账号可同时运行多个模拟盘，每个会话使用独立的虚拟资金"
+          actions={<Badge tone="success">{sessions.length} 个运行中</Badge>}
+          flush
+        >
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>运行 ID</th>
+                  <th>策略</th>
+                  <th>标的</th>
+                  <th>模式</th>
+                  <th className="right">权益</th>
+                  <th className="right">收益率</th>
+                  <th className="right">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sessions.map((item) => {
+                  const selected = item.run_id === state?.run_id
+                  return (
+                    <tr
+                      key={item.run_id}
+                      style={{
+                        cursor: 'pointer',
+                        background: selected ? 'var(--accent-soft)' : undefined,
+                      }}
+                      onClick={() => setActiveRun(item.run_id)}
+                    >
+                      <td className="mono tiny">{item.run_id}</td>
+                      <td>{item.strategy_id}</td>
+                      <td className="mono tiny">{item.symbols.join(' · ')}</td>
+                      <td>{item.mode === 'replay' ? '回放' : '实时'}</td>
+                      <td className="right num">{fmtMoney(item.equity)}</td>
+                      <td className={`right num ${item.total_return >= 0 ? 'up' : 'down'}`}>
+                        {fmtSignedPct(item.total_return)}
+                      </td>
+                      <td className="right">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            void stop(item.run_id)
+                          }}
+                        >
+                          停止
+                        </Button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
       <div className="grid grid-sidebar">
         <Card
           title="启动模拟盘"
-          description="与回测共用撮合、风控与费用模型；每个账号一份独立会话，同一账号同时只能开一个"
+          description="与回测共用撮合、风控与费用模型；每个会话独立虚拟资金，同一账号可同时运行多个"
           actions={<Badge tone={running ? 'success' : 'neutral'}>{running ? '运行中' : '空闲'}</Badge>}
         >
           <form className="col" style={{ gap: 14 }} onSubmit={start}>
@@ -430,7 +503,7 @@ export function PaperPage() {
                     <IconStop /> 停止
                   </Button>
                 )}
-                <Button type="submit" variant="primary" loading={starting} disabled={running}>
+                <Button type="submit" variant="primary" loading={starting}>
                   <IconPlay /> 启动
                 </Button>
               </div>
@@ -441,7 +514,7 @@ export function PaperPage() {
         <Card
           title="会话状态"
           actions={
-            <Button size="sm" variant="ghost" onClick={() => void loadState()}>
+            <Button size="sm" variant="ghost" onClick={() => void loadSessions()}>
               <IconRefresh />
             </Button>
           }
@@ -476,8 +549,8 @@ export function PaperPage() {
                   <Button block onClick={() => setSwitchOpen(true)}>
                     切换策略（下一轮生效）
                   </Button>
-                  <Button variant="danger" block loading={stopping} onClick={() => void stop()}>
-                    <IconStop /> 停止模拟盘
+                  <Button variant="danger" block loading={stopping} onClick={() => void stop(state?.run_id)}>
+                    <IconStop /> 停止当前会话
                   </Button>
                 </>
               )}
@@ -671,7 +744,7 @@ export function PaperPage() {
         onClose={() => setSwitchOpen(false)}
         kind="paper"
         current={state?.strategy_id}
-        onDone={() => void loadState()}
+        onDone={() => void loadSessions()}
       />
     </div>
   )

@@ -416,6 +416,7 @@ class LiveStartRequest(BacktestRequest):
 class LiveStateOut(PaperStateOut):
     adapter: str = ""
     sandbox: bool = True
+    credential_id: int | None = None
     reconcile_at: str | None = None
 
 

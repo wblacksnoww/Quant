@@ -74,8 +74,8 @@ def start_live(
             status_code=403,
             detail="实盘功能未开启：请先在服务端设置 QUANT_ENABLE_LIVE_TRADING=true",
         )
-    if ctx.live.running(user.id):
-        raise HTTPException(status_code=409, detail="你已有实盘会话在运行，请先停止")
+    if ctx.live.running(user.id, body.credential_id):
+        raise HTTPException(status_code=409, detail="该券商凭证已有实盘会话在运行，请先停止")
     if not body.sandbox and not body.confirm_live:
         raise HTTPException(
             status_code=422,
@@ -137,6 +137,7 @@ def start_live(
         ),
         bus=bus,
         recorder=recorder,
+        credential_id=body.credential_id,
     )
 
     original_run = engine.run
@@ -151,7 +152,7 @@ def start_live(
     engine.run = _run_with_cleanup  # type: ignore[method-assign]
 
     try:
-        ctx.live.start(user.id, engine)
+        ctx.live.start(user.id, body.credential_id, engine)
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -173,30 +174,44 @@ def start_live(
     return RunAccepted(run_id=config.run_id, status="running", mode=mode)
 
 
-@router.post("/stop", response_model=Message, summary="停止实盘会话")
+@router.post("/stop", response_model=Message, summary="停止实盘会话（可指定凭证）")
 def stop_live(
+    credential_id: int | None = Query(default=None, description="不传则停止该用户全部实盘会话"),
     ctx: AppContext = Depends(get_ctx),
     user: User = Depends(get_current_user),
     session: Session = Depends(get_db),
 ):
-    if not ctx.live.running(user.id):
-        raise HTTPException(status_code=409, detail="没有运行中的实盘会话")
-    engine = ctx.live.engine(user.id)
-    if engine is None:  # pragma: no cover - running 与 engine 同步维护
-        raise HTTPException(status_code=409, detail="没有运行中的实盘会话")
-    # 引擎 stop → session.finish → broker.cancel_all（逐单向交易所撤单）
-    stopped = ctx.live.stop(user.id)
+    if not ctx.live.running(user.id, credential_id):
+        raise HTTPException(
+            status_code=409,
+            detail="没有运行中的实盘会话" if credential_id is None else "该凭证没有运行中的实盘会话",
+        )
+    engine = ctx.live.engine(user.id, credential_id)
+    stopped = ctx.live.stop(user.id, credential_id)
     audit(
         session,
         request=None,
         actor=user.username,
         action="live.stop",
-        target=engine.config.run_id,
+        target=engine.config.run_id if engine else "all",
+        detail={"count": stopped, "credential_id": credential_id},
     )
     return Message(
-        message="实盘已停止" if stopped else "已发送停止信号，等待当前轮询结束（挂单仍在交易所）",
-        detail={"stopped": stopped, "open_orders": len(engine.broker.open_orders) if engine.broker else 0},
+        message=f"已停止 {stopped} 个实盘会话（挂单已逐单撤销）",
+        detail={
+            "stopped": stopped,
+            "credential_id": credential_id,
+            "open_orders": len(engine.broker.open_orders) if engine and engine.broker else 0,
+        },
     )
+
+
+@router.get("/sessions", response_model=list[LiveStateOut], summary="运行中的实盘会话")
+def live_sessions(
+    ctx: AppContext = Depends(get_ctx),
+    user: User = Depends(get_current_user),
+):
+    return [LiveStateOut(**state) for state in ctx.live.sessions(user.id)]
 
 
 @router.post("/switch", response_model=Message, summary="切换实盘策略（下一轮生效）")
@@ -235,9 +250,13 @@ def switch_live(
     )
 
 
-@router.get("/state", response_model=LiveStateOut | None, summary="实盘实时状态（仅自己的会话）")
-def live_state(ctx: AppContext = Depends(get_ctx), user: User = Depends(get_current_user)):
-    state = ctx.live.state(user.id)
+@router.get("/state", response_model=LiveStateOut | None, summary="实盘实时状态（可指定凭证）")
+def live_state(
+    credential_id: int | None = Query(default=None, description="不传则返回最近一个运行中的会话"),
+    ctx: AppContext = Depends(get_ctx),
+    user: User = Depends(get_current_user),
+):
+    state = ctx.live.state(user.id, credential_id)
     if state is None:
         return None
     return LiveStateOut(**state)
