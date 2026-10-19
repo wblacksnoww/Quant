@@ -1,6 +1,7 @@
 /** 设置页：账户安全、两步验证、会话、系统信息、凭据与审计。 */
 
 import { useCallback, useEffect, useState } from 'react'
+import QRCode from 'qrcode'
 import type { FormEvent } from 'react'
 import { adminApi, ApiError, authApi, credentialApi, systemApi } from '../api/client'
 import type {
@@ -40,6 +41,7 @@ export function SettingsPage() {
   const [totpModal, setTotpModal] = useState(false)
   const [totpCode, setTotpCode] = useState('')
   const [totpBusy, setTotpBusy] = useState(false)
+  const [qrDataUrl, setQrDataUrl] = useState('')
   const [disableModal, setDisableModal] = useState(false)
   const [disablePassword, setDisablePassword] = useState('')
   const [disableCode, setDisableCode] = useState('')
@@ -140,6 +142,28 @@ export function SettingsPage() {
       setPasswordBusy(false)
     }
   }
+
+  useEffect(() => {
+    if (!setup?.provisioning_uri) {
+      setQrDataUrl('')
+      return
+    }
+    let cancelled = false
+    QRCode.toDataURL(setup.provisioning_uri, {
+      margin: 1,
+      width: 200,
+      errorCorrectionLevel: 'M',
+    })
+      .then((url) => {
+        if (!cancelled) setQrDataUrl(url)
+      })
+      .catch(() => {
+        if (!cancelled) setQrDataUrl('')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [setup])
 
   const beginTotpSetup = async () => {
     setTotpBusy(true)
@@ -837,6 +861,18 @@ export function SettingsPage() {
             <Banner kind="warn">
               请现在保存密钥与恢复码。关闭弹窗后恢复码不再展示；丢失验证器时只能使用恢复码。
             </Banner>
+            {qrDataUrl && (
+              <div className="col" style={{ alignItems: 'center', gap: 6 }}>
+                <img
+                  src={qrDataUrl}
+                  alt="两步验证二维码"
+                  width={200}
+                  height={200}
+                  style={{ borderRadius: 8, background: '#fff', padding: 6 }}
+                />
+                <div className="tiny faint">用验证器扫码；扫不了就手动输入下方密钥</div>
+              </div>
+            )}
             <div>
               <div className="label">密钥（手动输入到验证器）</div>
               <div className="code-block" style={{ marginTop: 4 }}>{setup.secret}</div>
