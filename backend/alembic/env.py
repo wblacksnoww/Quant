@@ -17,7 +17,9 @@ from quant.storage.models import Base
 
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers 默认 True 会把应用（quant.*）与 uvicorn 的 logger
+    # 全部禁用，导致迁移失败时 traceback 消失；这里必须保留。
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 config.set_main_option("sqlalchemy.url", normalize_url(get_settings().database_url))
 target_metadata = Base.metadata
