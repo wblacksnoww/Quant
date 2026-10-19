@@ -252,6 +252,19 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d backend
 | 网络 | 80/443 对公网开放；**国内服务器访问 OKX 需要自备境外代理**，否则设 `QUANT_ENABLE_CRYPTO=false` |
 | 域名 | 一条 A 记录指向服务器（Caddy 自动申请证书） |
 
+### 11.1.1 一键部署（推荐）
+
+```bash
+git clone --depth 1 https://github.com/wblacksnoww/Quant.git quant-trading
+cd quant-trading
+sudo ./scripts/quick-deploy.sh quant.example.com          # 拉 CI 镜像（默认 latest）
+sudo ./scripts/quick-deploy.sh quant.example.com --build  # 或服务器本地构建
+```
+
+脚本会：生成 `.env`（随机主密钥/管理员口令）→ 写入三层 compose 与镜像变量 →
+拉取（或构建）→ 启动 → 自检，并打印登录账号。**镜像方式不需要在服务器上构建代码。**
+前置：域名 A 记录已指向本机、80/443 已放行、Docker Compose v2.24+。
+
 ### 11.2 首次部署
 
 ```bash
