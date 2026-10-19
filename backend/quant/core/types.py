@@ -203,13 +203,13 @@ class Order:
 
     symbol: str
     side: Side
-    quantity: int
+    quantity: float
     order_type: OrderType = OrderType.MARKET
     limit_price: float | None = None
     tif: TimeInForce = TimeInForce.DAY
     id: str = field(default_factory=lambda: new_id("ord_"))
     status: OrderStatus = OrderStatus.PENDING
-    filled_quantity: int = 0
+    filled_quantity: float = 0.0
     avg_fill_price: float = 0.0
     fees: FeeBreakdown = field(default_factory=FeeBreakdown)
     created_at: datetime = field(default_factory=utcnow)
@@ -222,8 +222,8 @@ class Order:
 
     # -- 派生属性 ---------------------------------------------------------- #
     @property
-    def remaining(self) -> int:
-        return max(0, self.quantity - self.filled_quantity)
+    def remaining(self) -> float:
+        return max(0.0, self.quantity - self.filled_quantity)
 
     @property
     def is_open(self) -> bool:
@@ -250,7 +250,7 @@ class Order:
         self.submitted_at = at or utcnow()
         self.updated_at = self.submitted_at
 
-    def apply_fill(self, quantity: int, price: float, fees: FeeBreakdown) -> None:
+    def apply_fill(self, quantity: float, price: float, fees: FeeBreakdown) -> None:
         """按成交回报更新均价、数量与费用（成交均价按数量加权）。"""
         total_qty = self.filled_quantity + quantity
         if total_qty <= 0:
@@ -319,7 +319,7 @@ class Fill:
     order_id: str
     symbol: str
     side: Side
-    quantity: int
+    quantity: float
     price: float
     dt: datetime
     fees: FeeBreakdown = field(default_factory=FeeBreakdown)
@@ -363,11 +363,11 @@ class Fill:
 
 @dataclass(slots=True)
 class Position:
-    """持仓。``available`` 体现 A 股 T+1：当日买入的股票当日不可卖。"""
+    """持仓。``available`` 体现 T+1：T+1 市场当日买入当日不可卖（T+0 市场例外）。"""
 
     symbol: str
-    quantity: int = 0
-    available: int = 0
+    quantity: float = 0.0
+    available: float = 0.0
     avg_cost: float = 0.0  # 含费用摊薄后的成本价
     last_price: float = 0.0
     realized_pnl: float = 0.0

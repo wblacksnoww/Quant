@@ -21,10 +21,10 @@ from abc import ABC, abstractmethod
 
 from ..core.events import EventBus
 from ..core.portfolio import Account
-from ..core.types import Bar, Fill, Order, OrderStatus, OrderType, Side
+from ..core.types import Bar, Fill, Order, OrderStatus, OrderType, Side, TimeInForce
 from .cost import CostModel
 from .matching import BlockReason, MatchingEngine
-from .rules import is_valid_lot, rules_for
+from .rules import is_valid_lot, round_down_lot, rules_for
 
 log = logging.getLogger(__name__)
 
@@ -247,11 +247,11 @@ class SimBroker(Broker):
         return fill
 
     # ------------------------------------------------------------------ #
-    # 日终：未成交的 DAY 单过期
+    # 日终：未成交的 DAY 单过期（GTC 保留到下一次日终）
     # ------------------------------------------------------------------ #
     def end_of_day(self) -> None:
         for order in list(self._live):
-            if order.is_open:
+            if order.is_open and order.tif is TimeInForce.DAY:
                 order.expire("当日未成交")
                 self._release_reservation(order)
                 self._drop(order)
@@ -266,10 +266,14 @@ class SimBroker(Broker):
         if order.order_type is OrderType.LIMIT and (not order.limit_price or order.limit_price <= 0):
             return "限价单必须提供有效限价"
         rules = rules_for(order.symbol)
-        if rules.lot_size > 1 and order.side is Side.BUY and order.quantity % rules.lot_size != 0:
+        if (
+            rules.lot_size > 1
+            and order.side is Side.BUY
+            and abs(order.quantity - round_down_lot(order.quantity, order.symbol)) > 1e-9
+        ):
             return f"买入数量须为 {rules.lot_size} 股的整数倍"
         pos = self.account.get_position(order.symbol)
-        full_exit = order.side is Side.SELL and order.quantity == pos.quantity
+        full_exit = order.side is Side.SELL and abs(order.quantity - pos.quantity) <= 1e-9
         if not is_valid_lot(order.quantity, order.symbol, is_full_exit=full_exit):
             return "委托数量不合法"
 
@@ -281,7 +285,7 @@ class SimBroker(Broker):
                 )
         else:
             sellable = self._sellable(order.symbol, exclude_id=order.id)
-            if order.quantity > sellable:
+            if order.quantity > sellable + 1e-9:
                 return f"可卖数量不足：可卖 {sellable}，委托 {order.quantity}"
         return None
 
@@ -294,7 +298,7 @@ class SimBroker(Broker):
         buffer = 1.0 if order.order_type is OrderType.LIMIT else 1.02
         return self.cost_model.estimate_buy_cost(price * buffer, order.quantity)
 
-    def _sellable(self, symbol: str, exclude_id: str | None = None) -> int:
+    def _sellable(self, symbol: str, exclude_id: str | None = None) -> float:
         """可卖数量 = T+1 可用 - 在途卖单（排除正在校验的这一单）。"""
         pos = self.account.get_position(symbol)
         pending = sum(
@@ -302,7 +306,7 @@ class SimBroker(Broker):
             for o in self.open_orders
             if o.symbol == symbol and o.side is Side.SELL and o.id != exclude_id
         )
-        return max(0, pos.available - pending)
+        return max(0.0, pos.available - pending)
 
     def _release_reservation(self, order: Order) -> None:
         frozen = float(order.meta.pop("frozen_cash", 0.0) or 0.0)

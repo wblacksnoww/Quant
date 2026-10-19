@@ -100,6 +100,7 @@
 | `BacktestEngine` | 模拟时钟，逐交易日 | 次日开盘撮合 | 历史验证、参数研究 |
 | `PaperEngine.replay` | 回放最近 N 个交易日，按 `replay_interval` 加速 | 同回测 | 快速演练策略行为 |
 | `PaperEngine.live` | 真实时钟，轮询快照 | 市价单立即成交 | 盘中模拟 |
+| `LiveEngine` | 真实时钟，轮询快照 | **交易所真实撮合**（本地不撮合） | 实盘下单 |
 
 - 回测在 `BacktestManager` 的线程池中异步执行，`QUANT_MAX_CONCURRENT_BACKTESTS` 控制上限，
   提交返回 `202` + `run_id`，前端轮询 `GET /api/backtests/{id}` 并订阅 WS 进度。
@@ -107,6 +108,37 @@
   不同账号互不影响（各自线程、各自落库）。
 - 结果统一落 `runs` 表：指标、权益曲线、成交、委托、持仓、日志（JSON 压缩存储），
   大 payload 由 `CompressedJSON` 类型 zlib 压缩。
+
+#### 运行中切换策略（纸盘 / 实盘）
+
+`POST /api/paper/switch`、`POST /api/live/switch`：
+
+- 只做一次 `pending` 写入，**下一轮 `TradingSession.step()` 开始时**替换策略实例，
+  避免与 `on_bars` 并发修改；
+- 默认撤销旧策略的未成交挂单（`cancel_open_orders=true`），持仓与资金保持不变；
+- 旧策略 `on_stop()` → 新策略 `on_start()`；**策略内部状态不继承**；
+- `ctx.strategy_name` 同步更新，之后下的单都标记为新策略；
+- 切换写入 `run.log` 与审计（`paper.switch_strategy` / `live.switch_strategy`），
+  `GET /api/*/state` 的 `strategy_id` 反映当前策略（`runs` 表保留启动时的策略用于追溯）。
+
+### 5.1 实盘通道（`quant.execution.adapters`）
+
+实盘 = `LiveEngine` + `LiveBroker` + `BrokerAdapter`，三者职责严格分离：
+
+| 组件 | 职责 |
+| --- | --- |
+| `LiveEngine` | 真实时钟循环：同步回报 → 取价 → `TradingSession.step`（策略决策） |
+| `LiveBroker` | 实现 `Broker` 接口；把交易所**累计口径**回报换算成增量成交并记账；启动对账、停止撤单 |
+| `BrokerAdapter` | 只做翻译：下/撤单、余额、持仓、订单查询、报价（`ccxt` / `miniqmt`） |
+
+- **不本地撮合**：`LiveBroker.on_bar()` 不产生成交，只把 `sync()` 收到的成交交给会话/策略。
+- **幂等**：适配器返回累计成交量/均价/费用，`LiveBroker` 用差值记账，重复 `sync()` 不重复成交。
+- **对账**：`reconcile()` 比对本地镜像与交易所资金/持仓，只报告不自动改账。
+- **日终语义**：`TradingSession(auto_end_of_day=False)`，实盘由 `LiveEngine` 在真正跨日时
+  撤 DAY 单（避免每轮轮询撤掉当日挂单）；GTC 单保留。
+- **策略回调**：`TradingSession` 在撮合/回报后调用 `strategy.on_fill()`，订单状态变化调用
+  `strategy.on_order()`（同一状态只通知一次）。
+- 三重闸门与操作细节见 [LIVE_TRADING.md](LIVE_TRADING.md)。
 
 ## 6. 策略插件模型
 
@@ -203,11 +235,13 @@ class MyStrategy(Strategy):
 
 ## 8. 数据层
 
-- **符号体系（多市场的地基）**：全系统统一 `MARKET:CODE` 规范 id —— `CN:600519` / `US:AAPL` / `HK:00700`，
-  解析与规范化集中在 `quant/core/markets.py`。解析只发生在边界（HTTP 入参、前端输入、缓存文件名、
-  localStorage），业务代码内部一律持有规范 id。`parse_instrument()` 接受常见写法并启发式归一：
-  6 位数字→A股、1~5 位→港股、字母→美股（`600519`、`SH600519`、`600519.SH`、`AAPL`、`TSLA.N`、
-  `0700.HK` 都能归一；美股交易所后缀 `.OQ/.N/.AM` 会被剥掉）。无法判定时显式报 422，不猜。
+- **符号体系（多市场的地基）**：全系统统一 `MARKET:CODE` 规范 id —— `CN:600519` / `US:AAPL` / `HK:00700` /
+  `CRYPTO:BTC/USDT` / `FUND:007005`，解析与规范化集中在 `quant/core/markets.py`。解析只发生在边界
+  （HTTP 入参、前端输入、缓存文件名、localStorage），业务代码内部一律持有规范 id。
+  `parse_instrument()` 接受常见写法并启发式归一：6 位数字→A股、1~5 位→港股、字母→美股
+  （`600519`、`SH600519`、`600519.SH`、`AAPL`、`TSLA.N`、`0700.HK` 都能归一；美股交易所后缀
+  `.OQ/.N/.AM` 会被剥掉）。**虚拟货币与场外基金必须显式前缀**（`CRYPTO:`/`FUND:`），
+  否则裸 6 位数字会被 A 股启发式截胡。无法判定时显式报 422，不猜。
 - **单一市场约束**：一次回测/纸盘会话只允许一个市场（`EngineConfig.validate()` 校验）——
   不同货币无法统一记账，混市场提交直接 422 并说明混用了哪些市场。
 - `MarketDataService`（`quant/data/store.py`）负责：缓存查询 → 逐级降级取数 → 规范化 → 落 parquet。
@@ -216,7 +250,12 @@ class MyStrategy(Strategy):
 - 数据源通过 `@register_provider("name")` 注册，实现 `daily()` 即可接入；
   可选实现 `realtime()` / `snapshot()`、`search()`、`calendar()`。
 - 内置：`akshare`（默认）、`csv`（`data/cache/*.csv` 离线种子）、`synthetic`（确定性随机，
-  仅用于链路验证）、`synthetic_volatile`。
+  仅用于链路验证）、`synthetic_volatile`、`crypto`（ccxt 交易所 K 线）、`fund`（akshare 场外基金净值）。
+- **虚拟货币（`crypto`）**：ccxt 封装，交易所由 `QUANT_CRYPTO_EXCHANGE` 配置（默认 okx），
+  直连不畅时用 `QUANT_CRYPTO_PROXY`；`fetch_ohlcv` 分页拉日线，7×24 全周日历；
+  搜索用内置主流 USDT 交易对白名单（ccxt 无免费检索）；缓存文件名把 `/` 转义为 `~`。
+- **场外基金（`fund`）**：`fund_name_em` + `fund_open_fund_info_em`，净值映射成 OHLCV
+  （OHLC=净值、volume=0）以复用图表；**不进入撮合引擎**，申赎走 `quant.funds` 的流水聚合。
 - **日线主源分市场**（`akshare_provider.daily()`）：A股 `stock_zh_a_hist`、美股 `stock_us_daily`、
   港股 `stock_hk_daily`（sina 源，量纲为股）；失败统一回退腾讯 K 线
   （`web.ifzq.gtimg.cn` 的 `fqkline` / `usfqkline` / `hkfqkline` 三端点，单次 640 根向前分页；
@@ -232,12 +271,60 @@ class MyStrategy(Strategy):
   单源被限流（TLS 正常但连接被重置是常见表现）不影响整体可用性。
 - `MarketDataService.snapshot()` 带 **3 秒 TTL 缓存**（抵挡页面轮询），数据源全部失败时
   回退"最近一次成功快照"并标记 `stale=True`，附带 `note` 说明；引擎 live 模式复用同一份快照。
+- **指数（`GET /api/market/indices`）**：内置 12 个常用指数（上证/深证/创业板/沪深300/中证500/
+  科创50、恒生/国企/恒生科技、道琼斯/纳斯达克/标普500），腾讯 `qt.gtimg.cn` 一次请求
+  批量取点数与涨跌，服务端 5 秒缓存、失败保留上次结果。指数**不可交易**，用独立 id
+  （`sh000001` / `hkHSI` / `usDJI`）而不进入 `MARKET:CODE` 体系，避免与股票代码冲突
+  （上证指数 000001 与平安银行 000001）。前端卡片可编辑显示项与顺序，配置存 localStorage。
+- **分钟 K 线（`GET /api/market/intraday`）**：详情页的"今日/本周"视图。
+  A股走新浪 `CN_MarketDataService.getKLineData`（scale=1/5/15/30/60，容器内可用；
+  腾讯分钟接口对容器 IP 返回 301/空），虚拟货币走 ccxt `fetch_ohlcv(timeframe=…)`；
+  港股/美股暂无稳定免费分钟源，接口返回 422 并在前端置灰按钮。
+  详情页今日=5 分钟、本周=30 分钟，每 15 秒自动刷新；日线范围（本月/1/3/5 年）走 `/market/bars`。
+- **任意周期 K 线（`GET /api/market/klines`）**：`1m/5m/15m/30m/60m/1d/1w/1M`。
+  周线/月线由日线重采样（`W-FRI` / `ME`，日期取周期内最后一个交易日，避免出现未来的月末）；
+  前端范围映射：今日 5m、本周 30m、本月 1d、1 年 1d、3 年 1w、5 年 1M。
+  持续缩小到当前周期的可视根数上限（或接近全部数据）时，自动升到更长周期，
+  形成「5 分钟 → 30 分钟 → 日线 → 周线 → 月线」的递进；刷新数据时保留用户当前缩放窗口。
+- **排行榜（`GET /api/market/ranking`）**：支持 `period=day|week|month`。
+  - 今日榜：A股/港股取新浪行情中心的全市场榜单（`hs_a` / `qbgg_hk`），
+    美股用 30 只高关注度标的池 + 多源快照，虚拟货币用 ccxt 主流交易对批量 tickers；
+  - 本周/本月榜：免费源没有全市场周/月涨幅字段，因此取「成交额前 30 + 涨幅前 15 +
+    跌幅前 15」的并集（虚拟货币为成交额前 8），并发拉日线计算自然周/月涨幅
+    （A股用腾讯 K 线，容器内被风控时回退新浪；虚拟货币用 ccxt 日线）；
+  - 东财对 Python 客户端的 TLS 指纹会直接断开连接，因此没有采用东财 spot 全表；
+  - 服务端缓存：今日榜 5 秒、周/月榜 120 秒；前端今日榜 5 秒刷新、周/月 30 秒；
+  - 找不到数据源的市场返回空列表 + `note`，不伪造数据；周/月榜的 `note` 会说明样本口径。
 - `QUANT_FALLBACK_PROVIDERS` 定义降级链；每次降级都会打日志并在响应里带 `source`，
   避免"以为用的是真实行情，其实是合成数据"。
 - 标准化 schema：`date open high low close volume amount prev_close limit_up limit_down`，
   涨跌停缺失时由 `quant.execution.rules` 按 A 股板块规则推算（港美为 `None`）。
-- **交易日历**：A股用 akshare 真实日历；美股/港股退化为"工作日近似"；
-  `is_market_open(market, moment)` 按各市场时区判断开盘时段（CN/HK UTC+8、美股 UTC-4 近似夏令时）。
+- **交易日历**：A股用 akshare 真实日历；美股/港股退化为"工作日近似"；虚拟货币为全周日历；
+  `is_market_open(market, moment)` 按各市场时区判断开盘时段（CN/HK UTC+8、美股 UTC-4 近似夏令时、
+  CRYPTO 恒为开市）。
+
+### 8.1 交易规则差异（`core.markets.BoardRules`）
+
+| 市场 | 涨跌停 | 整手 | 交收 | 报价精度 |
+| --- | --- | --- | --- | --- |
+| A 股主板 | ±10%（ST ±5%） | 100 股 | T+1 | 2 位 |
+| 创业板/科创板 | ±20% | 100 / 200 股 | T+1 | 2 位 |
+| 美股 | 无 | 1 股 | T+0 | 2 位 |
+| 港股 | 无 | 100 股（近似） | T+0 | 3 位 |
+| 虚拟货币 | 无 | 任意（小数） | T+0 | 8 位 |
+| 场外基金 | 无 | 任意（份额小数） | —（净值确认制） | 4 位 |
+
+`t_plus_1` 由 `Account.apply_fill` 真实消费（T+0 市场当日买入立即可卖）；
+订单数量全链路为 `float`，A 股整手约束在 `is_valid_lot` / 撮合层保留。
+
+### 8.2 场外基金模块（`quant.funds` + `routers/funds.py`）
+
+- **不进引擎**：场外基金无盘中撮合、按 T 日净值确认份额，塞进逐 bar 撮合只会制造假精度。
+- **流水即账本**：`fund_trades` 表只存申赎流水；持仓/收益由 `compute_positions()` 纯函数聚合，
+  避免"持仓表"与"流水表"双写不一致。
+- 申购：`份额 = (金额 - 申购费) / 净值`；赎回：`到账 = 份额 × 净值 - 赎回费`，
+  已实现盈亏按加权平均成本结转。
+- 删除流水即重算（补录错误修正），写操作留审计。
 
 ## 9. 存储
 
@@ -287,10 +374,22 @@ src/
 ├── api/types.ts       # 与后端 schema 对齐的 TS 类型
 ├── store/             # zustand：auth（会话）/ events（WS 事件）/ toast
 ├── hooks/useWebSocket.ts
-├── components/        # Layout、ui 基础件、ECharts 封装、Toasts、icons
-├── pages/             # Login Dashboard Market Strategies Backtest Paper Risk Settings
+├── components/        # Layout、ui 基础件、ECharts 封装、Toasts、icons、Ranking（推荐/榜单）
+├── pages/             # Login Dashboard Market Instrument Strategies Backtest Paper Live Funds Risk Settings
 └── styles/global.css  # 深色主题、响应式
 ```
+
+- **可拖拽卡片布局（`CardBoard`）**：行情页与仪表盘把区块注册成卡片项
+  （`{id, title, wide, render}`）；编辑模式下拖动 ⠿ 排序、切换宽/窄、隐藏/显示，
+  配置（顺序/宽窄/可见性）存 localStorage（`quant.layout.market` / `quant.layout.dashboard`），
+  新增卡片自动追加。桌面端用 HTML5 拖放，窄屏自动单列。
+- **实时快照的前端容错**：自选表合并新旧快照（缺失标的保留上次价格并标 `stale`），
+  并把最近一次快照写入 localStorage，刷新页面时先渲染缓存再拉新数据，避免整表短暂变成 "—"。
+- **标的详情页（`/market/:code`）**：行情页点击自选/榜单/推荐里的代码或名称进入。
+  展示 K 线（1/3/5 年）、现价与涨跌、交易规则（板块/涨跌停/整手/交收/报价精度，来自
+  `GET /api/market/instrument`），并可直接选策略、调参数、指定风控预设后
+  **一键启动模拟盘**（回放/实时模拟）；实盘页签支持通道/凭据/测试网选择，
+  关闭测试网需二次确认。虚拟货币的 `/` 在路径中用 `~` 转义（`CRYPTO:BTC~USDT`）。
 
 - **会话策略**：access token 只在内存；refresh token 在 `localStorage`，
   启动时一次性换取新 access。任何 `401` 触发一次静默刷新并重放原请求；失败则回登录页。
@@ -339,6 +438,13 @@ src/
 - `test_custom_strategy.py`：拼装 spec 白名单校验（参数化 17 种非法输入）、
   交叉/比较信号语义、与内置 `dual_ma` 金叉信号的等价性（同一数据交易日一致）、
   引擎端到端确定性、CRUD 用户隔离（404/409）、提交路径的 spec 注入与停用拦截。
+- `test_crypto_data.py`：ccxt 假交易所（K 线归一/分页/快照/白名单检索/全周日历）+ 缓存文件名转义。
+- `test_t0.py` / `test_tif.py`：T+0 市场当日买入可卖、A 股 T+1 拦截；DAY 单日终过期、GTC 跨日存活。
+- `test_funds.py`：申赎聚合（加权成本/赎回盈亏/负持仓保护）、akshare 假源、路由 CRUD 与用户隔离。
+- `test_live_broker.py`：累计口径幂等、部分成交增量价、撤单/拒单终态、对账差异、资金校验。
+- `test_adapters.py`：ccxt（假模块：sandbox/下单/成交/撤单/余额）与 miniQMT（假 xtquant：代码映射/状态码）。
+- `test_live_router.py`：三重闸门、凭据归属、单会话、启停审计、按用户隔离状态。
+- `test_callbacks.py`：`on_order` / `on_fill` 确实被会话调用。
 - `conftest.py`：临时 SQLite + 临时数据目录 + `TestClient`，测试间完全隔离。
 
 运行：`cd backend && ../.venv/bin/python -m pytest -q`。
@@ -349,5 +455,14 @@ src/
 - 美股 / 港股交易日历是"工作日近似"：法定假日（感恩节、复活节等）会被多算成交易日，
   开盘时段用固定时区偏移近似（未精确处理美股夏令时切换边界）。
 - `live` 纸盘依赖数据源的快照频率；数据源不可用时回退最新收盘价并在事件流中告警。
-- 单进程内存态：WS 事件与纸盘会话都不跨副本；后端多实例部署需要粘性会话或事件总线外置。
+- 单个运行只允许单一市场（不同币种无法统一记账）；跨市场组合需要分别运行。
+- **虚拟货币**：只支持现货；ccxt 交易所差异（最小下单量、费率档位）以交易所返回为准；
+  国内网络通常需要代理（`QUANT_CRYPTO_PROXY`）。
+- **场外基金**：不做事件驱动回测（净值确认制，不是连续竞价）；申赎费率按记录时填写的费率，
+  不自动查基金公告；净值源依赖 akshare 的公开接口。
+- **miniQMT 实盘**：只能在 Windows + QMT 终端环境运行，本仓库的自动化测试用假 xtquant 覆盖接口；
+  QMT 不返回逐笔费用，盈亏以券商日终账单为准。
+- **ccxt 实盘**：测试网与真实环境的最小下单量/精度可能不同；建议先用极小金额验证。
+- 单进程内存态：WS 事件、纸盘与实盘会话都不跨副本；后端多实例部署需要粘性会话或事件总线外置。
+  实盘在多副本下同一账号可能各开一个会话——生产请用单实例或外部锁。
 - 审计哈希链防"悄悄改账"，但拥有数据库写权限者可整链重算——它是证据链，不是权限隔离。

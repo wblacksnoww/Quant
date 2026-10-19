@@ -168,8 +168,14 @@ docker compose start backend
 
 - 镜像 tag 固定为 `quant-trading-backend:1.0.0` / `quant-trading-frontend:1.0.0`。
   升级时改 tag（`deploy` 目录或 compose 文件），再 `docker compose up -d --build`。
-- 回滚：切回旧 tag 重新 `up -d`。数据层兼容策略：新增列/表用幂等 DDL，
-  不做破坏性变更；跨大版本前先 `./scripts/backup.sh`。
+- 回滚：切回旧 tag 重新 `up -d`。数据库变更走 alembic（生产启动自动 upgrade）；
+  回滚镜像时若新版本已执行破坏性迁移，需要先恢复备份（`./scripts/backup.sh` 的产物）。
+- 修改模型后生成迁移（本地）：
+  ```bash
+  cd backend
+  QUANT_DATABASE_URL=sqlite:////tmp/mig.db ../.venv/bin/python -m alembic revision --autogenerate -m "add xxx"
+  ```
+  提交生成的迁移文件；部署时启动会自动 `upgrade head`，也可手动 `./scripts/migrate.sh`。
 - 前端更新只需重建 `frontend`；后端重建不影响 Caddy/Nginx（Nginx 用 Docker DNS
   动态解析后端地址，见 `deploy/nginx.conf`）。
 
@@ -234,3 +240,84 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d backend
 | 8080 被占用 | 改 `.env` 的 `QUANT_HTTP_PORT` |
 | PostgreSQL 容器起不来 | `POSTGRES_PASSWORD` 未设置或含 `$`；检查 `docker-compose.postgres.yml` 的 `:?` 报错 |
 | 页面 401 循环 | 清除浏览器 localStorage 中的 `quant.refresh_token` 重新登录 |
+
+## 11. 云端部署与持续更新
+
+### 11.1 服务器要求
+
+| 项 | 建议 |
+| --- | --- |
+| 配置 | 2 vCPU / 4 GB 内存 / 40 GB SSD（回测吃内存；并发回测按机器调 `QUANT_MAX_CONCURRENT_BACKTESTS`） |
+| 系统 | Ubuntu 22.04/24.04，Docker 24+、Compose v2.24+ |
+| 网络 | 80/443 对公网开放；**国内服务器访问 OKX 需要自备境外代理**，否则设 `QUANT_ENABLE_CRYPTO=false` |
+| 域名 | 一条 A 记录指向服务器（Caddy 自动申请证书） |
+
+### 11.2 首次部署
+
+```bash
+# 服务器
+git clone <repo> quant-trading && cd quant-trading
+./scripts/init-secrets.sh quant.example.com
+
+# 建议在 .env 中补齐：
+#   POSTGRES_PASSWORD=<强口令，不含 $>
+#   QUANT_ENABLE_CRYPTO=false        # 无境外代理时
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml:docker-compose.postgres.yml
+
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.postgres.yml up -d --build
+./scripts/verify.sh
+```
+
+写了 `COMPOSE_FILE` 之后，日常 `docker compose up -d / logs / ps` 会自动叠加三层配置。
+
+### 11.3 持续更新
+
+**方式 A（推荐）：CI 构建镜像 → 服务器拉取**
+
+1. 把仓库推到 GitHub。`.github/workflows/ci.yml` 会在 push `main` 时：跑 pytest →
+   构建后端/前端镜像 → 推送 GHCR（`ghcr.io/<owner>/quant-trading-backend:<sha>`）。
+2. 服务器 `.env` 指定镜像（`<sha>` 换成 CI 输出）：
+   ```dotenv
+   QUANT_BACKEND_IMAGE=ghcr.io/<owner>/quant-trading-backend:<sha>
+   QUANT_FRONTEND_IMAGE=ghcr.io/<owner>/quant-trading-frontend:<sha>
+   ```
+3. 更新：
+   ```bash
+   docker compose pull && docker compose up -d && ./scripts/verify.sh
+   ```
+4. 回滚：image 变量改回上一个 sha，再 `pull && up -d`。
+5. 国内服务器拉 GHCR 慢：用阿里云 ACR / 腾讯云 TCR 同步，或配 Docker 镜像加速。
+
+**方式 B（最简单）：服务器上 git pull + 重建**
+
+```bash
+./scripts/update.sh main
+```
+
+脚本流程：检查工作区 → 备份数据 → `git pull --ff-only` → `docker compose build` →
+`up -d` → `verify.sh`；自检失败会打印回滚命令。适合单人维护、更新不频繁的场景；
+缺点是服务器要跑构建（国内源约 1–3 分钟），没有 CI 测试把关。
+
+### 11.4 更新注意事项
+
+- **只支持单实例**：纸盘/实盘会话与 WebSocket 都在进程内存里，不能多副本扩容；
+  更新会有几秒中断（容器重启），建议避开交易时段。
+- **依赖已锁定**：后端 `deploy/requirements.lock.txt`（从已验证镜像导出，75 个包）、
+  前端 `frontend/package-lock.json`（镜像用 `npm ci` 构建）。
+  升级依赖：`./scripts/lock-deps.sh --resolve` → 重建镜像 → 跑测试 →
+  `./scripts/lock-deps.sh` 固化已验证版本。
+- **数据库迁移**：生产启动时自动执行 alembic——空库建表；已有业务表的旧库自动
+  `stamp head`；之后只应用增量迁移。更新前仍建议 `./scripts/backup.sh`。
+- **不要用代码仓库里的 `.env` 覆盖服务器配置**（`.env` 已被 .gitignore，`git pull` 不会动它）。
+- **备份**：`./scripts/backup.sh` + PostgreSQL `pg_dump`；主密钥单独离线保存
+  （丢失后加密凭据与 TOTP 种子不可恢复）。
+
+### 11.5 云上安全检查清单
+
+- [ ] 只暴露 80/443；数据库/后端端口不对公网开放（prod 覆盖层已做到）
+- [ ] `QUANT_ENV=production`、`QUANT_SECURE_COOKIES=true`（prod 覆盖层已设）
+- [ ] `QUANT_MASTER_KEY` 来自环境变量/密钥文件，不写进镜像
+- [ ] 修改默认管理员口令，开启 TOTP
+- [ ] 防火墙限制 SSH 来源 IP；开启系统安全更新
+- [ ] 定期调用 `GET /api/system/audit/verify` 校验审计链
+- [ ] 实盘先用测试网密钥联调；真实资金使用无提现权限的 API Key

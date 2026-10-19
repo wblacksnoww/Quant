@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Iterable, Mapping
 
 from .errors import InsufficientCash, InsufficientPosition
+from .markets import rules_for
 from .types import AccountSnapshot, FeeBreakdown, Fill, Position, Side, utcnow
 
 
@@ -103,7 +104,7 @@ class Account:
     # 成交结算
     # ------------------------------------------------------------------ #
     def realized_pnl_for(
-        self, symbol: str, side: Side, price: float, quantity: int, fees_total: float
+        self, symbol: str, side: Side, price: float, quantity: float, fees_total: float
     ) -> float:
         """预估一笔成交的已实现盈亏（买入恒为 0）。
 
@@ -126,7 +127,9 @@ class Account:
             new_cost_value = pos.cost_value + fill.gross + fill.fees.total
             pos.avg_cost = new_cost_value / new_qty
             pos.quantity = new_qty
-            # T+1：当日买入不计入可卖
+            # T+1 市场当日买入不计入可卖；T+0 市场（美/港/虚拟货币）立即可卖
+            if not rules_for(fill.symbol).t_plus_1:
+                pos.available += fill.quantity
             pos.opened_at = pos.opened_at or now
             self.cash -= fill.gross + fill.fees.total
             realized = 0.0

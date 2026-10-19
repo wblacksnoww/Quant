@@ -361,7 +361,7 @@ def test_tencent_daily_tolerates_extra_column(monkeypatch):
             return self._data
 
     monkeypatch.setattr(ap.requests, "get", lambda *a, **k: _FakeResponse(payload))
-    frame = ap._tencent_daily("600519", date(2016, 1, 1), date(2026, 10, 18))
+    frame = ap.tencent_daily("600519", date(2016, 1, 1), date(2026, 10, 18))
     assert len(frame) == 2
     assert float(frame.iloc[-1]["close"]) == pytest.approx(1329.0)
     assert float(frame.iloc[-1]["volume"]) == pytest.approx(38502)  # 手
@@ -401,7 +401,7 @@ def test_tencent_daily_us_uses_suffix_code(monkeypatch):
 
     monkeypatch.setitem(rt._US_SUFFIX_CACHE, "AAPL", "AAPL.OQ")
     monkeypatch.setattr(ap.requests, "get", fake_get)
-    frame = ap._tencent_daily("US:AAPL", date(2016, 1, 1), date(2026, 10, 18))
+    frame = ap.tencent_daily("US:AAPL", date(2016, 1, 1), date(2026, 10, 18))
     assert "usfqkline" in captured["url"]
     assert captured["param"].startswith("usAAPL.OQ,")
     assert float(frame.iloc[-1]["volume"]) == pytest.approx(59946368)  # 股

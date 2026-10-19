@@ -31,7 +31,17 @@ frontend/.vite/
 data/*.db-wal
 data/*.db-shm
 
+# 测试与构建产物
+.coverage
+htmlcov/
+*.log
+*.tsbuildinfo
+.eslintcache
+
 # 编辑器
 .idea/
 .vscode/
 .DS_Store
+
+# 工具生成的会话/计划文件
+.zcode/

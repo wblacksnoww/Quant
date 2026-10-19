@@ -14,6 +14,7 @@ from typing import Any
 from ..config import Settings, get_settings
 from ..data.base import DataProvider, available_providers, create_provider
 from ..data.store import DataStore, MarketDataService
+from ..engine.live import LiveManager
 from ..engine.paper import PaperManager
 from ..security.crypto import MasterKey, SecretBox, master_key
 from ..security.password import hash_password
@@ -37,6 +38,7 @@ class AppContext:
     secret_box: SecretBox
     master: MasterKey
     paper: PaperManager = field(default_factory=PaperManager)
+    live: LiveManager = field(default_factory=LiveManager)
     started_at: float = field(default_factory=time.monotonic)
     warnings: list[str] = field(default_factory=list)
     backtests: Any = None  # BacktestManager，延迟注入以避免循环导入
@@ -66,6 +68,10 @@ def build_data_service(settings: Settings) -> MarketDataService:
     names: list[str] = [settings.data_provider, *settings.fallback_providers]
     if not settings.is_production and "synthetic" not in names:
         names.append("synthetic")
+    # 虚拟货币数据源：按市场路由，只有 CRYPTO 标的会真正用到（实例化不联网）。
+    # 默认加入；无境外出口的服务器可设 QUANT_ENABLE_CRYPTO=false 关闭，避免请求超时。
+    if settings.enable_crypto and "crypto" not in names:
+        names.append("crypto")
     # 去重保序
     seen: list[str] = []
     for name in names:
@@ -90,7 +96,7 @@ def build_data_service(settings: Settings) -> MarketDataService:
         legacy_dirs=[settings.data_path / "cache"],
         adjust=settings.adjust,
     )
-    return MarketDataService(store, providers[0])
+    return MarketDataService(store, providers[0], quote_ttl=settings.quote_ttl)
 
 
 def build_context(settings: Settings | None = None) -> AppContext:
@@ -108,9 +114,18 @@ def build_context(settings: Settings | None = None) -> AppContext:
     box = SecretBox.from_master(master, name="field")
     totp_service = TotpService(box, issuer=settings.app_name.replace(" ", ""))
 
-    # 数据库
+    # 数据库：生产用 alembic 迁移（旧库自动 stamp），开发/测试用 create_all
     db = Database(settings.database_url)
-    db.create_all()
+    if settings.is_production:
+        from ..storage.migrations import upgrade_database
+
+        try:
+            upgrade_database(db.engine)
+        except Exception:  # noqa: BLE001 - 迁移失败必须阻止启动，避免半初始化
+            log.exception("数据库迁移失败，服务停止启动")
+            raise
+    else:
+        db.create_all()
 
     # 首次启动创建管理员
     if settings.admin_username:

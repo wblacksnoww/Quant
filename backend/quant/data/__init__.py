@@ -25,14 +25,22 @@ from .calendar import (
 from .store import DataStore, MarketDataService
 
 # 触发内置数据源注册（副作用导入）
-from .providers import AkShareProvider, CsvProvider, SyntheticProvider  # noqa: F401,E402
+from .providers import (  # noqa: F401,E402
+    AkShareProvider,
+    CryptoProvider,
+    CsvProvider,
+    FundProvider,
+    SyntheticProvider,
+)
 
 __all__ = [
     "ALL_COLUMNS",
     "AkShareProvider",
+    "CryptoProvider",
     "CsvProvider",
     "DataProvider",
     "DataStore",
+    "FundProvider",
     "MarketDataService",
     "SymbolInfo",
     "SyntheticProvider",

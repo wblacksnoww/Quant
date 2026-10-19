@@ -2,9 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ApiError, marketApi } from '../api/client'
 import type { BarsResponse, DataCacheItem, QuoteItem, SymbolInfo } from '../api/types'
 import { KLineChart } from '../components/Charts'
+import { CardBoard } from '../components/CardBoard'
+import { IndexCards } from '../components/IndexCards'
+import { HotPicks, RankingBoard, type RankMarket } from '../components/Ranking'
 import { Badge, Banner, Button, Card, Empty, Field, Loading, Stat } from '../components/ui'
 import { IconRefresh, IconSearch, IconTrash } from '../components/icons'
 import {
@@ -15,10 +19,33 @@ import {
   marketLabel,
   marketTone,
   normalizeInstrumentId,
+  priceDigits,
   todayISO,
   yearsAgoISO,
 } from '../utils/format'
 import { notify } from '../store/toast'
+import { symbolToSegment } from '../utils/symbolPath'
+
+const QUOTES_CACHE_KEY = 'quant.quotes_cache'
+
+/** 上次成功的实时快照：刷新页面时先渲染，避免整表短暂变成 "—"。 */
+function loadQuotesCache(): Record<string, QuoteItem> {
+  try {
+    const raw = localStorage.getItem(QUOTES_CACHE_KEY)
+    if (!raw) return {}
+    const parsed: unknown = JSON.parse(raw)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const out: Record<string, QuoteItem> = {}
+      for (const [id, quote] of Object.entries(parsed as Record<string, QuoteItem>)) {
+        out[id] = { ...quote, stale: true }
+      }
+      return out
+    }
+  } catch {
+    // 缓存损坏时忽略
+  }
+  return {}
+}
 
 const WATCH_KEY = 'quant.watchlist'
 const QUOTE_INTERVAL_KEY = 'quant.quote_interval'
@@ -47,6 +74,8 @@ type QuoteRow = {
 }
 
 export function MarketPage() {
+  const navigate = useNavigate()
+  const goDetail = (symbol: string) => navigate(`/market/${symbolToSegment(symbol)}`)
   const [symbol, setSymbol] = useState('CN:600519')
   const [input, setInput] = useState('CN:600519')
   const [years, setYears] = useState(3)
@@ -58,7 +87,7 @@ export function MarketPage() {
 
   // ---- 实时自选 ----
   const [watchlist, setWatchlist] = useState<string[]>(loadWatchlist)
-  const [quotes, setQuotes] = useState<Record<string, QuoteItem>>({})
+  const [quotes, setQuotes] = useState<Record<string, QuoteItem>>(loadQuotesCache)
   const [quoteNote, setQuoteNote] = useState('')
   const [quoteAt, setQuoteAt] = useState('')
   const [quoteLoading, setQuoteLoading] = useState(false)
@@ -69,7 +98,7 @@ export function MarketPage() {
     return Number.isFinite(saved) && saved >= 0 ? saved : 5000
   })
   const [searchText, setSearchText] = useState('')
-  const [searchMarket, setSearchMarket] = useState<'ALL' | 'CN' | 'US' | 'HK'>('ALL')
+  const [searchMarket, setSearchMarket] = useState<'ALL' | RankMarket>('ALL')
   const [suggestions, setSuggestions] = useState<SymbolInfo[]>([])
   const [searching, setSearching] = useState(false)
 
@@ -97,7 +126,8 @@ export function MarketPage() {
     } catch (err) {
       const message = err instanceof ApiError ? err.message : '行情加载失败'
       setError(message)
-      setData(null)
+      // 刷新失败保留当前图表；只有切换标的失败才清空，避免看到上一个标的的图
+      if (!refresh) setData(null)
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -105,31 +135,51 @@ export function MarketPage() {
   }, [years, loadCache])
 
   // ---- 实时自选：拉取 / 自动刷新 ----
-  const loadQuotes = useCallback(async () => {
+  const loadQuotes = useCallback(async (silent = false) => {
     if (watchlist.length === 0) {
       setQuotes({})
       setQuoteNote('')
+      try {
+        localStorage.removeItem(QUOTES_CACHE_KEY)
+      } catch {
+        // 忽略
+      }
       return
     }
-    setQuoteLoading(true)
+    if (!silent) setQuoteLoading(true)
     try {
       const result = await marketApi.quote(watchlist)
-      setQuotes(result.quotes)
+      setQuotes((prev) => {
+        // 合并而不是整体替换：本轮缺失的标的保留上次价格并标记陈旧，
+        // 避免行情源抖动时整张自选表变成 "—"
+        const merged: Record<string, QuoteItem> = { ...prev, ...result.quotes }
+        for (const id of watchlist) {
+          if (!result.quotes[id] && merged[id]) {
+            merged[id] = { ...merged[id], stale: true }
+          }
+        }
+        try {
+          localStorage.setItem(QUOTES_CACHE_KEY, JSON.stringify(merged))
+        } catch {
+          // 存储不可用时忽略
+        }
+        return merged
+      })
       setQuoteNote(result.note)
       setQuoteAt(new Date().toLocaleTimeString('zh-CN', { hour12: false }))
     } catch (err) {
       setQuoteNote(err instanceof ApiError ? err.message : '实时行情获取失败')
     } finally {
-      setQuoteLoading(false)
+      if (!silent) setQuoteLoading(false)
     }
   }, [watchlist])
 
   useEffect(() => {
-    void loadQuotes()
+    void loadQuotes(false)
     if (quoteInterval <= 0) return
     const timer = window.setInterval(() => {
-      // 页面在后台时不轮询，避免无谓的请求
-      if (document.visibilityState === 'visible') void loadQuotes()
+      // 页面在后台时不轮询；自动轮询使用静默模式，避免 spinner 每秒闪烁
+      if (document.visibilityState === 'visible') void loadQuotes(true)
     }, quoteInterval)
     return () => window.clearInterval(timer)
   }, [loadQuotes, quoteInterval])
@@ -241,7 +291,21 @@ export function MarketPage() {
   )
 
   return (
-    <div className="col" style={{ gap: 18 }}>
+    <div className="col" style={{ gap: 0 }}>
+      <CardBoard
+        storageKey="quant.layout.market"
+        items={[
+          {
+            id: 'indices',
+            title: '指数',
+            wide: true,
+            render: () => <IndexCards />,
+          },
+          {
+            id: 'quotes',
+            title: '实时行情',
+            wide: true,
+            render: () => (
       <Card
         title="实时行情"
         description="自选快照：腾讯 → 东财 → 新浪 多源聚合，支持 A股 / 美股 / 港股"
@@ -254,13 +318,14 @@ export function MarketPage() {
               onChange={(event) => changeQuoteInterval(Number(event.target.value))}
               style={{ width: 110 }}
             >
+              <option value={1000}>每 1 秒</option>
               <option value={3000}>每 3 秒</option>
               <option value={5000}>每 5 秒</option>
               <option value={10000}>每 10 秒</option>
               <option value={30000}>每 30 秒</option>
               <option value={0}>暂停刷新</option>
             </select>
-            <Button size="sm" loading={quoteLoading} onClick={() => void loadQuotes()}>
+            <Button size="sm" loading={quoteLoading} onClick={() => void loadQuotes(false)}>
               <IconRefresh /> 立即刷新
             </Button>
           </div>
@@ -278,7 +343,7 @@ export function MarketPage() {
                 if (suggestions.length > 0) addSymbol(suggestions[0].symbol)
                 else if (normalizeInstrumentId(searchText)) addSymbol(searchText.trim())
               }}
-              placeholder="搜索代码 / 名称（600519、茅台、AAPL、00700），回车加入自选"
+              placeholder="搜索代码 / 名称（600519、茅台、AAPL、00700、CRYPTO:BTC/USDT），回车加入自选"
             />
             {searchText.trim() !== '' && (
               <div className="suggest-list">
@@ -289,24 +354,41 @@ export function MarketPage() {
                   </div>
                 )}
                 {suggestions.map((item) => (
-                  <button
+                  <div
                     key={item.symbol}
-                    type="button"
                     className="suggest-item"
-                    onClick={() => addSymbol(item.symbol)}
+                    role="button"
+                    tabIndex={0}
+                    title="查看详情"
+                    onClick={() => goDetail(item.symbol)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') goDetail(item.symbol)
+                    }}
                   >
                     <span className="mono strong">{item.code ?? displayCode(item.symbol)}</span>
                     <span>{item.name || '—'}</span>
+                    {item.kind === 'etf' && <Badge tone="success">ETF</Badge>}
                     <span className="tiny faint" style={{ marginLeft: 'auto' }}>
                       {marketLabel(item.market)} · {item.board}
                     </span>
-                  </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      title="加入自选"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        addSymbol(item.symbol)
+                      }}
+                    >
+                      +
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
           </div>
           <div className="row" style={{ gap: 6 }}>
-            {(['ALL', 'CN', 'US', 'HK'] as const).map((market) => (
+            {(['ALL', 'CN', 'US', 'HK', 'CRYPTO'] as const).map((market) => (
               <button
                 key={market}
                 type="button"
@@ -319,6 +401,13 @@ export function MarketPage() {
             ))}
           </div>
         </div>
+
+        <HotPicks
+          market={searchMarket === 'ALL' ? 'CN' : searchMarket}
+          watchlist={watchlist}
+          onSelect={goDetail}
+          onAdd={addSymbol}
+        />
 
         {quoteNote && (
           <div style={{ marginTop: 10 }}>
@@ -343,7 +432,7 @@ export function MarketPage() {
                   <th className="right">涨跌</th>
                   <th className="right">今开 / 昨收</th>
                   <th className="right">最高 / 最低</th>
-                  <th className="right">成交量（股）</th>
+                  <th className="right">成交量</th>
                   <th className="right">成交额</th>
                   <th>数据时间</th>
                   <th className="right">操作</th>
@@ -353,18 +442,24 @@ export function MarketPage() {
                 {watchRows.map(({ id, quote, market }) => {
                   const tone = classForSign(quote?.change_pct ?? quote?.change ?? null)
                   const currency = quote?.currency
-                  const digits = currency === 'HKD' ? 3 : 2
+                  const digits = priceDigits(market, quote?.price)
                   const label = marketLabel(market)
                   return (
                     <tr key={id}>
-                      <td className="strong mono">{displayCode(id)}</td>
+                      <td className="strong mono">
+                        <button type="button" className="link-btn" title="查看详情" onClick={() => goDetail(id)}>
+                          {displayCode(id)}
+                        </button>
+                      </td>
                       <td>{label ? <Badge tone={marketTone(market)}>{label}</Badge> : '—'}</td>
                       <td>
                         <span
                           className="row"
                           style={{ gap: 6, alignItems: 'center', flexWrap: 'nowrap', whiteSpace: 'nowrap' }}
                         >
-                          {quote?.name || '—'}
+                          <button type="button" className="link-btn" title="查看详情" onClick={() => goDetail(id)}>
+                            {quote?.name || '—'}
+                          </button>
                           {quote?.stale && <Badge tone="warn">陈旧</Badge>}
                         </span>
                       </td>
@@ -420,7 +515,21 @@ export function MarketPage() {
           </div>
         )}
       </Card>
-
+            ),
+          },
+          {
+            id: 'ranking',
+            title: '排行榜',
+            wide: true,
+            render: () => (
+              <RankingBoard watchlist={watchlist} onSelect={goDetail} onAdd={addSymbol} />
+            ),
+          },
+          {
+            id: 'search',
+            title: 'K 线查询',
+            wide: true,
+            render: () => (
       <Card>
         <form className="row wrap" onSubmit={submit} style={{ alignItems: 'flex-end', gap: 12 }}>
           <Field label="标的（兼容旧写法）" style={{ flex: '1 1 240px', maxWidth: 300 }}>
@@ -428,7 +537,7 @@ export function MarketPage() {
               className="input mono"
               value={input}
               onChange={(event) => setInput(event.target.value)}
-              placeholder="CN:600519 / US:AAPL / HK:00700"
+              placeholder="CN:600519 / US:AAPL / HK:00700 / CRYPTO:BTC/USDT"
               style={{ width: 220 }}
             />
           </Field>
@@ -489,6 +598,14 @@ export function MarketPage() {
           </>
         )}
       </Card>
+            ),
+          },
+          {
+            id: 'chart',
+            title: 'K 线与统计',
+            wide: true,
+            render: () => (
+              <>
 
       {error && <Banner kind="danger">{error}</Banner>}
       {data?.source === 'synthetic' && (
@@ -497,7 +614,6 @@ export function MarketPage() {
           配置 akshare 或导入真实 CSV 后即可替换。
         </Banner>
       )}
-
       {loading && !data ? (
         <Card>
           <Loading text="正在加载行情…" />
@@ -546,10 +662,17 @@ export function MarketPage() {
         </>
       ) : (
         <Card>
-          <Empty title="选择一只标的开始" hint="输入代码（如 CN:600519 / US:AAPL / HK:00700），或点击上方已缓存的标的。" />
+          <Empty title="选择一只标的开始" hint="输入代码（如 CN:600519 / US:AAPL / HK:00700 / CRYPTO:BTC/USDT），或点击上方已缓存的标的。" />
         </Card>
       )}
-
+              </>
+            ),
+          },
+          {
+            id: 'cache',
+            title: '本地缓存',
+            wide: true,
+            render: () => (
       <Card
         title="本地缓存"
         description="回测与模拟盘优先读取本地数据；删除缓存后会自动重新拉取"
@@ -612,6 +735,10 @@ export function MarketPage() {
           </div>
         )}
       </Card>
+            ),
+          },
+        ]}
+      />
     </div>
   )
 }

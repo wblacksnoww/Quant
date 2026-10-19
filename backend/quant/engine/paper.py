@@ -35,6 +35,7 @@ from ..risk.base import RiskManager
 from ..strategy.base import Strategy
 from ..strategy.registry import get_strategy
 from .base import BaseEngine, EngineConfig, EngineResult
+from .live_frames import append_today_row, update_today_row
 from .session import TradingSession, bar_from_frame
 
 log = logging.getLogger(__name__)
@@ -194,6 +195,8 @@ class PaperEngine(BaseEngine):
             frames=frames,
             strategy_name=cfg.strategy_id,
             recorder=self.recorder,
+            # replay 逐日推进，日终即真实日终；live 由引擎在跨日时撤单
+            auto_end_of_day=self.options.mode == "replay",
         )
 
     # ------------------------------------------------------------------ #
@@ -250,8 +253,10 @@ class PaperEngine(BaseEngine):
                 }
                 self.bus.emit_log("实时行情不可用，使用最近收盘价模拟", level="warning", source="paper")
 
-            # 新交易日：给每个标的追加一根"今日"的活 bar
+            # 新交易日：先把昨日的 DAY 挂单过期，再给每个标的追加"今日"的活 bar
             if current_day != today:
+                if current_day is not None:
+                    session.broker.end_of_day()
                 current_day = today
                 for symbol in symbols:
                     live_frames[symbol] = self._append_today_row(live_frames[symbol], today, prices.get(symbol))
@@ -283,35 +288,11 @@ class PaperEngine(BaseEngine):
     # ------------------------------------------------------------------ #
     @staticmethod
     def _append_today_row(frame: pd.DataFrame, today: date, price: float | None) -> pd.DataFrame:
-        price = price or float(frame["close"].iloc[-1])
-        row = {
-            "date": pd.Timestamp(today),
-            "open": price,
-            "high": price,
-            "low": price,
-            "close": price,
-            "volume": 0.0,
-            "amount": 0.0,
-            "prev_close": float(frame["close"].iloc[-1]),
-            "limit_up": None,
-            "limit_down": None,
-        }
-        if len(frame) and frame["date"].iloc[-1].date() == today:
-            return frame
-        out = pd.concat([frame, pd.DataFrame([row])], ignore_index=True)
-        return out
+        return append_today_row(frame, today, price)
 
     @staticmethod
     def _update_today_row(frame: pd.DataFrame, price: float) -> pd.DataFrame:
-        if len(frame) == 0:
-            return frame
-        idx = frame.index[-1]
-        frame = frame.copy()
-        frame.loc[idx, "close"] = price
-        frame.loc[idx, "high"] = max(float(frame.loc[idx, "high"]), price)
-        frame.loc[idx, "low"] = min(float(frame.loc[idx, "low"]), price)
-        frame.loc[idx, "amount"] = price * float(frame.loc[idx, "volume"])
-        return frame
+        return update_today_row(frame, price)
 
     def _sleep(self, seconds: float) -> None:
         end = time.monotonic() + seconds
@@ -348,12 +329,33 @@ class PaperEngine(BaseEngine):
         self.status = EngineStatus.STOPPING
 
     # ------------------------------------------------------------------ #
+    def switch_strategy(
+        self,
+        strategy_id: str,
+        params: dict[str, Any] | None = None,
+        *,
+        cancel_orders: bool = True,
+    ) -> dict[str, Any]:
+        """请求切换策略（下一轮 step 生效）。"""
+        if self.session is None or self.status is not EngineStatus.RUNNING:
+            raise RuntimeError("纸盘会话未在运行")
+        strategy_cls = get_strategy(strategy_id)  # 未知策略抛 KeyError
+        old_id = self.session.current_strategy_id
+        self.session.request_switch(strategy_cls, params, cancel_orders=cancel_orders)
+        return {
+            "from": old_id,
+            "to": strategy_id,
+            "cancel_orders": cancel_orders,
+            "pending": True,
+        }
+
+    # ------------------------------------------------------------------ #
     def state(self) -> dict[str, Any]:
         """给 API 的实时状态快照。"""
         account = self.account
         return {
             "run_id": self.config.run_id,
-            "strategy_id": self.config.strategy_id,
+            "strategy_id": self.session.current_strategy_id if self.session else self.config.strategy_id,
             "symbols": self.config.symbols,
             "mode": self.options.mode,
             "status": self.status.value,

@@ -5,12 +5,15 @@
 * ``CN:600519`` — A 股（6 位数字代码）
 * ``US:AAPL``   — 美股（字母代码，可含 ``.``/``-``，如 ``BRK.B``）
 * ``HK:00700``  — 港股（5 位数字代码）
+* ``CRYPTO:BTC/USDT`` — 虚拟货币（BASE/QUOTE 交易对，**必须显式前缀**）
+* ``FUND:007005`` — 场外基金（6 位数字代码，**必须显式前缀**，裸 6 位仍归 A 股）
 
 兼容输入（用户输入 / 旧数据 / 外部接口）：
 
 * ``600519``、``sh600519``、``SH.600519``、``600519.SH`` → ``CN:600519``
 * ``aapl``、``AAPL.US`` → ``US:AAPL``
 * ``700``、``hk700``、``0700.HK`` → ``HK:00700``
+* ``cc:eth/usdt`` → ``CRYPTO:ETH/USDT``
 
 约定：**解析只发生在边界**（API、引擎配置、数据源入口），
 内部一律使用规范 id，缓存 / 事件 / 订单 / 规则全部以它为准。
@@ -30,17 +33,31 @@ class Market(str, Enum):
     CN = "CN"
     US = "US"
     HK = "HK"
+    CRYPTO = "CRYPTO"
+    FUND = "FUND"
 
     @property
     def label(self) -> str:
-        return {"CN": "A股", "US": "美股", "HK": "港股"}[self.value]
+        return {
+            "CN": "A股",
+            "US": "美股",
+            "HK": "港股",
+            "CRYPTO": "虚拟货币",
+            "FUND": "基金",
+        }[self.value]
 
     @property
     def currency(self) -> str:
-        return {"CN": "CNY", "US": "USD", "HK": "HKD"}[self.value]
+        return {
+            "CN": "CNY",
+            "US": "USD",
+            "HK": "HKD",
+            "CRYPTO": "USDT",
+            "FUND": "CNY",
+        }[self.value]
 
 
-_CURRENCY_SYMBOLS = {"CNY": "¥", "USD": "$", "HKD": "HK$"}
+_CURRENCY_SYMBOLS = {"CNY": "¥", "USD": "$", "HKD": "HK$", "USDT": "USDT"}
 
 _MARKET_ALIASES: dict[str, Market] = {
     "CN": Market.CN,
@@ -53,10 +70,16 @@ _MARKET_ALIASES: dict[str, Market] = {
     "NYSE": Market.US,
     "HK": Market.HK,
     "HKG": Market.HK,
+    "CRYPTO": Market.CRYPTO,
+    "CC": Market.CRYPTO,
+    "FUND": Market.FUND,
+    "OF": Market.FUND,
 }
 
 # 美股代码：字母开头，允许数字/点/连字符（BRK.B、RDS-A 等）
 _US_RE = re.compile(r"^[A-Z][A-Z0-9.\-]{0,11}$")
+# 虚拟货币交易对：BASE/QUOTE（USDT 计价为主，也允许 BTC/ETH 等计价）
+_CRYPTO_RE = re.compile(r"^[A-Z0-9]{1,20}/[A-Z0-9]{1,20}$")
 _PREFIX_RE = re.compile(r"^(SH|SZ|BJ|HK|US)(\w.*)$")
 
 # 腾讯行情里的美股交易所后缀（AAPL.OQ / TSLA.N / TCEHY.PS ...），解析时剥掉
@@ -87,6 +110,14 @@ def _validate_code(market: Market, raw: str) -> str:
         if text.isdigit() and 1 <= len(text) <= 5:
             return text.zfill(5)
         raise ValueError(f"不是合法的港股代码: {raw}")
+    if market is Market.CRYPTO:
+        if _CRYPTO_RE.fullmatch(text):
+            return text
+        raise ValueError(f"不是合法的虚拟货币交易对: {raw}")
+    if market is Market.FUND:
+        if text.isdigit() and 1 <= len(text) <= 6:
+            return text.zfill(6)
+        raise ValueError(f"不是合法的基金代码: {raw}")
     stripped = strip_us_suffix(text)
     if _US_RE.fullmatch(stripped):
         return stripped
@@ -198,3 +229,145 @@ __all__ = [
     "strip_us_suffix",
     "try_parse",
 ]
+
+
+# --------------------------------------------------------------------------- #
+# 市场微观规则：板块 / 涨跌停（原 execution.rules 上移；data/risk 共用的本源）
+# 板块
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True, slots=True)
+class BoardRules:
+    """单个板块的交易规则。"""
+
+    code: str
+    name: str
+    limit_pct: float  # 涨跌停幅度
+    lot_size: int  # 买入最小单位（股）
+    t_plus_1: bool = True
+    price_digits: int = 2
+
+    @property
+    def limit_label(self) -> str:
+        return f"±{self.limit_pct * 100:.0f}%"
+
+
+_MAIN = BoardRules("main", "沪深主板", 0.10, 100)
+_GEM = BoardRules("gem", "创业板", 0.20, 100)
+_STAR = BoardRules("star", "科创板", 0.20, 200)
+_BSE = BoardRules("bse", "北交所", 0.30, 100)
+_FUND = BoardRules("fund", "场内基金/ETF", 0.10, 100)
+_INDEX = BoardRules("index", "指数", 0.0, 1, t_plus_1=False, price_digits=4)
+
+# 境外市场：无涨跌停、T+0；港股每手股数因票而异，这里按 100 股近似
+_US = BoardRules("us", "美股", 0.0, 1, t_plus_1=False)
+_HK = BoardRules("hk", "港股", 0.0, 100, t_plus_1=False, price_digits=3)
+
+# 虚拟货币：7×24 无涨跌停、T+0、任意数量（小数）、8 位报价精度
+_CRYPTO = BoardRules("crypto", "虚拟货币", 0.0, 1, t_plus_1=False, price_digits=8)
+# 场外基金：净值制申购/赎回（不走引擎撮合），份额小数、4 位净值精度
+_FUND_OTC = BoardRules("fund_otc", "场外基金", 0.0, 1, t_plus_1=False, price_digits=4)
+
+BOARDS: dict[str, BoardRules] = {
+    b.code: b
+    for b in (_MAIN, _GEM, _STAR, _BSE, _FUND, _INDEX, _US, _HK, _CRYPTO, _FUND_OTC)
+}
+
+_ST = BoardRules("main_st", "主板ST", 0.05, 100)
+
+
+def normalize_symbol(symbol: str) -> str:
+    """统一成规范代码：``sh600519`` → ``600519``；``AAPL``/``700`` 原样规范化。"""
+    try:
+        return parse_instrument(symbol).code
+    except ValueError:
+        text = str(symbol).strip().upper()
+        for prefix in ("SH.", "SZ.", "BJ.", "SH:", "SZ:", "BJ:", "SH", "SZ", "BJ"):
+            if text.startswith(prefix) and len(text) > len(prefix):
+                text = text[len(prefix) :]
+                break
+        text = text.lstrip(".")
+        return text.zfill(6) if text.isdigit() else text
+
+
+def board_of(symbol: str) -> BoardRules:
+    """按市场与代码前缀判断板块。"""
+    try:
+        inst = parse_instrument(symbol)
+    except ValueError:
+        inst = None
+    if inst is not None:
+        if inst.market is Market.US:
+            return _US
+        if inst.market is Market.HK:
+            return _HK
+        if inst.market is Market.CRYPTO:
+            return _CRYPTO
+        if inst.market is Market.FUND:
+            return _FUND_OTC
+        code = inst.code
+    else:
+        code = normalize_symbol(symbol)
+    if code.startswith(("688", "689")):
+        return _STAR
+    if code.startswith(("300", "301")):
+        return _GEM
+    if code.startswith(("8", "43", "92")):
+        return _BSE
+    if code.startswith(("51", "56", "58", "15", "16", "588", "159")):
+        return _FUND
+    # 指数代码（000300 等）与股票代码共用同一数字空间，默认按主板处理
+    return _MAIN
+
+
+def rules_for(symbol: str, *, is_st: bool = False) -> BoardRules:
+    """取板块规则；主板 ST 股票涨跌停收窄到 ±5%。"""
+    board = board_of(symbol)
+    if is_st and board.code == _MAIN.code:
+        return _ST
+    return board
+
+
+# --------------------------------------------------------------------------- #
+# 涨跌停价
+# --------------------------------------------------------------------------- #
+
+
+def _round_price(value: float, digits: int = 2) -> float:
+    """四舍五入到分（A 股报价精度）。"""
+    # 用 Decimal 语义避免浮点 0.005 边界问题
+    from decimal import ROUND_HALF_UP, Decimal
+
+    return float(Decimal(str(value)).quantize(Decimal(1).scaleb(-digits), rounding=ROUND_HALF_UP))
+
+
+def price_limits(
+    prev_close: float,
+    symbol: str,
+    *,
+    is_st: bool = False,
+    board: BoardRules | None = None,
+) -> tuple[float | None, float | None]:
+    """返回 ``(涨停价, 跌停价)``。``prev_close`` 缺失或为 0 时返回 ``(None, None)``。"""
+    if not prev_close or prev_close <= 0:
+        return None, None
+    rules = board or rules_for(symbol, is_st=is_st)
+    if rules.limit_pct <= 0:
+        return None, None
+    up = _round_price(prev_close * (1 + rules.limit_pct), rules.price_digits)
+    down = _round_price(prev_close * (1 - rules.limit_pct), rules.price_digits)
+    return up, down
+
+
+def clamp_to_limits(
+    price: float, prev_close: float, symbol: str, *, is_st: bool = False
+) -> float:
+    """把价格夹到涨跌停区间内（防止策略报出越界限价）。"""
+    up, down = price_limits(prev_close, symbol, is_st=is_st)
+    if up is None or down is None:
+        return price
+    return min(max(price, down), up)
+
+
+# --------------------------------------------------------------------------- #

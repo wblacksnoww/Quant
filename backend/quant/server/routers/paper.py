@@ -20,7 +20,14 @@ from ...storage.repositories import RunRecorder, RunRepository
 from ..context import AppContext
 from ..custom_params import inject_custom_spec
 from ..deps import audit, get_current_user, get_ctx, get_db
-from ..schemas import Message, PaperStartRequest, PaperStateOut, RunAccepted, RunSummary
+from ..schemas import (
+    Message,
+    PaperStartRequest,
+    PaperStateOut,
+    RunAccepted,
+    RunSummary,
+    SwitchStrategyRequest,
+)
 from ..ws import bus_bridge
 from .backtest import build_engine_config
 
@@ -129,6 +136,42 @@ def stop_paper(
     return Message(
         message="纸盘已停止" if stopped else "已发送停止信号，等待当前轮询结束",
         detail={"stopped": stopped},
+    )
+
+
+@router.post("/switch", response_model=Message, summary="切换运行中的策略（下一轮生效）")
+def switch_paper(
+    body: SwitchStrategyRequest,
+    ctx: AppContext = Depends(get_ctx),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    if not ctx.paper.running(user.id):
+        raise HTTPException(status_code=409, detail="没有运行中的纸盘会话")
+    engine = ctx.paper.engine(user.id)
+    if engine is None:  # pragma: no cover
+        raise HTTPException(status_code=409, detail="没有运行中的纸盘会话")
+    resolved = inject_custom_spec(body.params, user=user, session=session)
+    try:
+        result = engine.switch_strategy(
+            body.strategy_id, resolved, cancel_orders=body.cancel_open_orders
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    audit(
+        session,
+        request=None,
+        actor=user.username,
+        action="paper.switch_strategy",
+        target=engine.config.run_id,
+        detail=result,
+    )
+    return Message(
+        message=f"策略将从下一轮开始切换为 {body.strategy_id}",
+        detail=result,
     )
 
 

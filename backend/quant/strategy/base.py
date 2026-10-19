@@ -376,7 +376,7 @@ class Strategy(ABC):
         self,
         symbol: str,
         *,
-        quantity: int | None = None,
+        quantity: float | None = None,
         amount: float | None = None,
         percent: float | None = None,
         limit_price: float | None = None,
@@ -392,7 +392,7 @@ class Strategy(ABC):
         self,
         symbol: str,
         *,
-        quantity: int | None = None,
+        quantity: float | None = None,
         amount: float | None = None,
         percent: float | None = None,
         limit_price: float | None = None,
@@ -433,15 +433,15 @@ class Strategy(ABC):
         self,
         symbol: str,
         side: Side,
-        quantity: int | None,
+        quantity: float | None,
         amount: float | None,
         percent: float | None,
-    ) -> int:
+    ) -> float:
         if quantity is not None:
-            return int(quantity)
+            return float(quantity)
         price = self.ctx.price(symbol)
         if price <= 0:
-            return 0
+            return 0.0
         if amount is not None:
             return round_down_lot(max(0.0, amount) / price, symbol)
         if percent is not None:
@@ -450,20 +450,20 @@ class Strategy(ABC):
                 # 市价买入按开盘价 + 2% 缓冲冻结资金，这里先预留出来，避免"算得刚好却下不进去"
                 budget = min(budget, self.cash) / 1.02
             return round_down_lot(budget / price, symbol)
-        return 0
+        return 0.0
 
     def _order(
         self,
         symbol: str,
         side: Side,
-        quantity: int,
+        quantity: float,
         limit_price: float | None,
         tag: str,
     ) -> Order:
         order = Order(
             symbol=symbol,
             side=side,
-            quantity=int(quantity),
+            quantity=float(quantity),
             order_type=OrderType.LIMIT if limit_price else OrderType.MARKET,
             limit_price=float(limit_price) if limit_price else None,
             tag=tag,

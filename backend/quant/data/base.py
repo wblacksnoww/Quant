@@ -218,9 +218,15 @@ def to_date(value: str | date | datetime | None, default: date | None = None) ->
 
 
 class DataProvider(ABC):
-    """行情数据源接口。实现 :meth:`daily` 即可接入系统。"""
+    """行情数据源接口。实现 :meth:`daily` 即可接入系统。
+
+    ``markets`` 声明本数据源覆盖的市场（空元组 = 通用/未声明）。
+    数据服务按市场把请求路由到匹配的 Provider，避免"用股票数据源去拉
+    虚拟货币"这类跨市场误调用（``CRYPTO:`` 标的会被 akshare 当成港股）。
+    """
 
     name: str = "base"
+    markets: tuple[str, ...] = ()
     supports_realtime: bool = False
     supports_search: bool = False
 
@@ -248,11 +254,26 @@ class DataProvider(ABC):
         """标的检索；``market`` 限定市场（``CN``/``US``/``HK``/``None`` 全部）。"""
         raise NotImplementedError(f"{self.name} 不支持标的检索")
 
+    def ranking(
+        self,
+        market: str,
+        *,
+        sort: str = "change_pct",
+        order: str = "desc",
+        limit: int = 20,
+    ) -> list["RealtimeQuote"]:
+        """市场排行榜（涨幅/成交额）。不支持的数据源抛 ``NotImplementedError``。"""
+        raise NotImplementedError(f"{self.name} 不支持排行榜")
+
     def calendar(self, start: date, end: date) -> list[date]:
         """交易日历；默认退化为工作日。"""
         from .calendar import weekday_range
 
         return weekday_range(start, end)
+
+    def intraday(self, symbol: str, *, freq: str = "5m", limit: int = 240) -> pd.DataFrame:
+        """分钟 K 线（今日/本周视图）。不支持的数据源抛 ``NotImplementedError``。"""
+        raise NotImplementedError(f"{self.name} 不支持分钟 K 线")
 
     def __repr__(self) -> str:
         return f"<DataProvider {self.name}>"

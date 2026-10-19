@@ -1,0 +1,61 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install backend (with dev extras)
+        run: pip install -e "backend[dev]"
+      - name: Pytest
+        working-directory: backend
+        env:
+          QUANT_ENV: test
+          QUANT_DATA_PROVIDER: synthetic
+        run: pytest -q
+
+  images:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compute lowercase image prefix
+        run: |
+          PREFIX="ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/quant-trading"
+          echo "PREFIX=$PREFIX" >> "$GITHUB_ENV"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build & push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/backend.Dockerfile
+          push: true
+          tags: |
+            ${{ env.PREFIX }}-backend:${{ github.sha }}
+            ${{ env.PREFIX }}-backend:latest
+      - name: Build & push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/frontend.Dockerfile
+          push: true
+          tags: |
+            ${{ env.PREFIX }}-frontend:${{ github.sha }}
+            ${{ env.PREFIX }}-frontend:latest

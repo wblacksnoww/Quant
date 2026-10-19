@@ -38,6 +38,13 @@ import pandas as pd
 
 from .base import ParamSpec, Strategy
 from . import indicators as ta
+
+# 指标白名单唯一来源：v1 条件与 v2 蓝图共用（参数边界随之同源）
+from .indicators import (
+    INDICATOR_INT_BOUNDS as _INT_BOUNDS,
+    INDICATOR_SPECS as _INDICATORS,
+    INDICATOR_WIDTH_BOUNDS as _WIDTH_BOUNDS,
+)
 from .custom_graph import (
     GRAPH_VERSION,
     MAX_GRAPH_SPEC_BYTES,
@@ -60,25 +67,7 @@ _CROSS_OPS = ("cross_above", "cross_below")
 
 # 指标白名单：name -> (函数描述, 参数规则)
 # 参数规则: "int"/"float" 表示必填数值参数；带默认值的写 (type, default)
-_INDICATORS: dict[str, dict[str, tuple[str, float | None]]] = {
-    "sma": {"period": ("int", None)},
-    "ema": {"period": ("int", None)},
-    "rsi": {"period": ("int", None)},
-    "std": {"period": ("int", None)},
-    "rolling_high": {"period": ("int", None)},
-    "rolling_low": {"period": ("int", None)},
-    "momentum": {"period": ("int", None)},
-    "atr": {"period": ("int", None)},
-    "boll_lower": {"period": ("int", None), "width": ("float", 2.0)},
-    "boll_mid": {"period": ("int", None), "width": ("float", 2.0)},
-    "boll_upper": {"period": ("int", None), "width": ("float", 2.0)},
-    "macd_dif": {"fast": ("int", 12), "slow": ("int", 26), "signal": ("int", 9)},
-    "macd_dea": {"fast": ("int", 12), "slow": ("int", 26), "signal": ("int", 9)},
-    "macd_hist": {"fast": ("int", 12), "slow": ("int", 26), "signal": ("int", 9)},
-}
-
-_INT_BOUNDS = (2, 500)  # period 类参数的边界；rsi 等同样适用
-_WIDTH_BOUNDS = (0.1, 10.0)
+_FIELDS = ("close", "open", "high", "low", "volume", "amount")
 
 
 # --------------------------------------------------------------------------- #

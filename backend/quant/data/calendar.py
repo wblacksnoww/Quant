@@ -61,10 +61,14 @@ def trading_days(
 ) -> list[date]:
     """返回 ``[start, end]`` 区间内的交易日（升序）。
 
-    真实日历（akshare）只有 A 股口径；美股/港股退化为工作日近似 ——
+    真实日历（akshare）只有 A 股口径；美股/港股退化为工作日近似，
+    虚拟货币为 7×24 全周日历（无休市日）；场外基金沿用工作日近似。
     反正回测/纸盘回放的时间轴最终由行情 bar 决定，日历只影响"哪天该有数据"。
     """
-    if str(market).strip().upper() not in ("", "CN"):
+    key = str(market).strip().upper()
+    if key == "CRYPTO":
+        return calendar_range(start, end)
+    if key not in ("", "CN"):
         return weekday_range(start, end)
     global _memory
     if _memory is None:
@@ -95,6 +99,13 @@ def weekday_range(start: date | None = None, end: date | None = None) -> list[da
     return out
 
 
+def calendar_range(start: date | None = None, end: date | None = None) -> list[date]:
+    """全周日历（虚拟货币 7×24 无休市日）。"""
+    if start is None or end is None:
+        raise ValueError("全周日历需要显式 start/end")
+    return [start + timedelta(days=i) for i in range((end - start).days + 1)]
+
+
 def is_trading_day(day: date) -> bool:
     return day in set(trading_days(day, day))
 
@@ -119,6 +130,7 @@ def is_market_open(market: str = "CN", moment: datetime | None = None) -> bool:
     * 港股：09:30-12:00、13:00-16:00（北京时间）
     * 美股：09:30-16:00（按美东时间；夏令时 UTC-4 / 冬令时 UTC-5 统一按 UTC-4 近似，
       冬令时多算 1 小时）
+    * 虚拟货币：7×24 恒开（任何时刻均为开市）
     """
     from datetime import timedelta, timezone
 
@@ -129,6 +141,8 @@ def is_market_open(market: str = "CN", moment: datetime | None = None) -> bool:
         "US": ((9, 30), (16, 0), None, None),
     }
     key = str(market).strip().upper() or "CN"
+    if key == "CRYPTO":
+        return True
     if key not in offsets:
         key = "CN"
     local = (moment or datetime.now(timezone.utc)).astimezone(
@@ -148,6 +162,7 @@ def is_market_open(market: str = "CN", moment: datetime | None = None) -> bool:
 
 
 __all__ = [
+    "calendar_range",
     "is_market_open",
     "is_trading_day",
     "next_trading_day",

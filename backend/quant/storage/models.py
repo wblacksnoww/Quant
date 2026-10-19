@@ -254,6 +254,55 @@ class Run(Base):
 
 
 # --------------------------------------------------------------------------- #
+# 场外基金申赎记录
+# --------------------------------------------------------------------------- #
+
+
+class FundTrade(Base):
+    """场外基金申购/赎回流水。
+
+    持仓不单独存表，而是由流水按时间顺序聚合（见 :mod:`quant.funds`），
+    避免"持仓表"与"流水表"双写不一致。
+    """
+
+    __tablename__ = "fund_trades"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    symbol: Mapped[str] = mapped_column(String(32), index=True, nullable=False)  # FUND:007005
+    name: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    side: Mapped[str] = mapped_column(String(16), nullable=False)  # subscribe | redeem
+    trade_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    confirm_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    nav: Mapped[float] = mapped_column(Float, nullable=False)
+    shares: Mapped[float] = mapped_column(Float, nullable=False)
+    amount: Mapped[float] = mapped_column(Float, nullable=False)
+    fee_rate: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    fee: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    note: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
+
+    __table_args__ = (Index("ix_fund_trades_user_symbol", "user_id", "symbol"),)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "symbol": self.symbol,
+            "name": self.name,
+            "side": self.side,
+            "trade_date": self.trade_date.date().isoformat() if self.trade_date else None,
+            "confirm_date": self.confirm_date.date().isoformat() if self.confirm_date else None,
+            "nav": round(self.nav, 4),
+            "shares": round(self.shares, 4),
+            "amount": round(self.amount, 2),
+            "fee_rate": self.fee_rate,
+            "fee": round(self.fee, 2),
+            "note": self.note,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# --------------------------------------------------------------------------- #
 # 用户自建策略（条件拼装）
 # --------------------------------------------------------------------------- #
 
@@ -298,6 +347,7 @@ __all__ = [
     "Base",
     "CompressedJSON",
     "Credential",
+    "FundTrade",
     "RefreshToken",
     "Run",
     "User",

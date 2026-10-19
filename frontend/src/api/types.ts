@@ -90,6 +90,40 @@ export interface MarketInfo {
   currency_symbol: string
 }
 
+export interface IndexQuote {
+  id: string
+  name: string
+  market: string
+  currency: string
+  price: number
+  prev_close: number | null
+  change: number | null
+  change_pct: number | null
+}
+
+export interface InstrumentInfo {
+  symbol: string
+  code: string
+  market: string
+  currency: string
+  currency_symbol: string
+  name: string
+  board: string
+  limit_pct: number
+  lot_size: number
+  t_plus_1: boolean
+  price_digits: number
+  price: number
+  change: number | null
+  change_pct: number | null
+  prev_close: number | null
+  volume: number | null
+  amount: number | null
+  limit_up: number | null
+  limit_down: number | null
+  source: string
+}
+
 export interface QuoteItem {
   symbol: string
   name: string
@@ -113,6 +147,16 @@ export interface QuotesResponse {
   quotes: Record<string, QuoteItem>
   ts: string
   note: string
+}
+
+export interface Ranking {
+  market: string
+  sort: string
+  order: string
+  period: string
+  items: QuoteItem[]
+  note: string
+  ts: string
 }
 
 export interface DataCacheItem {
@@ -401,6 +445,7 @@ export interface RunDetail extends RunSummary {
 export interface RunAccepted {
   run_id: string
   status: string
+  mode?: string
 }
 
 // --------------------------------------------------------------------------- //
@@ -425,6 +470,32 @@ export interface PaperState {
   equity_curve: EquityPoint[]
   error?: string | null
   steps: number
+}
+
+// --------------------------------------------------------------------------- //
+// 实盘
+// --------------------------------------------------------------------------- //
+
+export interface LiveAdapter {
+  name: string
+  supports_sandbox: boolean
+  requires_api_key: boolean
+  markets: string[]
+}
+
+export interface LiveStartRequest extends BacktestRequest {
+  adapter: 'ccxt' | 'miniqmt' | string
+  credential_id: number
+  sandbox: boolean
+  confirm_live?: boolean
+  poll_interval?: number
+  warmup_days?: number
+}
+
+export interface LiveState extends PaperState {
+  adapter: string
+  sandbox: boolean
+  reconcile_at?: string | null
 }
 
 // --------------------------------------------------------------------------- //
@@ -512,6 +583,66 @@ export interface Credential {
 export interface Message {
   message: string
   detail: Record<string, unknown>
+}
+
+// --------------------------------------------------------------------------- //
+// 场外基金
+// --------------------------------------------------------------------------- //
+
+export interface FundNavPoint {
+  date: string
+  nav: number
+}
+
+export interface FundNav {
+  symbol: string
+  name: string
+  points: FundNavPoint[]
+}
+
+export interface FundTrade {
+  id: number
+  symbol: string
+  name: string
+  side: 'subscribe' | 'redeem' | string
+  trade_date: string | null
+  confirm_date?: string | null
+  nav: number
+  shares: number
+  amount: number
+  fee_rate: number
+  fee: number
+  note: string
+  created_at?: string | null
+}
+
+export interface FundHolding {
+  symbol: string
+  name: string
+  shares: number
+  avg_cost: number
+  cost: number
+  nav: number
+  market_value: number
+  unrealized_pnl: number
+  realized_pnl: number
+  total_pnl: number
+  return_pct: number
+  trades: number
+}
+
+export interface FundPortfolio {
+  holdings: FundHolding[]
+  totals: {
+    cost?: number
+    market_value?: number
+    unrealized_pnl?: number
+    realized_pnl?: number
+    total_pnl?: number
+    return_pct?: number
+    count?: number
+  }
+  nav_note: string
 }
 
 // --------------------------------------------------------------------------- //

@@ -1530,3 +1530,119 @@ td.strong {
   font-size: 9px;
   opacity: 0.45;
 }
+
+/* 可点击的代码/名称（跳转标的详情页） */
+.link-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+  color: var(--accent-2);
+}
+
+
+/* 指数卡片（行情页顶部） */
+.index-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 10px;
+}
+
+.index-card {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+}
+
+.index-card:hover {
+  border-color: var(--accent);
+}
+
+.index-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+/* 可拖拽卡片布局（行情页 / 仪表盘） */
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.board-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 30px;
+}
+
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.board-cell {
+  min-width: 0;
+}
+
+.board-cell.wide {
+  grid-column: 1 / -1;
+}
+
+.board-cell.is-hidden {
+  opacity: 0.45;
+}
+
+.board-cell.drag-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--radius);
+}
+
+.board-cell-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  margin-bottom: 6px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+}
+
+.board-drag {
+  cursor: grab;
+  font-size: 12px;
+  color: var(--text-dim);
+  user-select: none;
+}
+
+.board-drag:active {
+  cursor: grabbing;
+}
+
+@media (max-width: 1100px) {
+  .board-grid {
+    grid-template-columns: 1fr;
+  }
+  .board-cell.wide {
+    grid-column: auto;
+  }
+}

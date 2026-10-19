@@ -8,8 +8,9 @@ WORKDIR /web
 # 国内 npm 镜像；CI 中可改回 registry.npmjs.org
 RUN npm config set registry https://registry.npmmirror.com
 
-COPY frontend/package.json ./
-RUN npm install --no-audit --no-fund
+# 依赖锁定：package-lock.json 由 npm 生成，npm ci 保证每次构建版本一致
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
 
 COPY frontend/ ./
 RUN npm run build

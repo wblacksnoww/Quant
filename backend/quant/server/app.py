@@ -30,7 +30,19 @@ from ..core.errors import QuantError
 from ..core.types import utcnow
 from .context import AppContext, build_context
 from .deps import get_ctx
-from .routers import admin, auth, backtest, credentials, market, paper, risk, strategies, system
+from .routers import (
+    admin,
+    auth,
+    backtest,
+    credentials,
+    funds,
+    live,
+    market,
+    paper,
+    risk,
+    strategies,
+    system,
+)
 from .schemas import ErrorBody
 from .ws import EventHub
 
@@ -144,6 +156,10 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
             except Exception:  # noqa: BLE001
                 log.exception("停止纸盘失败")
             try:
+                app.state.ctx.live.stop_all(timeout=10)
+            except Exception:  # noqa: BLE001
+                log.exception("停止实盘失败")
+            try:
                 if app.state.ctx.backtests is not None:
                     app.state.ctx.backtests.shutdown(timeout=5)
             except Exception:  # noqa: BLE001
@@ -226,7 +242,19 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
 
     # -- 路由 -------------------------------------------------------------- #
     prefix = settings.api_prefix
-    for module in (auth, market, strategies, backtest, paper, risk, credentials, system, admin):
+    for module in (
+        auth,
+        market,
+        strategies,
+        backtest,
+        paper,
+        live,
+        risk,
+        funds,
+        credentials,
+        system,
+        admin,
+    ):
         app.include_router(module.router, prefix=prefix)
 
     # -- WebSocket --------------------------------------------------------- #

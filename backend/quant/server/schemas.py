@@ -147,6 +147,31 @@ class QuoteResponse(BaseModel):
     note: str = ""
 
 
+class IndexQuoteOut(BaseModel):
+    """指数卡片：点数 + 涨跌（不可交易，独立于 MARKET:CODE 体系）。"""
+
+    id: str
+    name: str
+    market: str
+    currency: str
+    price: float
+    prev_close: float | None = None
+    change: float | None = None
+    change_pct: float | None = None
+
+
+class RankingOut(BaseModel):
+    """市场排行榜：涨幅榜 / 跌幅榜 / 成交额榜（热门推荐复用成交额榜）。"""
+
+    market: str
+    sort: str = "change_pct"
+    order: str = "desc"
+    period: str = "day"
+    items: list[QuoteOut] = Field(default_factory=list)
+    note: str = ""
+    ts: str = ""
+
+
 class SymbolOut(BaseModel):
     symbol: str
     code: str = ""
@@ -156,6 +181,31 @@ class SymbolOut(BaseModel):
     is_st: bool = False
     market: str = "CN"
     kind: str = "stock"  # stock / etf / index / other
+
+
+class InstrumentOut(BaseModel):
+    """标的详情：标识 + 交易规则 + 最新快照（详情页一屏所需）。"""
+
+    symbol: str
+    code: str
+    market: str
+    currency: str
+    currency_symbol: str = ""
+    name: str = ""
+    board: str = ""
+    limit_pct: float = 0.0
+    lot_size: int = 1
+    t_plus_1: bool = True
+    price_digits: int = 2
+    price: float = 0.0
+    change: float | None = None
+    change_pct: float | None = None
+    prev_close: float | None = None
+    volume: float | None = None
+    amount: float | None = None
+    limit_up: float | None = None
+    limit_down: float | None = None
+    source: str = ""
 
 
 class MarketOut(BaseModel):
@@ -307,6 +357,7 @@ class RunDetail(RunSummary):
 class RunAccepted(BaseModel):
     run_id: str
     status: str = "accepted"
+    mode: str = ""  # 实盘用来回显 "sandbox" / "live"
 
 
 # --------------------------------------------------------------------------- #
@@ -340,6 +391,116 @@ class PaperStateOut(BaseModel):
     equity_curve: list[dict[str, Any]] = Field(default_factory=list)
     error: str | None = None
     steps: int = 0
+
+
+# --------------------------------------------------------------------------- #
+# 实盘
+# --------------------------------------------------------------------------- #
+
+
+class LiveStartRequest(BacktestRequest):
+    """实盘启动参数。
+
+    ``adapter`` 目前支持 ``ccxt``（虚拟货币）与 ``miniqmt``（A 股）。
+    ``credential_id`` 指向「设置 → 凭据」里 ``kind=broker`` 的记录。
+    """
+
+    adapter: Literal["ccxt", "miniqmt"] = "ccxt"
+    credential_id: int
+    sandbox: bool = True  # 默认测试网/模拟账户
+    confirm_live: bool = False  # 关闭 sandbox 时必须显式确认
+    poll_interval: float | None = Field(default=None, ge=1.0, le=600)  # 缺省取服务端配置
+    warmup_days: int = Field(default=120, ge=20, le=1000)
+
+
+class LiveStateOut(PaperStateOut):
+    adapter: str = ""
+    sandbox: bool = True
+    reconcile_at: str | None = None
+
+
+class SwitchStrategyRequest(BaseModel):
+    """运行中切换策略（纸盘/实盘共用）。下一轮 step 生效。"""
+
+    strategy_id: str = Field(min_length=1, max_length=64)
+    params: dict[str, Any] = Field(default_factory=dict)
+    cancel_open_orders: bool = Field(
+        default=True, description="切换时撤销旧策略的未成交挂单（推荐）"
+    )
+
+
+class LiveAdapterOut(BaseModel):
+    name: str
+    supports_sandbox: bool
+    requires_api_key: bool = True
+    markets: list[str] = Field(default_factory=list)
+
+
+# --------------------------------------------------------------------------- #
+# 场外基金
+# --------------------------------------------------------------------------- #
+
+
+class FundNavPoint(BaseModel):
+    date: str
+    nav: float
+
+
+class FundNavOut(BaseModel):
+    symbol: str
+    name: str = ""
+    points: list[FundNavPoint] = Field(default_factory=list)
+
+
+class FundTradeCreate(BaseModel):
+    """申购填 ``amount``（支付金额），赎回填 ``shares``（申报份额）。"""
+
+    symbol: str = Field(min_length=1, max_length=32)
+    side: Literal["subscribe", "redeem"]
+    trade_date: str | None = None  # YYYY-MM-DD，缺省今天
+    confirm_date: str | None = None
+    amount: float | None = Field(default=None, gt=0)
+    shares: float | None = Field(default=None, gt=0)
+    nav: float | None = Field(default=None, gt=0, description="缺省取该日或之前最近净值")
+    fee_rate: float = Field(default=0.0, ge=0.0, le=0.5, description="申/赎费率，如 0.0015")
+    note: str = Field(default="", max_length=255)
+
+
+class FundTradeOut(BaseModel):
+    id: int
+    symbol: str
+    name: str = ""
+    side: str
+    trade_date: str | None = None
+    confirm_date: str | None = None
+    nav: float
+    shares: float
+    amount: float
+    fee_rate: float = 0.0
+    fee: float = 0.0
+    note: str = ""
+    created_at: str | None = None
+
+
+class FundHoldingOut(BaseModel):
+    symbol: str
+    name: str = ""
+    shares: float
+    avg_cost: float
+    cost: float
+    nav: float
+    market_value: float
+    unrealized_pnl: float
+    realized_pnl: float
+    total_pnl: float
+    return_pct: float
+    trades: int
+
+
+class FundPortfolioOut(BaseModel):
+    holdings: list[FundHoldingOut] = Field(default_factory=list)
+    totals: dict[str, Any] = Field(default_factory=dict)
+    nav_note: str = ""
 
 
 # --------------------------------------------------------------------------- #
@@ -448,7 +609,18 @@ __all__ = [
     "CredentialOut",
     "DataCacheOut",
     "ErrorBody",
+    "FundHoldingOut",
+    "FundNavOut",
+    "FundNavPoint",
+    "FundPortfolioOut",
+    "FundTradeCreate",
+    "FundTradeOut",
     "HealthOut",
+    "IndexQuoteOut",
+    "InstrumentOut",
+    "LiveAdapterOut",
+    "LiveStartRequest",
+    "LiveStateOut",
     "LoginRequest",
     "MarketOut",
     "Message",
@@ -457,6 +629,7 @@ __all__ = [
     "ParamOut",
     "QuoteOut",
     "QuoteResponse",
+    "RankingOut",
     "RefreshRequest",
     "RiskRuleInput",
     "RiskRuleOut",
@@ -465,6 +638,7 @@ __all__ = [
     "RunSummary",
     "SessionOut",
     "StrategyOut",
+    "SwitchStrategyRequest",
     "SymbolOut",
     "SystemInfo",
     "TokenResponse",

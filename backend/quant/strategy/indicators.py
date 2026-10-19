@@ -9,6 +9,33 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+# --------------------------------------------------------------------------- #
+# 免代码策略共用指标白名单（v1 条件拼装与 v2 蓝图读写同一张表）
+#   id → {参数名: ("int" | "float", 默认值或 None=必填)}
+# 边界：period 类参数 2~500；宽度类 0.1~10.0。加指标 = 在 indicators.py 写纯函数
+# + 在此登记一行，v1/v2 两处解释器同步可用。
+# --------------------------------------------------------------------------- #
+
+INDICATOR_SPECS: dict[str, dict[str, tuple[str, float | None]]] = {
+    "sma": {"period": ("int", None)},
+    "ema": {"period": ("int", None)},
+    "rsi": {"period": ("int", None)},
+    "std": {"period": ("int", None)},
+    "rolling_high": {"period": ("int", None)},
+    "rolling_low": {"period": ("int", None)},
+    "momentum": {"period": ("int", None)},
+    "atr": {"period": ("int", None)},
+    "boll_lower": {"period": ("int", None), "width": ("float", 2.0)},
+    "boll_mid": {"period": ("int", None), "width": ("float", 2.0)},
+    "boll_upper": {"period": ("int", None), "width": ("float", 2.0)},
+    "macd_dif": {"fast": ("int", 12), "slow": ("int", 26), "signal": ("int", 9)},
+    "macd_dea": {"fast": ("int", 12), "slow": ("int", 26), "signal": ("int", 9)},
+    "macd_hist": {"fast": ("int", 12), "slow": ("int", 26), "signal": ("int", 9)},
+}
+
+INDICATOR_INT_BOUNDS = (2, 500)
+INDICATOR_WIDTH_BOUNDS = (0.1, 10.0)
+
 
 def sma(series: pd.Series, period: int) -> pd.Series:
     return series.rolling(period, min_periods=period).mean()
@@ -79,6 +106,9 @@ def momentum(series: pd.Series, period: int) -> pd.Series:
 
 
 __all__ = [
+    "INDICATOR_INT_BOUNDS",
+    "INDICATOR_SPECS",
+    "INDICATOR_WIDTH_BOUNDS",
     "atr",
     "bollinger",
     "crossover",

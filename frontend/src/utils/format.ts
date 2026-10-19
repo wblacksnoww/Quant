@@ -103,15 +103,32 @@ const MARKET_ALIASES: Record<string, string> = {
   NYSE: 'US',
   HK: 'HK',
   HKG: 'HK',
+  CRYPTO: 'CRYPTO',
+  CC: 'CRYPTO',
+  FUND: 'FUND',
+  OF: 'FUND',
 }
 
-const MARKET_LABELS: Record<string, string> = { CN: 'A股', US: '美股', HK: '港股' }
+const MARKET_LABELS: Record<string, string> = {
+  CN: 'A股',
+  US: '美股',
+  HK: '港股',
+  CRYPTO: '虚拟货币',
+  FUND: '基金',
+}
 const MARKET_TONES: Record<string, 'accent' | 'warn' | 'success' | 'neutral'> = {
   CN: 'accent',
   US: 'success',
   HK: 'warn',
+  CRYPTO: 'warn',
+  FUND: 'neutral',
 }
-const CURRENCY_SYMBOLS: Record<string, string> = { CNY: '¥', USD: '$', HKD: 'HK$' }
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  CNY: '¥',
+  USD: '$',
+  HKD: 'HK$',
+  USDT: 'USDT ',
+}
 
 /** 市场标签（A股/美股/港股），未知市场原样返回。 */
 export function marketLabel(market: string | null | undefined): string {
@@ -131,14 +148,33 @@ export function currencySymbol(currency: string | null | undefined): string {
   return CURRENCY_SYMBOLS[currency.toUpperCase()] ?? currency
 }
 
+/** 价格展示精度：港股 3 位；虚拟货币按价格量级自适应；基金净值 4 位；其余 2 位。 */
+export function priceDigits(market: string | null | undefined, price?: number | null): number {
+  const key = (market ?? '').toUpperCase()
+  if (key === 'CRYPTO') {
+    const abs = Math.abs(price ?? 0)
+    if (abs >= 1) return 2
+    if (abs >= 0.01) return 4
+    if (abs >= 0.0001) return 6
+    return 8
+  }
+  if (key === 'FUND') return 4
+  return key === 'HK' ? 3 : 2
+}
+
 /**
  * 把用户输入的任意写法归一化成规范标的 id（``MARKET:CODE``）：
  * ``600519`` → ``CN:600519``；``aapl`` → ``US:AAPL``；``700`` → ``HK:00700``；
- * 已带前缀的原样通过；无法识别返回 ``null``。
+ * ``CRYPTO:BTC/USDT`` → 同上；``FUND:007005`` → 同上；已带前缀的原样通过；
+ * 无法识别返回 ``null``。
  */
 export function normalizeInstrumentId(text: string): string | null {
   const raw = (text ?? '').trim().toUpperCase()
   if (!raw) return null
+
+  // 虚拟货币交易对：必须显式前缀（裸 BASE/QUOTE 会被误判为别的东西）
+  const cryptoPair = raw.match(/^(?:CRYPTO|CC)[:.]([A-Z0-9]{1,20})\/([A-Z0-9]{1,20})$/)
+  if (cryptoPair) return `CRYPTO:${cryptoPair[1]}/${cryptoPair[2]}`
 
   // 显式前缀：MARKET:CODE / MARKET.CODE / MARKET+CODE（无分隔符时要求代码 ≥2 位，
   // 避免把 "USX" 这类美股代码误拆成 US:X）
@@ -150,10 +186,11 @@ export function normalizeInstrumentId(text: string): string | null {
       if (market === 'CN' && /^\d{1,6}$/.test(code)) return `CN:${code.padStart(6, '0')}`
       if (market === 'HK' && /^\d{1,5}$/.test(code)) return `HK:${code.padStart(5, '0')}`
       if (market === 'US' && /^[A-Z][A-Z0-9.\-]{0,11}$/.test(code)) return `US:${stripUsSuffix(code)}`
+      if (market === 'FUND' && /^\d{1,6}$/.test(code)) return `FUND:${code.padStart(6, '0')}`
     }
   }
 
-  // 后缀形式：600519.SH / AAPL.US
+  // 后缀形式：600519.SH / AAPL.US / 007005.FUND
   const suffixed = raw.match(/^([A-Z0-9.\-]+)\.([A-Z]+)$/)
   if (suffixed) {
     const market = MARKET_ALIASES[suffixed[2]]
@@ -162,6 +199,7 @@ export function normalizeInstrumentId(text: string): string | null {
       if (market === 'CN' && /^\d{1,6}$/.test(code)) return `CN:${code.padStart(6, '0')}`
       if (market === 'HK' && /^\d{1,5}$/.test(code)) return `HK:${code.padStart(5, '0')}`
       if (market === 'US' && /^[A-Z][A-Z0-9.\-]{0,11}$/.test(code)) return `US:${stripUsSuffix(code)}`
+      if (market === 'FUND' && /^\d{1,6}$/.test(code)) return `FUND:${code.padStart(6, '0')}`
     }
   }
 

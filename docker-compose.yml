@@ -7,7 +7,7 @@ services:
     build:
       context: .
       dockerfile: deploy/backend.Dockerfile
-    image: quant-trading-backend:1.0.0
+    image: ${QUANT_BACKEND_IMAGE:-quant-trading-backend:1.0.0}
     env_file:
       - path: .env
         required: false
@@ -22,6 +22,9 @@ services:
       QUANT_DEBUG: "false"
     volumes:
       - quant-data:/app/data
+    # 容器内访问宿主机代理（如 xray 10808）：QUANT_CRYPTO_PROXY=http://host.docker.internal:10808
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     expose:
       - "8000"
     restart: unless-stopped
@@ -35,7 +38,7 @@ services:
     build:
       context: .
       dockerfile: deploy/frontend.Dockerfile
-    image: quant-trading-frontend:1.0.0
+    image: ${QUANT_FRONTEND_IMAGE:-quant-trading-frontend:1.0.0}
     depends_on:
       backend:
         condition: service_healthy

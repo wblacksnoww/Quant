@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { backtestApi, marketApi, paperApi, systemApi } from '../api/client'
 import type { DataCacheItem, Health, PaperState, RunSummary, SystemInfo } from '../api/types'
+import { CardBoard } from '../components/CardBoard'
 import { Badge, Banner, Button, Card, Empty, Loading, Stat, StatusBadge } from '../components/ui'
 import { IconFlask, IconPlay, IconRefresh, IconShield } from '../components/icons'
 import { fmtDateTime, fmtMoney, fmtPct, fmtSignedPct } from '../utils/format'
@@ -67,9 +68,16 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="col" style={{ gap: 18 }}>
+    <div className="col" style={{ gap: 0 }}>
       {error && <Banner kind="warn">{error}</Banner>}
-
+      <CardBoard
+        storageKey="quant.layout.dashboard"
+        items={[
+          {
+            id: 'overview',
+            title: '系统概览',
+            wide: true,
+            render: () => (
       <div className="grid grid-4">
         <Stat
           label="系统状态"
@@ -103,9 +111,13 @@ export function DashboardPage() {
           tone={runningCount > 0 ? 'accent' : undefined}
         />
       </div>
-
-      <div className="grid grid-sidebar">
-        <div className="col" style={{ gap: 18 }}>
+            ),
+          },
+          {
+            id: 'runs',
+            title: '最近回测',
+            wide: true,
+            render: () => (
           <Card
             title="最近回测"
             description="点击任意记录打开完整结果"
@@ -172,7 +184,13 @@ export function DashboardPage() {
               </div>
             )}
           </Card>
-
+            ),
+          },
+          {
+            id: 'cache',
+            title: '行情缓存',
+            wide: true,
+            render: () => (
           <Card
             title="行情缓存"
             description="本地 parquet 缓存，回测优先读取，避免重复拉取"
@@ -212,9 +230,13 @@ export function DashboardPage() {
               </div>
             )}
           </Card>
-        </div>
-
-        <div className="col" style={{ gap: 18 }}>
+            ),
+          },
+          {
+            id: 'paper',
+            title: '模拟盘',
+            wide: false,
+            render: () => (
           <Card
             title="模拟盘"
             actions={<Badge tone={paper?.status === 'running' ? 'success' : 'neutral'}>{paper?.status === 'running' ? '运行中' : '未运行'}</Badge>}
@@ -246,7 +268,13 @@ export function DashboardPage() {
               </div>
             )}
           </Card>
-
+            ),
+          },
+          {
+            id: 'security',
+            title: '系统与安全',
+            wide: false,
+            render: () => (
           <Card title="系统与安全" description="加密与认证状态">
             {info ? (
               <div className="col" style={{ gap: 12 }}>
@@ -281,7 +309,13 @@ export function DashboardPage() {
               <Empty title="系统信息不可用" hint="后端可能未就绪。" />
             )}
           </Card>
-
+            ),
+          },
+          {
+            id: 'quick',
+            title: '快捷操作',
+            wide: false,
+            render: () => (
           <Card title="快捷操作">
             <div className="col" style={{ gap: 8 }}>
               <Link to="/backtest" className="btn btn-sm btn-block">
@@ -299,8 +333,10 @@ export function DashboardPage() {
               最近数据：{cache[0] ? `${cache[0].symbol} ${fmtDateTime(cache[0].end)}` : '无'}
             </div>
           </Card>
-        </div>
-      </div>
+            ),
+          },
+        ]}
+      />
     </div>
   )
 }

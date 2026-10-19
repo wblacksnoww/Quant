@@ -36,6 +36,13 @@ import pandas as pd
 
 from . import indicators as ta
 
+# 指标白名单唯一来源：v1 条件与 v2 蓝图共用（参数边界随之同源）
+from .indicators import (
+    INDICATOR_INT_BOUNDS as _INT_BOUNDS,
+    INDICATOR_SPECS as _INDICATORS,
+    INDICATOR_WIDTH_BOUNDS as _WIDTH_BOUNDS,
+)
+
 GRAPH_VERSION = 2
 MAX_NODES = 48
 MAX_EDGES = 96
@@ -48,23 +55,6 @@ _ID_RE = re.compile(r"^[a-z0-9_]{1,24}$")
 # 数据源（无输入，输出序列）
 _SOURCES = ("open", "high", "low", "close", "volume")
 # 指标（单输入 price，输出序列；参数白名单与 v1 一致）
-_INDICATORS: dict[str, dict[str, tuple[str, float | None]]] = {
-    "sma": {"period": ("int", None)},
-    "ema": {"period": ("int", None)},
-    "rsi": {"period": ("int", None)},
-    "std": {"period": ("int", None)},
-    "rolling_high": {"period": ("int", None)},
-    "rolling_low": {"period": ("int", None)},
-    "momentum": {"period": ("int", None)},
-    "atr": {"period": ("int", None)},
-    "boll_lower": {"period": ("int", None), "width": ("float", 2.0)},
-    "boll_mid": {"period": ("int", None), "width": ("float", 2.0)},
-    "boll_upper": {"period": ("int", None), "width": ("float", 2.0)},
-    "macd_dif": {"fast": ("int", 12), "slow": ("int", 26), "signal": ("int", 9)},
-    "macd_dea": {"fast": ("int", 12), "slow": ("int", 26), "signal": ("int", 9)},
-    "macd_hist": {"fast": ("int", 12), "slow": ("int", 26), "signal": ("int", 9)},
-}
-
 _MACD_TUP = ("macd_dif", "macd_dea", "macd_hist")
 
 # 算术（双输入，输出序列）
@@ -77,9 +67,6 @@ _LOGIC_2 = ("and", "or")
 
 _BOOL_NODES = frozenset(_COMPARE + _LOGIC_1 + _LOGIC_2)
 _ALL_TYPES = frozenset(_SOURCES) | frozenset(_INDICATORS) | frozenset(_ARITH + _COMPARE + _LOGIC_1 + _LOGIC_2) | {"const"}
-
-_INT_BOUNDS = (2, 500)
-_WIDTH_BOUNDS = (0.1, 10.0)
 
 # 每个 "kind" 在画布上是一种颜色：
 #   const  —— 标量常数（可连任何数值输入）

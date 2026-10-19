@@ -14,6 +14,10 @@ A 股规则依据（2024 年起沪深两市统一口径）：
   无印花税与过户费；无涨跌停、T+0 见 :mod:`quant.execution.rules`。
 * **港股**（``CostModel.for_market("HK")``）：佣金 0.01%、印花税 0.1% **双边**、
   无最低佣金（真实还有交易征费/交易费/结算费等小额费项，这里忽略）。
+* **虚拟货币**（``CostModel.for_market("CRYPTO")``）：佣金 0.1% **双边**、无最低佣金、
+  无印花税与过户费（各家交易所差异大，正式使用请在请求里覆盖）。
+* **场外基金**（``CostModel.for_market("FUND")``）：引擎费用全 0 —— 申赎费在
+  基金模块按申赎记录单独记账，不经过本模型。
 """
 
 from __future__ import annotations
@@ -45,13 +49,15 @@ class CostModel:
             return price
         return price * (1.0 + rate) if side is Side.BUY else price * (1.0 - rate)
 
-    def fees(self, side: Side, price: float, quantity: int, *, gross: float | None = None) -> FeeBreakdown:
+    def fees(
+        self, side: Side, price: float, quantity: float, *, gross: float | None = None
+    ) -> FeeBreakdown:
         """计算一笔成交的全部费用。
 
         ``gross`` 允许显式传入成交金额（当成交价与参考价不同时可保持口径一致）。
         滑点成本按"参考价 × 数量"的偏移计入。
         """
-        value = float(gross) if gross is not None else abs(float(price) * int(quantity))
+        value = float(gross) if gross is not None else abs(float(price) * float(quantity))
         commission = max(self.min_commission, self.commission_rate * value) if value > 0 else 0.0
         stamp = 0.0
         if value > 0 and (side is Side.SELL or self.stamp_both_sides):
@@ -65,28 +71,40 @@ class CostModel:
         )
 
     # ------------------------------------------------------------------ #
-    def estimate_buy_cost(self, price: float, quantity: int) -> float:
+    def estimate_buy_cost(self, price: float, quantity: float) -> float:
         """买入所需现金总额（成交额 + 费用），用于资金校验与下单量折算。"""
         value = abs(price * quantity)
         fees = self.fees(Side.BUY, price, quantity, gross=value)
         return value + fees.total
 
-    def estimate_sell_proceeds(self, price: float, quantity: int) -> float:
+    def estimate_sell_proceeds(self, price: float, quantity: float) -> float:
         """卖出可回收现金（成交额 - 费用）。"""
         value = abs(price * quantity)
         fees = self.fees(Side.SELL, price, quantity, gross=value)
         return value - fees.total
 
-    def max_affordable_quantity(self, cash: float, price: float, lot_size: int = 100) -> int:
-        """在给定现金和价格下，按整手可买入的最大股数。"""
+    def max_affordable_quantity(self, cash: float, price: float, lot_size: int = 100) -> float:
+        """在给定现金和价格下可买入的最大数量。
+
+        整手市场（``lot_size > 1``）返回整手的整数倍；任意数量市场
+        （虚拟货币等）按费用二分逼近返回小数数量。
+        """
         if price <= 0 or cash <= 0:
-            return 0
-        # 先按不含费估算，再逐步下调直到费用后仍在预算内
-        raw = int(cash / price)
-        qty = (raw // lot_size) * lot_size
-        while qty > 0 and self.estimate_buy_cost(price, qty) > cash:
-            qty -= lot_size
-        return max(0, qty)
+            return 0.0
+        if lot_size > 1:
+            raw = int(cash / price)
+            qty = (raw // lot_size) * lot_size
+            while qty > 0 and self.estimate_buy_cost(price, qty) > cash:
+                qty -= lot_size
+            return float(max(0, qty))
+        lo, hi = 0.0, cash / price
+        for _ in range(64):
+            mid = (lo + hi) / 2.0
+            if self.estimate_buy_cost(price, mid) <= cash:
+                lo = mid
+            else:
+                hi = mid
+        return lo
 
     def to_dict(self) -> dict[str, float | bool]:
         return {
@@ -129,6 +147,19 @@ class CostModel:
                 stamp_tax_rate=1e-3,
                 transfer_fee_rate=0.0,
                 stamp_both_sides=True,
+            ),
+            "CRYPTO": cls(
+                commission_rate=1e-3,
+                min_commission=0.0,
+                stamp_tax_rate=0.0,
+                transfer_fee_rate=0.0,
+            ),
+            # 场外基金不经引擎撮合；这里给全 0 预设避免静默回退到 A 股费率
+            "FUND": cls(
+                commission_rate=0.0,
+                min_commission=0.0,
+                stamp_tax_rate=0.0,
+                transfer_fee_rate=0.0,
             ),
         }
         return presets.get(str(market).strip().upper(), presets["CN"])

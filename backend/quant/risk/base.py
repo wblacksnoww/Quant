@@ -23,7 +23,7 @@ from typing import Any, Iterable
 from ..core.events import EventBus, EventType
 from ..core.portfolio import Account
 from ..core.types import AccountSnapshot, Fill, Order, Side, utcnow
-from ..execution.rules import rules_for
+from ..execution.rules import round_down_lot, rules_for
 
 log = logging.getLogger(__name__)
 
@@ -275,7 +275,7 @@ class LotSizeCheck(RiskRule):
         if order.side is Side.SELL:
             return RiskDecision.ok()
         lot = rules_for(order.symbol).lot_size
-        if lot > 1 and order.quantity % lot != 0:
+        if lot > 1 and abs(order.quantity - round_down_lot(order.quantity, order.symbol)) > 1e-9:
             self.trigger_count += 1
             return RiskDecision.block(
                 self.rule_id, f"买入数量 {order.quantity} 不是 {lot} 的整数倍", self.severity

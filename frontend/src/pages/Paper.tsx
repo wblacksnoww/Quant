@@ -13,6 +13,7 @@ import type {
 } from '../api/types'
 import { EquityChart } from '../components/Charts'
 import { CustomStrategySelect } from '../components/CustomStrategySelect'
+import { SwitchStrategyModal } from '../components/SwitchStrategy'
 import { IconPlay, IconRefresh, IconStop } from '../components/icons'
 import { Badge, Banner, Button, Card, Empty, Field, Loading, Stat, StatusBadge } from '../components/ui'
 import { useEvents } from '../store/events'
@@ -42,6 +43,7 @@ export function PaperPage() {
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
   const [stopping, setStopping] = useState(false)
+  const [switchOpen, setSwitchOpen] = useState(false)
   const [error, setError] = useState('')
 
   const [strategyId, setStrategyId] = useState('')
@@ -470,9 +472,14 @@ export function PaperPage() {
               </dl>
               {state.error && <Banner kind="danger">{state.error}</Banner>}
               {state.status === 'running' && (
-                <Button variant="danger" block loading={stopping} onClick={() => void stop()}>
-                  <IconStop /> 停止模拟盘
-                </Button>
+                <>
+                  <Button block onClick={() => setSwitchOpen(true)}>
+                    切换策略（下一轮生效）
+                  </Button>
+                  <Button variant="danger" block loading={stopping} onClick={() => void stop()}>
+                    <IconStop /> 停止模拟盘
+                  </Button>
+                </>
               )}
             </div>
           ) : (
@@ -658,6 +665,14 @@ export function PaperPage() {
           </div>
         )}
       </Card>
+
+      <SwitchStrategyModal
+        open={switchOpen}
+        onClose={() => setSwitchOpen(false)}
+        kind="paper"
+        current={state?.strategy_id}
+        onDone={() => void loadState()}
+      />
     </div>
   )
 }

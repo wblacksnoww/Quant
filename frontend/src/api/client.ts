@@ -18,12 +18,21 @@ import type {
   CustomSpec,
   CustomStrategy,
   DataCacheItem,
+  FundNav,
+  FundPortfolio,
+  FundTrade,
   Health,
+  IndexQuote,
+  InstrumentInfo,
+  LiveAdapter,
+  LiveStartRequest,
+  LiveState,
   MarketInfo,
   Message,
   PaperStartRequest,
   PaperState,
   QuotesResponse,
+  Ranking,
   RiskPresets,
   RiskRule,
   RunAccepted,
@@ -253,10 +262,22 @@ export const marketApi = {
   markets: () => request<MarketInfo[]>('/market/markets'),
   bars: (symbol: string, start?: string, end?: string, refresh = false) =>
     request<BarsResponse>('/market/bars', { query: { symbol, start, end, refresh } }),
+  indices: () => request<IndexQuote[]>('/market/indices'),
+  instrument: (symbol: string) =>
+    request<InstrumentInfo>('/market/instrument', { query: { symbol } }),
+  intraday: (symbol: string, freq: '1m' | '5m' | '15m' | '30m' | '60m' = '5m', limit = 240) =>
+    request<BarsResponse>('/market/intraday', { query: { symbol, freq, limit } }),
+  klines: (
+    symbol: string,
+    interval: '1m' | '5m' | '15m' | '30m' | '60m' | '1d' | '1w' | '1M' = '1d',
+    limit = 240,
+  ) => request<BarsResponse>('/market/klines', { query: { symbol, interval, limit } }),
   quote: (symbols: string[]) =>
     request<QuotesResponse>('/market/quote', {
       query: { symbols: symbols.join(',') },
     }),
+  ranking: (market: string, sort = 'change_pct', order = 'desc', limit = 20, period = 'day') =>
+    request<Ranking>('/market/ranking', { query: { market, sort, order, limit, period } }),
   search: (keyword: string, limit = 10, market?: string | null) =>
     request<SymbolInfo[]>('/market/search', { query: { q: keyword, limit, market } }),
   symbols: () => request<string[]>('/market/symbols'),
@@ -296,11 +317,51 @@ export const paperApi = {
   stop: () => request<Message>('/paper/stop', { method: 'POST' }),
   state: () => request<PaperState | null>('/paper/state'),
   runs: () => request<RunSummary[]>('/paper/runs'),
+  switchStrategy: (body: {
+    strategy_id: string
+    params?: Record<string, unknown>
+    cancel_open_orders?: boolean
+  }) => request<Message>('/paper/switch', { method: 'POST', body }),
 }
 
 export const riskApi = {
   rules: () => request<RiskRule[]>('/risk/rules'),
   presets: () => request<RiskPresets>('/risk/presets'),
+}
+
+export const fundApi = {
+  search: (q: string, limit = 30) =>
+    request<SymbolInfo[]>('/funds/search', { query: { q, limit } }),
+  nav: (symbol: string, start?: string, end?: string) =>
+    request<FundNav>('/funds/nav', { query: { symbol, start, end } }),
+  holdings: () => request<FundPortfolio>('/funds/holdings'),
+  trades: (symbol?: string, limit = 200) =>
+    request<FundTrade[]>('/funds/trades', { query: { symbol, limit } }),
+  createTrade: (body: {
+    symbol: string
+    side: 'subscribe' | 'redeem'
+    trade_date?: string
+    confirm_date?: string
+    amount?: number
+    shares?: number
+    nav?: number
+    fee_rate?: number
+    note?: string
+  }) => request<FundTrade>('/funds/trades', { method: 'POST', body }),
+  removeTrade: (id: number) => request<void>(`/funds/trades/${id}`, { method: 'DELETE' }),
+}
+
+export const liveApi = {
+  adapters: () => request<LiveAdapter[]>('/live/adapters'),
+  start: (body: LiveStartRequest) => request<RunAccepted>('/live/start', { method: 'POST', body }),
+  stop: () => request<Message>('/live/stop', { method: 'POST' }),
+  state: () => request<LiveState | null>('/live/state'),
+  runs: () => request<RunSummary[]>('/live/runs'),
+  switchStrategy: (body: {
+    strategy_id: string
+    params?: Record<string, unknown>
+    cancel_open_orders?: boolean
+  }) => request<Message>('/live/switch', { method: 'POST', body }),
 }
 
 export const systemApi = {

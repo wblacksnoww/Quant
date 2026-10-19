@@ -10,14 +10,18 @@ import pytest
 from quant.core.markets import (
     Instrument,
     Market,
+    clamp_to_limits,
     currency_symbol,
     parse_instrument,
+    price_limits,
     single_market,
     strip_us_suffix,
     try_parse,
 )
 from quant.core.types import Side
 from quant.data.base import SymbolInfo, create_provider
+
+from conftest import login_headers
 from quant.data.search import parse_smartbox, search_symbols
 from quant.data.store import DataStore
 from quant.engine.base import EngineConfig
@@ -125,7 +129,8 @@ def test_lot_rules_multi_market():
     assert rules_for("US:AAPL").t_plus_1 is False
     assert is_valid_lot(1, "US:AAPL")
     assert is_valid_lot(37, "US:AAPL")
-    assert round_down_lot(3.7, "US:AAPL") == 3
+    # 任意数量市场：小数数量保留（不再截断）
+    assert round_down_lot(3.7, "US:AAPL") == 3.7
 
     assert rules_for("HK:00700").lot_size == 100
     assert rules_for("HK:00700").t_plus_1 is False
@@ -133,6 +138,23 @@ def test_lot_rules_multi_market():
     assert not is_valid_lot(150, "HK:00700")
     assert is_valid_lot(150, "HK:00700", is_full_exit=True)
     assert round_down_lot(250, "HK:00700") == 200
+
+
+def test_crypto_board_rules():
+    board = rules_for("CRYPTO:BTC/USDT")
+    assert board.code == "crypto"
+    assert board.limit_pct == 0.0
+    assert board.lot_size == 1
+    assert board.t_plus_1 is False
+    assert is_valid_lot(0.0023, "CRYPTO:BTC/USDT")
+    assert round_down_lot(1.23456789, "CRYPTO:BTC/USDT") == 1.23456789
+    assert price_limits(100.0, "CRYPTO:BTC/USDT") == (None, None)
+    assert clamp_to_limits(999.0, 100.0, "CRYPTO:BTC/USDT") == 999.0
+
+    fund = rules_for("FUND:007005")
+    assert fund.code == "fund_otc"
+    assert fund.limit_pct == 0.0
+    assert fund.t_plus_1 is False
 
 
 # --------------------------------------------------------------------------- #
@@ -279,8 +301,8 @@ def test_market_endpoints_contract(client):
     markets = client.get("/api/market/markets", headers=headers)
     assert markets.status_code == 200, markets.text
     payload = markets.json()
-    assert {m["code"] for m in payload} == {"CN", "US", "HK"}
-    assert {m["currency"] for m in payload} == {"CNY", "USD", "HKD"}
+    assert {m["code"] for m in payload} == {"CN", "US", "HK", "CRYPTO", "FUND"}
+    assert {m["currency"] for m in payload} == {"CNY", "USD", "HKD", "USDT"}
 
     bars = client.get("/api/market/bars", params={"symbol": "CN:600519"}, headers=headers)
     assert bars.status_code == 200, bars.text
@@ -296,3 +318,34 @@ def test_market_endpoints_contract(client):
     calendar = client.get("/api/market/calendar", params={"market": "US"}, headers=headers)
     assert calendar.status_code == 200
     assert all(date.fromisoformat(d).weekday() < 5 for d in calendar.json())
+
+
+def test_instrument_detail_endpoint(client, context, monkeypatch):
+    """详情页：标识 + 交易规则（快照 mock 掉，避免测试触发真实交易所网络）。"""
+    monkeypatch.setattr(context.data, "snapshot", lambda symbols, ttl=3.0: ({}, ""))
+    headers = login_headers(client)
+
+    resp = client.get("/api/market/instrument", params={"symbol": "CN:600519"}, headers=headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["symbol"] == "CN:600519"
+    assert body["code"] == "600519"
+    assert body["market"] == "CN"
+    assert body["currency"] == "CNY"
+    assert body["lot_size"] == 100
+    assert body["t_plus_1"] is True
+    assert body["limit_pct"] == pytest.approx(0.10)
+
+    crypto = client.get(
+        "/api/market/instrument", params={"symbol": "CRYPTO:BTC/USDT"}, headers=headers
+    )
+    assert crypto.status_code == 200, crypto.text
+    cbody = crypto.json()
+    assert cbody["market"] == "CRYPTO"
+    assert cbody["currency"] == "USDT"
+    assert cbody["lot_size"] == 1
+    assert cbody["t_plus_1"] is False
+    assert cbody["limit_pct"] == 0.0
+
+    bad = client.get("/api/market/instrument", params={"symbol": "@@@"}, headers=headers)
+    assert bad.status_code == 422

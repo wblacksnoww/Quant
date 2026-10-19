@@ -85,6 +85,14 @@ class Settings(BaseSettings):
     default_initial_cash: float = 1_000_000.0
     default_risk_free_rate: float = 0.02
     paper_poll_interval: float = 5.0
+    # 是否启用虚拟货币数据源（无境外出口/代理的云服务器可关闭，避免行情请求超时）
+    enable_crypto: bool = True
+    # 实时快照缓存秒数：越小越实时，但免费行情源高频请求可能限流。
+    # A 股建议 >=2；以虚拟货币为主可设 1。
+    quote_ttl: float = 3.0
+    # 实盘总开关（默认关闭）：即使误配置真实凭据，也不会下单
+    enable_live_trading: bool = False
+    live_poll_interval: float = 5.0
 
     # -- 前端 -------------------------------------------------------------- #
     frontend_dist: str = "frontend/dist"
@@ -143,6 +151,8 @@ class Settings(BaseSettings):
                 warnings.append("生产环境建议开启 secure_cookies（需 HTTPS）")
         if self.database_url.startswith("sqlite") and self.is_production:
             warnings.append("生产环境建议使用 PostgreSQL；SQLite 仅适合单实例")
+        if self.enable_live_trading:
+            warnings.append("实盘开关已开启（QUANT_ENABLE_LIVE_TRADING=true），请确认测试网/真实资金设置与额度上限")
         return warnings
 
 

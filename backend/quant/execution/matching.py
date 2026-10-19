@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from enum import Enum
 
@@ -37,7 +38,7 @@ class MatchOutcome:
 
     filled: bool
     fill_price: float = 0.0
-    quantity: int = 0
+    quantity: float = 0.0
     reason: BlockReason = BlockReason.NONE
     detail: str = ""
 
@@ -129,7 +130,7 @@ class MatchingEngine:
         # --- 成交量约束 -------------------------------------------------- #
         quantity = order.remaining
         if self.volume_limit_pct > 0 and bar.volume > 0:
-            capacity = int(bar.volume * self.volume_limit_pct)
+            capacity = bar.volume * self.volume_limit_pct
             if capacity <= 0:
                 return MatchOutcome(
                     False, reason=BlockReason.NO_LIQUIDITY, detail=f"成交量 {bar.volume:.0f} 过小"
@@ -139,7 +140,7 @@ class MatchingEngine:
         # 买入按整手；卖出允许零股清仓
         lot = rules.lot_size
         if lot > 1 and side is Side.BUY:
-            quantity = int(quantity // lot) * lot
+            quantity = math.floor(quantity / lot) * lot
         if quantity <= 0:
             return MatchOutcome(
                 False, reason=BlockReason.NO_LIQUIDITY, detail="不足一个交易单位"
@@ -148,7 +149,9 @@ class MatchingEngine:
         return MatchOutcome(True, fill_price=price, quantity=quantity)
 
     # ------------------------------------------------------------------ #
-    def fees(self, order: Order, price: float, quantity: int, base_price: float | None = None) -> FeeBreakdown:
+    def fees(
+        self, order: Order, price: float, quantity: float, base_price: float | None = None
+    ) -> FeeBreakdown:
         """计算成交费用。滑点成本单独记一笔，方便成本归因。"""
         gross = price * quantity
         base = self.cost_model.fees(order.side, price, quantity, gross=gross)

@@ -355,7 +355,7 @@ export function BacktestPage() {
 
               <Field
                 label="标的代码"
-                hint="规范符号如 CN:600519 / US:AAPL / HK:00700，兼容旧 6 位代码；逗号或换行分隔。"
+                hint="规范符号如 CN:600519 / US:AAPL / HK:00700 / CRYPTO:BTC/USDT，兼容旧 6 位代码；逗号或换行分隔。"
               >
                 <input
                   className="input mono"

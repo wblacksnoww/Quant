@@ -7,6 +7,9 @@ import { useWebSocket } from './hooks/useWebSocket'
 import { BacktestPage } from './pages/Backtest'
 import { BlueprintPage } from './pages/Blueprint'
 import { DashboardPage } from './pages/Dashboard'
+import { FundsPage } from './pages/Funds'
+import { InstrumentPage } from './pages/Instrument'
+import { LivePage } from './pages/Live'
 import { Login } from './pages/Login'
 import { MarketPage } from './pages/Market'
 import { PaperPage } from './pages/Paper'
@@ -60,10 +63,13 @@ export default function App() {
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/market" element={<MarketPage />} />
+          <Route path="/market/:code" element={<InstrumentPage />} />
           <Route path="/strategies" element={<StrategiesPage />} />
           <Route path="/strategies/blueprint" element={<BlueprintPage />} />
           <Route path="/backtest" element={<BacktestPage />} />
           <Route path="/paper" element={<PaperPage />} />
+          <Route path="/live" element={<LivePage />} />
+          <Route path="/funds" element={<FundsPage />} />
           <Route path="/risk" element={<RiskPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
