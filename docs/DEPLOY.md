@@ -257,8 +257,8 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d backend
 ```bash
 git clone --depth 1 https://github.com/wblacksnoww/Quant.git quant-trading
 cd quant-trading
-sudo ./scripts/quick-deploy.sh quant.example.com          # 拉 CI 镜像（默认 latest）
-sudo ./scripts/quick-deploy.sh quant.example.com --build  # 或服务器本地构建
+./scripts/quick-deploy.sh quant.example.com          # 拉 CI 镜像（默认 latest；已在 docker 组时无需 sudo）
+./scripts/quick-deploy.sh quant.example.com --build  # 或服务器本地构建
 ```
 
 脚本会：生成 `.env`（随机主密钥/管理员口令）→ 写入三层 compose 与镜像变量 →

@@ -27,6 +27,12 @@ ENV_FILE="$ROOT/.env"
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "== 生成 .env（随机主密钥/管理员口令）=="
   ./scripts/init-secrets.sh "$DOMAIN"
+  # 用 sudo 运行时 init-secrets 会以 root 创建 .env（600），普通用户随后
+  # 执行 docker compose 会读不了，这里把属主交还给调用者
+  if [[ "$(id -u)" -eq 0 && -n "${SUDO_USER:-}" ]]; then
+    chown "$SUDO_USER:$SUDO_USER" "$ENV_FILE"
+    echo "  已将 .env 属主交还给 $SUDO_USER"
+  fi
 fi
 
 set_env() {
