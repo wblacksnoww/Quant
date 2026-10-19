@@ -8,6 +8,7 @@
 # 用法：
 #   ./scripts/quick-deploy.sh quant.example.com                  # 默认：nginx 共存模式
 #   ./scripts/quick-deploy.sh quant.example.com --caddy          # 启用内置 Caddy（80/443）
+#   ./scripts/quick-deploy.sh quant.example.com --no-caddy       # 切回 nginx 共存（移除 Caddy）
 #   ./scripts/quick-deploy.sh quant.example.com <commit-sha>     # 指定镜像版本
 #   ./scripts/quick-deploy.sh quant.example.com --build          # 服务器本地构建
 #   ./scripts/quick-deploy.sh quant.example.com --caddy --build  # 本地构建 + Caddy
@@ -22,6 +23,7 @@ USE_CADDY=0
 for arg in "$@"; do
   case "$arg" in
     --caddy) USE_CADDY=1 ;;
+    --no-caddy) USE_CADDY=-1 ;;
     --build) MODE="--build" ;;
     -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
     -*) echo "未知参数：$arg" >&2; exit 2 ;;
@@ -67,6 +69,8 @@ BASE_COMPOSE="docker-compose.yml:docker-compose.postgres.yml"
 CADDY_COMPOSE="docker-compose.yml:docker-compose.prod.yml:docker-compose.postgres.yml"
 if [[ "$USE_CADDY" -eq 1 ]]; then
   set_env "COMPOSE_FILE" "$CADDY_COMPOSE"
+elif [[ "$USE_CADDY" -eq -1 ]]; then
+  set_env "COMPOSE_FILE" "$BASE_COMPOSE"
 elif ! grep -q "^COMPOSE_FILE=" "$ENV_FILE"; then
   set_env "COMPOSE_FILE" "$BASE_COMPOSE"
 fi
@@ -81,7 +85,7 @@ fi
 
 if [[ "$MODE" == "--build" ]]; then
   echo "== 本地构建并启动（国内源，约 3~5 分钟）=="
-  docker compose up -d --build
+  docker compose up -d --build --remove-orphans
 else
   TAG="${MODE:-latest}"
   set_env "QUANT_BACKEND_IMAGE" "ghcr.io/wblacksnoww/quant-trading-backend:${TAG}"
@@ -98,7 +102,7 @@ else
     exit 1
   fi
   echo "== 启动（不构建）=="
-  docker compose up -d --no-build
+  docker compose up -d --no-build --remove-orphans
 fi
 
 echo "== 自检 =="
