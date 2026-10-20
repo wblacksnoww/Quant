@@ -1,20 +1,22 @@
 """纸盘路由：启动/暂停/继续/停止/实时状态。
 
 同一用户可同时运行多个会话（各有独立虚拟账户与线程），用 ``run_id`` 区分；
-「暂停」保留账户、持仓与策略进度，「继续」从暂停处接着跑，「停止」才结束会话。
+「暂停」保留账户、持仓与策略进度，「继续」从暂停处接着跑；「停止」结束会话后，
+仍可从历史记录「继续」（恢复现金、持仓、成交与回放进度，沿用同一 run_id）。
 会话事件在 WebSocket 层按用户定向投递，不会广播给其他人。
 """
 
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from ...core.events import EventBus
-from ...engine.paper import PaperEngine, PaperOptions
+from ...engine.base import EngineConfig
+from ...engine.paper import PaperEngine, PaperOptions, PaperResumeState
 from ...storage.models import User
 from ...storage.repositories import RunRecorder, RunRepository
 from ..context import AppContext
@@ -63,6 +65,14 @@ def start_paper(
             "mode": body.mode,
             "params": config.params,
             "initial_cash": config.initial_cash,
+            "risk": config.risk,
+            "cost": config.cost,
+            "benchmark": config.benchmark,
+            "risk_free_rate": config.risk_free_rate,
+            "replay_days": body.replay_days,
+            "replay_interval": body.replay_interval,
+            "poll_interval": body.poll_interval,
+            "respect_market_hours": body.respect_market_hours,
         },
     )
     recorder.start()
@@ -137,6 +147,181 @@ def stop_paper(
         message=f"已停止 {stopped} 个纸盘会话",
         detail={"stopped": stopped, "run_id": run_id},
     )
+
+
+@router.post(
+    "/continue",
+    response_model=RunAccepted,
+    status_code=202,
+    summary="从停止处继续历史纸盘会话（同一 run_id）",
+)
+def resume_paper(
+    run_id: str = Query(..., description="历史纸盘运行的 run_id"),
+    ctx: AppContext = Depends(get_ctx),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    record = RunRepository(session).get(run_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="运行记录不存在")
+    if record.kind != "paper":
+        raise HTTPException(status_code=422, detail="只有纸盘会话可以从停止处继续")
+    if record.user_id != user.id:
+        raise HTTPException(status_code=403, detail="无权继续该会话")
+    if ctx.paper.running(user.id, run_id):
+        raise HTTPException(status_code=409, detail="该会话仍在运行")
+    if record.status not in ("running", "stopped", "finished", "failed", "cancelled"):
+        raise HTTPException(status_code=409, detail=f"状态 {record.status} 不支持继续")
+
+    stored = dict(record.config or {})
+    symbols = list(record.symbols or stored.get("symbols") or [])
+    strategy_id = record.strategy_id or stored.get("strategy_id") or ""
+    mode = str(stored.get("mode") or "replay")
+    if mode not in ("replay", "live"):
+        mode = "replay"
+    params = dict(stored.get("params") or {})
+    initial_cash = float(stored.get("initial_cash") or ctx.settings.default_initial_cash)
+
+    equity = [item for item in (record.equity_curve or []) if isinstance(item, dict)]
+    if not equity:
+        raise HTTPException(status_code=409, detail="该会话没有可恢复的进度")
+    try:
+        last_date = datetime.fromisoformat(str(equity[-1].get("dt"))).date()
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail="无法解析上次推进的日期") from exc
+
+    today = date.today()
+    warmup_days = int(stored.get("replay_days") or 120)
+    if mode == "replay":
+        if last_date >= today:
+            raise HTTPException(
+                status_code=409, detail="该回放已推进到最新交易日，请重新启动一个新会话"
+            )
+        replay_days = min(1000, max(10, (today - last_date).days + warmup_days))
+    else:
+        replay_days = min(1000, max(10, warmup_days))
+    start = today - timedelta(days=min(3650, replay_days * 2))
+
+    try:
+        config = EngineConfig(
+            strategy_id=strategy_id,
+            symbols=symbols,
+            start=start,
+            end=today,
+            initial_cash=initial_cash,
+            params=params,
+            cost=dict(stored.get("cost") or {}),
+            risk=stored.get("risk"),
+            benchmark=stored.get("benchmark"),
+            risk_free_rate=float(stored.get("risk_free_rate") or 0.0),
+            run_id=run_id,
+            user_id=user.id,
+        )
+        config.validate()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    trades = [item for item in (record.trades or []) if isinstance(item, dict)]
+    positions = [item for item in (record.positions or []) if isinstance(item, dict)]
+    cash = initial_cash + sum(float(item.get("cash_flow") or 0.0) for item in trades)
+    resume_state = PaperResumeState(
+        cash=cash,
+        positions=positions,
+        last_date=last_date if mode == "replay" else None,
+        realized_pnl=sum(float(item.get("realized_pnl") or 0.0) for item in positions),
+        total_fees=sum(
+            float((item.get("fees") or {}).get("total") or 0.0) for item in trades
+        ),
+        turnover=sum(float(item.get("gross") or 0.0) for item in trades),
+        trade_count=len(trades),
+        trades=trades,
+    )
+
+    replay_interval = float(stored.get("replay_interval") or 0.35)
+    poll_interval = float(stored.get("poll_interval") or 5.0)
+    respect_hours = bool(stored.get("respect_market_hours", True))
+    run_config = {
+        **stored,
+        "strategy_id": config.strategy_id,
+        "symbols": config.symbols,
+        "mode": mode,
+        "params": config.params,
+        "initial_cash": config.initial_cash,
+        "risk": config.risk,
+        "cost": config.cost,
+        "benchmark": config.benchmark,
+        "risk_free_rate": config.risk_free_rate,
+        "replay_days": replay_days,
+        "replay_interval": replay_interval,
+        "poll_interval": poll_interval,
+        "respect_market_hours": respect_hours,
+        "resume_count": int(stored.get("resume_count") or 0) + 1,
+    }
+
+    recorder = RunRecorder(
+        ctx.db,
+        run_id,
+        user_id=user.id,
+        kind="paper",
+        strategy_id=config.strategy_id,
+        symbols=config.symbols,
+        config=run_config,
+        seed={
+            "equity": equity,
+            "trades": trades,
+            "orders": list(record.orders_data or []),
+            "logs": list(record.logs or []),
+            "elapsed_seconds": record.elapsed_seconds,
+        },
+    )
+    recorder.start()
+
+    bus = EventBus(f"paper:{run_id}")
+    unwire = bus_bridge(bus, ctx.hub, source="paper", run_id=run_id, user_id=user.id)
+    engine = PaperEngine(
+        config,
+        ctx.data,
+        options=PaperOptions(
+            mode=mode,
+            poll_interval=poll_interval,
+            replay_days=replay_days,
+            replay_interval=replay_interval,
+            respect_market_hours=respect_hours,
+        ),
+        bus=bus,
+        recorder=recorder,
+        resume=resume_state,
+    )
+
+    original_run = engine.run
+
+    def _run_with_cleanup():
+        try:
+            return original_run()
+        finally:
+            for cancel in unwire:
+                cancel()
+
+    engine.run = _run_with_cleanup  # type: ignore[method-assign]
+
+    try:
+        ctx.paper.start(user.id, engine)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    audit(
+        session,
+        request=None,
+        actor=user.username,
+        action="paper.resume",
+        target=run_id,
+        detail={
+            "last_date": last_date.isoformat(),
+            "mode": mode,
+            "resume_count": run_config["resume_count"],
+        },
+    )
+    return RunAccepted(run_id=run_id, status="running", mode=mode)
 
 
 @router.post("/pause", response_model=Message, summary="暂停纸盘会话（可继续）")

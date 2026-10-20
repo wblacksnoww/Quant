@@ -320,6 +320,8 @@ export const paperApi = {
     request<Message>('/paper/pause', { method: 'POST', query: { run_id: runId } }),
   resume: (runId?: string) =>
     request<Message>('/paper/resume', { method: 'POST', query: { run_id: runId } }),
+  continueRun: (runId: string) =>
+    request<RunAccepted>('/paper/continue', { method: 'POST', query: { run_id: runId } }),
   sessions: () => request<PaperState[]>('/paper/sessions'),
   state: () => request<PaperState | null>('/paper/state'),
   runs: () => request<RunSummary[]>('/paper/runs'),

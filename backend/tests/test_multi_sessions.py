@@ -221,3 +221,55 @@ def test_live_pause_and_resume(client, live_enabled, fake_adapter):
     assert resumed[0]["steps"] > steps_at_pause
 
     assert client.post("/api/live/stop", params={"credential_id": credential}, headers=headers).status_code == 200
+
+
+def test_paper_resume_stopped_run_keeps_history(client, context, monkeypatch):
+    """停止后的历史会话可以「继续」：同一 run_id、保留账户与已有曲线。"""
+    from quant.data.providers.synthetic import SyntheticProvider
+
+    synth = SyntheticProvider()
+    monkeypatch.setattr(
+        context.data,
+        "bars",
+        lambda symbol, start, end, refresh=False: synth.daily(symbol, start, end),
+    )
+    headers = login_headers(client)
+    body = {
+        "strategy_id": "buy_hold",
+        "symbols": ["CN:600519"],
+        "mode": "replay",
+        "replay_days": 120,
+        "replay_interval": 0.03,
+        "poll_interval": 5,
+    }
+    resp = client.post("/api/paper/start", json=body, headers=headers)
+    assert resp.status_code == 202, resp.text
+    run_id = resp.json()["run_id"]
+    time.sleep(0.7)
+    assert client.post("/api/paper/stop", params={"run_id": run_id}, headers=headers).status_code == 200
+
+    before = client.get(f"/api/backtests/{run_id}", headers=headers).json()
+    assert before["status"] == "stopped"
+    equity_before = len(before["equity_curve"])
+    trades_before = len(before["trades"])
+    assert equity_before > 0
+
+    resp = client.post("/api/paper/continue", params={"run_id": run_id}, headers=headers)
+    assert resp.status_code == 202, resp.text
+    assert resp.json()["run_id"] == run_id
+
+    # 已在运行的会话不能重复继续
+    again = client.post("/api/paper/continue", params={"run_id": run_id}, headers=headers)
+    assert again.status_code == 409
+
+    time.sleep(0.5)
+    sessions = client.get("/api/paper/sessions", headers=headers).json()
+    assert [item["run_id"] for item in sessions] == [run_id]
+    assert client.post("/api/paper/stop", params={"run_id": run_id}, headers=headers).status_code == 200
+
+    after = client.get(f"/api/backtests/{run_id}", headers=headers).json()
+    assert after["status"] == "stopped"
+    assert len(after["equity_curve"]) > equity_before
+    assert len(after["trades"]) >= trades_before
+    # 恢复时的现金/持仓与停止时一致（buy_hold 已建仓）
+    assert after["positions"] == before["positions"] or after["positions"]

@@ -446,6 +446,7 @@ class RunRecorder:
         symbols: Sequence[str] = (),
         config: dict[str, Any] | None = None,
         flush_every: int = 500,
+        seed: dict[str, Any] | None = None,
     ) -> None:
         self.db = db
         self.run_id = run_id
@@ -463,6 +464,13 @@ class RunRecorder:
         self._lock = threading.RLock()
         self._last_flush = 0
         self._started = False
+        # 从停止处继续：历史曲线/成交/委托先冻结在这里，finalize 时与新一段拼接
+        seed = seed or {}
+        self.seed_equity: list[dict[str, Any]] = list(seed.get("equity") or [])
+        self.seed_trades: list[dict[str, Any]] = list(seed.get("trades") or [])
+        self.seed_orders: list[dict[str, Any]] = list(seed.get("orders") or [])
+        self.seed_logs: list[dict[str, Any]] = list(seed.get("logs") or [])
+        self.seed_elapsed = float(seed.get("elapsed_seconds") or 0.0)
 
     # ------------------------------------------------------------------ #
     def start(self) -> None:
@@ -470,15 +478,27 @@ class RunRecorder:
             if self._started:
                 return
             with self.db.session() as session:
-                RunRepository(session).create(
-                    self.run_id,
-                    user_id=self.user_id,
-                    kind=self.kind,
-                    strategy_id=self.strategy_id,
-                    symbols=self.symbols,
-                    config=self.config,
-                    status="running",
-                )
+                repo = RunRepository(session)
+                record = repo.get(self.run_id)
+                if record is None:
+                    repo.create(
+                        self.run_id,
+                        user_id=self.user_id,
+                        kind=self.kind,
+                        strategy_id=self.strategy_id,
+                        symbols=self.symbols,
+                        config=self.config,
+                        status="running",
+                    )
+                else:
+                    # 恢复同一 run_id：把旧记录重新置为运行中
+                    record.status = "running"
+                    record.error = None
+                    record.progress = 0.0
+                    record.finished_at = None
+                    record.elapsed_seconds = self.seed_elapsed
+                    if self.config:
+                        record.config = self.config
             self._started = True
 
     # -- 引擎协议 ---------------------------------------------------------- #
@@ -563,15 +583,21 @@ class RunRecorder:
         """把最终结果写入 runs 表。``result`` 可以是 EngineResult 或其 dict。"""
         payload = result.to_dict(max_points=5000) if hasattr(result, "to_dict") else dict(result)
         with self._lock:
-            equity = payload.get("equity_curve") or self.equity
-            trades = payload.get("trades") or self.fills
-            orders = payload.get("orders") or list(self.orders.values())
+            equity = self.seed_equity + list(payload.get("equity_curve") or self.equity)
+            trades = self.seed_trades + list(payload.get("trades") or self.fills)
+            merged_orders: dict[str, dict[str, Any]] = {
+                str(item.get("id")): item for item in self.seed_orders if item.get("id")
+            }
+            for item in payload.get("orders") or list(self.orders.values()):
+                if item.get("id"):
+                    merged_orders[str(item["id"])] = item
+            orders = list(merged_orders.values()) or list(self.orders.values())
             positions = payload.get("positions") or []
-            logs = payload.get("logs") or self.logs
+            logs = (self.seed_logs + list(payload.get("logs") or self.logs))[-1000:]
             metrics = payload.get("metrics") or {}
             status = payload.get("status", "finished")
             error = payload.get("error")
-            elapsed = float(payload.get("elapsed_seconds") or 0.0)
+            elapsed = self.seed_elapsed + float(payload.get("elapsed_seconds") or 0.0)
 
         try:
             with self.db.session() as session:

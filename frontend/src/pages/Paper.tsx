@@ -45,6 +45,7 @@ export function PaperPage() {
   const [starting, setStarting] = useState(false)
   const [stopping, setStopping] = useState(false)
   const [togglingPause, setTogglingPause] = useState(false)
+  const [resumingRun, setResumingRun] = useState<string | null>(null)
   const [switchOpen, setSwitchOpen] = useState(false)
   const [error, setError] = useState('')
 
@@ -234,6 +235,23 @@ export function PaperPage() {
       notify('error', err instanceof ApiError ? err.message : '停止失败')
     } finally {
       setStopping(false)
+    }
+  }
+
+  const continueRun = async (runId: string) => {
+    setResumingRun(runId)
+    try {
+      const accepted = await paperApi.continueRun(runId)
+      setActiveRun(accepted.run_id)
+      notify('success', '已从停止处继续，账户与持仓已恢复')
+      window.setTimeout(() => {
+        void loadSessions()
+        void loadRuns()
+      }, 600)
+    } catch (err) {
+      notify('error', err instanceof ApiError ? err.message : '继续失败')
+    } finally {
+      setResumingRun(null)
     }
   }
 
@@ -731,7 +749,7 @@ export function PaperPage() {
         </>
       )}
 
-      <Card title="历史会话" description="纸盘结果同样落库，可按运行 ID 追溯" flush>
+      <Card title="历史会话" description="纸盘结果同样落库；停止后可点「继续」从停止处接着跑（同一运行 ID）" flush>
         {runs.length === 0 ? (
           <Empty title="暂无历史会话" />
         ) : (
@@ -746,6 +764,7 @@ export function PaperPage() {
                   <th className="right">收益率</th>
                   <th className="right">耗时</th>
                   <th>结束时间</th>
+                  <th>操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -760,6 +779,22 @@ export function PaperPage() {
                     </td>
                     <td className="right num tiny">{durationText(run.elapsed_seconds)}</td>
                     <td className="tiny faint">{fmtDateTime(run.finished_at ?? run.created_at)}</td>
+                    <td>
+                      {run.status === 'stopped' ||
+                      (run.status === 'running' &&
+                        !sessions.some((item) => item.run_id === run.run_id)) ? (
+                        <Button
+                          size="sm"
+                          loading={resumingRun === run.run_id}
+                          onClick={() => void continueRun(run.run_id)}
+                          title="从停止处继续（恢复现金、持仓与回放进度，沿用同一运行 ID）"
+                        >
+                          继续
+                        </Button>
+                      ) : (
+                        <span className="tiny faint">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

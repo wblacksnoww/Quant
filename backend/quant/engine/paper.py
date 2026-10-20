@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any, Callable
 
@@ -25,7 +25,7 @@ import pandas as pd
 from ..core.clock import CN_TZ, RealClock, SimClock
 from ..core.events import EventBus, EventRecorder, EventType
 from ..core.portfolio import Account
-from ..core.types import Bar, EngineStatus
+from ..core.types import Bar, EngineStatus, FeeBreakdown, Fill, Position, Side
 from ..data.calendar import is_market_open
 from ..data.store import MarketDataService
 from ..execution.broker import SimBroker
@@ -39,6 +39,20 @@ from .live_frames import append_today_row, update_today_row
 from .session import TradingSession, bar_from_frame
 
 log = logging.getLogger(__name__)
+
+
+@dataclass
+class PaperResumeState:
+    """从历史会话恢复纸盘所需的账户与进度（停止后继续用）。"""
+
+    cash: float
+    positions: list[dict[str, Any]] = field(default_factory=list)
+    last_date: date | None = None  # replay：已推进到的交易日；None 表示实时模式
+    realized_pnl: float = 0.0
+    total_fees: float = 0.0
+    turnover: float = 0.0
+    trade_count: int = 0
+    trades: list[dict[str, Any]] = field(default_factory=list)  # 用于精确重建现金/持仓
 
 
 @dataclass
@@ -61,10 +75,12 @@ class PaperEngine(BaseEngine):
         options: PaperOptions | None = None,
         bus: EventBus | None = None,
         recorder: Any = None,
+        resume: PaperResumeState | None = None,
     ) -> None:
         super().__init__(config)
         self.data = data
         self.options = options or PaperOptions()
+        self.resume_state = resume
         self.bus = bus or EventBus(f"paper:{config.run_id}")
         self.recorder = recorder
         self._recorder_events = EventRecorder(self.bus, limit=5000)
@@ -169,8 +185,16 @@ class PaperEngine(BaseEngine):
         cfg = self.config
         cost = CostModel.for_market(cfg.market, cfg.cost)
         account = Account(cfg.initial_cash, name=cfg.run_id)
-        for symbol, frame in frames.items():
-            account.mark_price(symbol, float(frame["close"].iloc[0]))
+        if self.resume_state is not None:
+            self._restore_account(account)
+            self.last_prices = {
+                item.symbol: item.last_price
+                for item in account.holdings()
+                if item.last_price
+            }
+        else:
+            for symbol, frame in frames.items():
+                account.mark_price(symbol, float(frame["close"].iloc[0]))
 
         matching = MatchingEngine(cost, volume_limit_pct=0.0)  # 纸盘不做量能约束
         broker = SimBroker(
@@ -201,6 +225,73 @@ class PaperEngine(BaseEngine):
             auto_end_of_day=self.options.mode == "replay",
         )
 
+    def _restore_account(self, account: Account) -> None:
+        """把上次停止时落库的现金/持仓/统计灌回新账户。"""
+        state = self.resume_state
+        if state is None:  # pragma: no cover - 调用点已判空
+            return
+        # 优先按成交流水重建：现金、成本、已实现盈亏都能精确还原；
+        # 成交被截断/损坏时退回停止时落库的账户快照。
+        if state.trades:
+            try:
+                for raw in state.trades:
+                    account.apply_fill(self._fill_from_record(raw))
+                for raw in state.positions:
+                    symbol = str(raw.get("symbol") or "")
+                    if symbol and raw.get("last_price"):
+                        account.mark_price(symbol, float(raw["last_price"]))
+                return
+            except Exception:  # noqa: BLE001 - 快照兜底，不阻断继续
+                log.warning("按成交重建纸盘账户失败，改用持仓快照", exc_info=True)
+                account.reset()
+        account.cash = float(state.cash)
+        account.realized_pnl = float(state.realized_pnl)
+        account.total_fees = float(state.total_fees)
+        account.turnover = float(state.turnover)
+        account.trade_count = int(state.trade_count)
+        for raw in state.positions:
+            symbol = str(raw.get("symbol") or "")
+            quantity = float(raw.get("quantity") or 0.0)
+            if not symbol or quantity <= 0:
+                continue
+            account.positions[symbol] = Position(
+                symbol=symbol,
+                quantity=quantity,
+                available=float(raw.get("available") or quantity),
+                avg_cost=float(raw.get("avg_cost") or 0.0),
+                last_price=float(raw.get("last_price") or 0.0),
+                realized_pnl=float(raw.get("realized_pnl") or 0.0),
+            )
+            if raw.get("last_price"):
+                account.mark_price(symbol, float(raw["last_price"]))
+
+    @staticmethod
+    def _fill_from_record(raw: dict[str, Any]) -> Fill:
+        fees = raw.get("fees") or {}
+        raw_dt = raw.get("dt")
+        try:
+            dt = datetime.fromisoformat(str(raw_dt)) if raw_dt else datetime.now()
+        except (TypeError, ValueError):
+            dt = datetime.now()
+        return Fill(
+            order_id=str(raw.get("order_id") or ""),
+            symbol=str(raw.get("symbol") or ""),
+            side=Side(str(raw.get("side") or "buy")),
+            quantity=float(raw.get("quantity") or 0.0),
+            price=float(raw.get("price") or 0.0),
+            dt=dt,
+            fees=FeeBreakdown(
+                commission=float(fees.get("commission") or 0.0),
+                stamp_tax=float(fees.get("stamp_tax") or 0.0),
+                transfer_fee=float(fees.get("transfer_fee") or 0.0),
+                slippage=float(fees.get("slippage") or 0.0),
+            ),
+            id=str(raw.get("id") or ""),
+            strategy=str(raw.get("strategy") or ""),
+            tag=str(raw.get("tag") or ""),
+            realized_pnl=float(raw.get("realized_pnl") or 0.0),
+        )
+
     # ------------------------------------------------------------------ #
     # replay：加速回放历史
     # ------------------------------------------------------------------ #
@@ -210,9 +301,12 @@ class PaperEngine(BaseEngine):
         dates = sorted({d for s in symbols for d in index_maps[s]})
         interval = max(0.0, self.options.replay_interval)
 
+        resume_after = self.resume_state.last_date if self.resume_state is not None else None
         for day in dates:
             if self.cancelled:
                 return
+            if resume_after is not None and day <= resume_after:
+                continue
             self._wait_if_paused()
             bars: dict[str, Bar] = {}
             indexes: dict[str, int] = {}
@@ -573,4 +667,4 @@ class PaperManager:
                 log.exception("停止用户 %s 的纸盘会话失败", user_id)
 
 
-__all__ = ["PaperEngine", "PaperManager", "PaperOptions", "PaperRunner"]
+__all__ = ["PaperEngine", "PaperManager", "PaperOptions", "PaperResumeState", "PaperRunner"]
