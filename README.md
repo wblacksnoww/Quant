@@ -40,7 +40,7 @@
   服务端总开关三道闸门；启动对账、逐单撤单、全链路审计。
   **同一券商凭证同时只允许一个会话**（避免两套策略争抢同一笔真实资金），
   不同凭证（不同资金账户）可以并行。
-- **模拟盘双模式**：`replay` 按倍速回放历史行情；`live` 盘中轮询快照（数据源不支持时回退最新收盘价并告警）。**同一账号可同时运行多个会话**（每个会话独立虚拟资金，默认上限 5 个），可分别查看与停止。
+- **模拟盘双模式**：`replay` 按倍速回放历史行情；`live` 盘中轮询快照（数据源不支持时回退最新收盘价并告警）。**同一账号可同时运行多个会话**（每个会话独立虚拟资金，默认上限 5 个）；支持**暂停/继续**，暂停保留账户、持仓与策略进度，「停止」才结束会话。
 - **策略可插拔**：`ParamSpec` 自描述参数，前端自动渲染表单；新增策略无需改 API 或前端。
   另有「条件拼装策略」：网页下拉框拼买卖规则（spec v1）或 **蓝图编辑器**拖节点连线
   （spec v2 节点数据流图，React Flow 画布 + 三模板），免代码创建、存库、直接回测/纸盘。
@@ -297,10 +297,16 @@ GET  /api/market/indices         指数快照（12 个常用指数）
 GET  /api/market/ranking         排行榜（今日/本周/本月 × 涨幅/成交额）
 GET  /api/market/quote           实时快照（多源聚合，含名称/涨跌/量额/market/currency）
 GET  /api/market/search          标的检索（代码/名称，可带 market=CN|US|HK）
-POST /api/paper/start            启动模拟盘
+POST /api/paper/start            启动模拟盘（同账号可多开）
+POST /api/paper/pause            暂停（保留账户/持仓/策略进度）
+POST /api/paper/resume           从暂停处继续
+POST /api/paper/stop             停止（按 run_id，结束会话）
+GET  /api/paper/sessions         运行中的会话列表
 POST /api/paper/switch           运行中切换策略
 GET  /api/paper/state            实时状态
 POST /api/live/start             启动实盘（测试网默认，三重闸门）
+POST /api/live/pause             暂停实盘（保留持仓，可继续）
+POST /api/live/resume            继续实盘
 GET  /api/funds/holdings         场外基金持仓与收益
 GET  /api/risk/rules             风控规则目录
 GET  /api/strategies/custom      我的拼装策略（免代码策略 CRUD，仅本人可见）
@@ -322,7 +328,7 @@ cd backend
 条件拼装策略（spec 白名单 + 用户隔离 + 引擎端到端；v1 条件与 v2 蓝图节点图）、
 虚拟货币数据源与 T+0/TIF、场外基金申赎聚合、实盘适配器与 LiveBroker 状态机、
 运行中策略切换、指数/排行榜/分钟线契约。
-后端 pytest 全套 **236 项**（`pytest --collect-only` 与 README/文档口径一致）。
+后端 pytest 全套 **244 项**（`pytest --collect-only` 与 README/文档口径一致）。
 
 ## 许可
 

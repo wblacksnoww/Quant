@@ -78,9 +78,10 @@ fi
 if ! grep -q "^QUANT_SECURE_COOKIES=" "$ENV_FILE"; then
   set_env "QUANT_SECURE_COOKIES" "true"
 fi
-# 默认关闭虚拟货币（国内服务器通常无境外出口）；有代理时手动改 true
+# 虚拟货币行情默认开启（与后端默认一致）；服务器无境外出口且无代理时
+# 可手动改为 false，避免交易所请求超时拖慢行情页
 if ! grep -q "^QUANT_ENABLE_CRYPTO=" "$ENV_FILE"; then
-  set_env "QUANT_ENABLE_CRYPTO" "false"
+  set_env "QUANT_ENABLE_CRYPTO" "true"
 fi
 
 if [[ "$MODE" == "--build" ]]; then

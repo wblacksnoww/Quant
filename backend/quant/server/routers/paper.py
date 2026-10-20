@@ -1,8 +1,8 @@
-"""纸盘路由：启动/停止/实时状态。
+"""纸盘路由：启动/暂停/继续/停止/实时状态。
 
-**每个用户一份独立会话**：``PaperManager`` 为每个用户维护一个后台引擎线程，
-同一用户同时只允许一个会话，不同用户互不影响；会话事件在 WebSocket 层
-按用户定向投递，不会广播给其他人。
+同一用户可同时运行多个会话（各有独立虚拟账户与线程），用 ``run_id`` 区分；
+「暂停」保留账户、持仓与策略进度，「继续」从暂停处接着跑，「停止」才结束会话。
+会话事件在 WebSocket 层按用户定向投递，不会广播给其他人。
 """
 
 from __future__ import annotations
@@ -137,6 +137,46 @@ def stop_paper(
         message=f"已停止 {stopped} 个纸盘会话",
         detail={"stopped": stopped, "run_id": run_id},
     )
+
+
+@router.post("/pause", response_model=Message, summary="暂停纸盘会话（可继续）")
+def pause_paper(
+    run_id: str | None = Query(default=None, description="不传则暂停最近一个运行中的会话"),
+    ctx: AppContext = Depends(get_ctx),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    if not ctx.paper.pause(user.id, run_id):
+        raise HTTPException(status_code=409, detail="没有可暂停的纸盘会话")
+    audit(
+        session,
+        request=None,
+        actor=user.username,
+        action="paper.pause",
+        target=run_id or "latest",
+        detail={},
+    )
+    return Message(message="纸盘已暂停，可随时继续", detail={"run_id": run_id})
+
+
+@router.post("/resume", response_model=Message, summary="继续已暂停的纸盘会话")
+def resume_paper(
+    run_id: str | None = Query(default=None, description="不传则继续最近一个会话"),
+    ctx: AppContext = Depends(get_ctx),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    if not ctx.paper.resume(user.id, run_id):
+        raise HTTPException(status_code=409, detail="没有已暂停的纸盘会话")
+    audit(
+        session,
+        request=None,
+        actor=user.username,
+        action="paper.resume",
+        target=run_id or "latest",
+        detail={},
+    )
+    return Message(message="纸盘已继续", detail={"run_id": run_id})
 
 
 @router.get("/sessions", response_model=list[PaperStateOut], summary="运行中的纸盘会话")

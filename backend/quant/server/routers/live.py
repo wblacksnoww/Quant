@@ -206,6 +206,46 @@ def stop_live(
     )
 
 
+@router.post("/pause", response_model=Message, summary="暂停实盘会话（可继续）")
+def pause_live(
+    credential_id: int | None = Query(default=None, description="不传则暂停最近一个运行中的会话"),
+    ctx: AppContext = Depends(get_ctx),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    if not ctx.live.pause(user.id, credential_id):
+        raise HTTPException(status_code=409, detail="没有可暂停的实盘会话")
+    audit(
+        session,
+        request=None,
+        actor=user.username,
+        action="live.pause",
+        target=str(credential_id) if credential_id else "latest",
+        detail={},
+    )
+    return Message(message="实盘已暂停，可随时继续", detail={"credential_id": credential_id})
+
+
+@router.post("/resume", response_model=Message, summary="继续已暂停的实盘会话")
+def resume_live(
+    credential_id: int | None = Query(default=None, description="不传则继续最近一个会话"),
+    ctx: AppContext = Depends(get_ctx),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    if not ctx.live.resume(user.id, credential_id):
+        raise HTTPException(status_code=409, detail="没有已暂停的实盘会话")
+    audit(
+        session,
+        request=None,
+        actor=user.username,
+        action="live.resume",
+        target=str(credential_id) if credential_id else "latest",
+        detail={},
+    )
+    return Message(message="实盘已继续", detail={"credential_id": credential_id})
+
+
 @router.get("/sessions", response_model=list[LiveStateOut], summary="运行中的实盘会话")
 def live_sessions(
     ctx: AppContext = Depends(get_ctx),

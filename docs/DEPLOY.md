@@ -237,6 +237,8 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d backend
 | `backend` 一直 unhealthy | `docker compose logs backend`；常见是 `.env` 主密钥格式错误或数据目录权限 |
 | Caddy 证书申请失败 | 检查域名解析、80/443 放行、`docker compose logs caddy` |
 | 登录后没有数据/回测为空 | 数据源不可达：切 `QUANT_DATA_PROVIDER=csv` 或先 `quant fetch` |
+| 行情页没有虚拟币、搜 `CRYPTO:BTC` 为空 | `.env` 里 `QUANT_ENABLE_CRYPTO=false`：改为 `true` 后 `docker compose up -d --force-recreate backend` |
+| 虚拟币行情空白/超时 | 服务器无法直连交易所：设 `QUANT_CRYPTO_PROXY`（容器访问宿主机代理用 `http://host.docker.internal:10808`），或改用可达的 `QUANT_CRYPTO_EXCHANGE` |
 | 8080 被占用 | 改 `.env` 的 `QUANT_HTTP_PORT` |
 | PostgreSQL 容器起不来 | `POSTGRES_PASSWORD` 未设置或含 `$`；检查 `docker-compose.postgres.yml` 的 `:?` 报错 |
 | 页面 401 循环 | 清除浏览器 localStorage 中的 `quant.refresh_token` 重新登录 |

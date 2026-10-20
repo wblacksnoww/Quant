@@ -77,6 +77,8 @@ class PaperEngine(BaseEngine):
         self.started_at: datetime | None = None
         self._thread: threading.Thread | None = None
         self._lock = threading.RLock()
+        # 暂停用独立 Event：置位时主循环挂起，会话、账户、策略状态全部保留
+        self._paused = threading.Event()
 
     # ------------------------------------------------------------------ #
     def run(self) -> EngineResult:
@@ -211,6 +213,7 @@ class PaperEngine(BaseEngine):
         for day in dates:
             if self.cancelled:
                 return
+            self._wait_if_paused()
             bars: dict[str, Bar] = {}
             indexes: dict[str, int] = {}
             for symbol in symbols:
@@ -235,6 +238,7 @@ class PaperEngine(BaseEngine):
         interval = max(1.0, self.options.poll_interval)
 
         while not self.cancelled:
+            self._wait_if_paused()
             now = datetime.now(CN_TZ)
             today = now.date()
 
@@ -297,9 +301,13 @@ class PaperEngine(BaseEngine):
     def _sleep(self, seconds: float) -> None:
         end = time.monotonic() + seconds
         while time.monotonic() < end:
-            if self.cancelled:
+            if self.cancelled or self._paused.is_set():
                 return
             time.sleep(min(0.5, end - time.monotonic()))
+
+    def _wait_if_paused(self) -> None:
+        while self._paused.is_set() and not self.cancelled:
+            time.sleep(0.1)
 
     # ------------------------------------------------------------------ #
     def _fill_result(self, result: EngineResult, session: TradingSession) -> None:
@@ -324,7 +332,24 @@ class PaperEngine(BaseEngine):
             if e.type is EventType.LOG
         ]
 
+    def pause(self) -> bool:
+        """暂停推进（不结束会话，账户/策略/进度全部保留）。"""
+        if self.status is not EngineStatus.RUNNING:
+            return False
+        self._paused.set()
+        self.bus.emit_status("paused", "纸盘已暂停", source="paper")
+        return True
+
+    def resume(self) -> bool:
+        """从暂停处继续。"""
+        if not self._paused.is_set():
+            return False
+        self._paused.clear()
+        self.bus.emit_status("running", "纸盘已继续", source="paper")
+        return True
+
     def stop(self) -> None:
+        self._paused.clear()  # 唤醒等待中的主循环
         self.cancel()
         self.status = EngineStatus.STOPPING
 
@@ -358,7 +383,9 @@ class PaperEngine(BaseEngine):
             "strategy_id": self.session.current_strategy_id if self.session else self.config.strategy_id,
             "symbols": self.config.symbols,
             "mode": self.options.mode,
-            "status": self.status.value,
+            "status": "paused"
+            if self._paused.is_set() and self.status is EngineStatus.RUNNING
+            else self.status.value,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "last_prices": self.last_prices,
             "cash": round(account.cash, 2) if account else 0.0,
@@ -515,6 +542,14 @@ class PaperManager:
     def state(self, user_id: int, run_id: str | None = None) -> dict[str, Any] | None:
         runner = self.runner(user_id, run_id)
         return runner.state() if runner is not None else None
+
+    def pause(self, user_id: int, run_id: str | None = None) -> bool:
+        engine = self.engine(user_id, run_id)
+        return bool(engine and engine.pause())
+
+    def resume(self, user_id: int, run_id: str | None = None) -> bool:
+        engine = self.engine(user_id, run_id)
+        return bool(engine and engine.resume())
 
     def sessions(self, user_id: int) -> list[dict[str, Any]]:
         """运行中的会话状态列表（多会话页面用）。"""

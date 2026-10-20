@@ -44,6 +44,7 @@ export function PaperPage() {
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
   const [stopping, setStopping] = useState(false)
+  const [togglingPause, setTogglingPause] = useState(false)
   const [switchOpen, setSwitchOpen] = useState(false)
   const [error, setError] = useState('')
 
@@ -233,6 +234,19 @@ export function PaperPage() {
       notify('error', err instanceof ApiError ? err.message : '停止失败')
     } finally {
       setStopping(false)
+    }
+  }
+
+  const togglePause = async (runId: string, paused: boolean) => {
+    setTogglingPause(true)
+    try {
+      const message = paused ? await paperApi.resume(runId) : await paperApi.pause(runId)
+      notify('info', message.message)
+      window.setTimeout(() => void loadSessions(), 400)
+    } catch (err) {
+      notify('error', err instanceof ApiError ? err.message : '操作失败')
+    } finally {
+      setTogglingPause(false)
     }
   }
 
@@ -493,7 +507,11 @@ export function PaperPage() {
             )}
 
             {error && <Banner kind="danger">{error}</Banner>}
-            {running && <Banner kind="info">已有会话在运行，先停止后才能启动新的会话。</Banner>}
+            {running && (
+              <Banner kind="info">
+                同一账号可同时运行多个模拟会话（各自独立虚拟资金）；「暂停」保留持仓与进度，可随时继续。
+              </Banner>
+            )}
 
             <div className="row between">
               <span className="tiny faint">实时模式需要数据源支持快照，否则回退到最近收盘价。</span>
@@ -544,13 +562,24 @@ export function PaperPage() {
                 </dd>
               </dl>
               {state.error && <Banner kind="danger">{state.error}</Banner>}
-              {state.status === 'running' && (
+              {(state.status === 'running' || state.status === 'paused') && (
                 <>
-                  <Button block onClick={() => setSwitchOpen(true)}>
-                    切换策略（下一轮生效）
+                  {state.status === 'running' && (
+                    <Button block onClick={() => setSwitchOpen(true)}>
+                      切换策略（下一轮生效）
+                    </Button>
+                  )}
+                  <Button
+                    block
+                    loading={togglingPause}
+                    onClick={() =>
+                      void togglePause(state.run_id, state.status === 'paused')
+                    }
+                  >
+                    {state.status === 'paused' ? '继续运行' : '暂停（保留进度）'}
                   </Button>
                   <Button variant="danger" block loading={stopping} onClick={() => void stop(state?.run_id)}>
-                    <IconStop /> 停止当前会话
+                    <IconStop /> 停止当前会话（结束）
                   </Button>
                 </>
               )}

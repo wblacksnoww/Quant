@@ -140,3 +140,84 @@ def test_live_multiple_credentials_same_user(client, live_enabled, fake_adapter)
         assert [item["credential_id"] for item in remaining] == [second]
     finally:
         client.post("/api/live/stop", headers=headers)
+
+
+def test_paper_pause_keeps_progress_and_resume(client, context, monkeypatch):
+    """暂停保留会话与进度，继续后从暂停处接着跑，停止才结束。"""
+    from quant.data.providers.synthetic import SyntheticProvider
+
+    synth = SyntheticProvider()
+    monkeypatch.setattr(
+        context.data,
+        "bars",
+        lambda symbol, start, end, refresh=False: synth.daily(symbol, start, end),
+    )
+    headers = login_headers(client)
+    body = {
+        "strategy_id": "buy_hold",
+        "symbols": ["CN:600519"],
+        "mode": "replay",
+        "replay_days": 120,
+        "replay_interval": 0.1,
+        "poll_interval": 5,
+    }
+
+    resp = client.post("/api/paper/start", json=body, headers=headers)
+    assert resp.status_code == 202, resp.text
+    run_id = resp.json()["run_id"]
+    time.sleep(0.6)
+
+    assert client.post("/api/paper/pause", params={"run_id": run_id}, headers=headers).status_code == 200
+    time.sleep(0.3)
+    paused = client.get("/api/paper/sessions", headers=headers).json()
+    assert [item["status"] for item in paused] == ["paused"]
+    steps_at_pause = paused[0]["steps"]
+
+    # 暂停期间不再推进
+    time.sleep(0.6)
+    still = client.get("/api/paper/sessions", headers=headers).json()
+    assert still[0]["steps"] == steps_at_pause
+    assert still[0]["status"] == "paused"
+
+    assert client.post("/api/paper/resume", params={"run_id": run_id}, headers=headers).status_code == 200
+    time.sleep(0.5)
+    resumed = client.get("/api/paper/sessions", headers=headers).json()
+    assert resumed[0]["status"] == "running"
+    assert resumed[0]["steps"] > steps_at_pause
+
+    assert client.post("/api/paper/stop", params={"run_id": run_id}, headers=headers).status_code == 200
+
+
+def test_live_pause_and_resume(client, live_enabled, fake_adapter):
+    headers = login_headers(client)
+    credential = _credential(client, headers, "okx-pause")
+    body = {
+        "strategy_id": "buy_hold",
+        "symbols": ["CRYPTO:BTC/USDT"],
+        "params": {},
+        "adapter": "ccxt",
+        "sandbox": True,
+        "poll_interval": 1.0,
+        "credential_id": credential,
+    }
+    resp = client.post("/api/live/start", json=body, headers=headers)
+    assert resp.status_code == 202, resp.text
+    time.sleep(1.5)
+
+    assert client.post("/api/live/pause", params={"credential_id": credential}, headers=headers).status_code == 200
+    time.sleep(0.3)
+    sessions = client.get("/api/live/sessions", headers=headers).json()
+    assert [item["status"] for item in sessions] == ["paused"]
+    steps_at_pause = sessions[0]["steps"]
+
+    time.sleep(1.2)
+    still = client.get("/api/live/sessions", headers=headers).json()
+    assert still[0]["steps"] == steps_at_pause
+
+    assert client.post("/api/live/resume", params={"credential_id": credential}, headers=headers).status_code == 200
+    time.sleep(1.2)
+    resumed = client.get("/api/live/sessions", headers=headers).json()
+    assert resumed[0]["status"] == "running"
+    assert resumed[0]["steps"] > steps_at_pause
+
+    assert client.post("/api/live/stop", params={"credential_id": credential}, headers=headers).status_code == 200

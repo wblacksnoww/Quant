@@ -113,6 +113,7 @@ const STATUS_MAP: Record<string, { text: string; tone: string }> = {
   pending: { text: '等待中', tone: 'neutral' },
   queued: { text: '排队中', tone: 'neutral' },
   running: { text: '运行中', tone: 'accent' },
+  paused: { text: '已暂停', tone: 'warn' },
   finished: { text: '已完成', tone: 'success' },
   failed: { text: '失败', tone: 'danger' },
   cancelled: { text: '已取消', tone: 'warn' },

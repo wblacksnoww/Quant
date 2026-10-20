@@ -10,7 +10,7 @@ import { ApiError, credentialApi, liveApi, strategyApi } from '../api/client'
 import type { Credential, LiveAdapter, LiveState, LiveStartRequest, Strategy } from '../api/types'
 import { EquityChart } from '../components/Charts'
 import { SwitchStrategyModal } from '../components/SwitchStrategy'
-import { Badge, Banner, Button, Card, Empty, Field, Loading, Stat } from '../components/ui'
+import { Badge, Banner, Button, Card, Empty, Field, Loading, Stat, StatusBadge } from '../components/ui'
 import { IconPlay, IconRefresh, IconStop } from '../components/icons'
 import {
   classForSign,
@@ -41,6 +41,7 @@ export function LivePage() {
   const [error, setError] = useState('')
   const [starting, setStarting] = useState(false)
   const [stopping, setStopping] = useState(false)
+  const [togglingPause, setTogglingPause] = useState(false)
   const [switchOpen, setSwitchOpen] = useState(false)
 
   // 表单
@@ -201,6 +202,21 @@ export function LivePage() {
       notify('error', err instanceof ApiError ? err.message : '停止失败')
     } finally {
       setStopping(false)
+    }
+  }
+
+  const togglePause = async (targetCredential: number | null | undefined, paused: boolean) => {
+    setTogglingPause(true)
+    try {
+      const message = paused
+        ? await liveApi.resume(targetCredential ?? undefined)
+        : await liveApi.pause(targetCredential ?? undefined)
+      notify('info', message.message)
+      window.setTimeout(() => void loadSessions(), 400)
+    } catch (err) {
+      notify('error', err instanceof ApiError ? err.message : '操作失败')
+    } finally {
+      setTogglingPause(false)
     }
   }
 
@@ -422,8 +438,22 @@ export function LivePage() {
             </Button>
             {active && (
               <>
-                <Button block onClick={() => setSwitchOpen(true)}>
-                  切换策略（下一轮生效）
+                {state?.status === 'running' && (
+                  <Button block onClick={() => setSwitchOpen(true)}>
+                    切换策略（下一轮生效）
+                  </Button>
+                )}
+                <Button
+                  block
+                  loading={togglingPause}
+                  onClick={() =>
+                    void togglePause(
+                      state?.credential_id,
+                      state?.status === 'paused',
+                    )
+                  }
+                >
+                  {state?.status === 'paused' ? '继续运行' : '暂停（保留持仓）'}
                 </Button>
                 <Button
                   variant="danger"
@@ -449,7 +479,7 @@ export function LivePage() {
           {state ? (
             <div className="col" style={{ gap: 12 }}>
               <div className="row between">
-                <Badge tone={active ? 'success' : 'neutral'}>{state.status}</Badge>
+                <StatusBadge status={state.status} />
                 <Badge tone={state.sandbox ? 'accent' : 'danger'}>
                   {state.sandbox ? '测试网' : '真实资金'}
                 </Badge>

@@ -316,6 +316,10 @@ export const paperApi = {
   start: (body: PaperStartRequest) => request<RunAccepted>('/paper/start', { method: 'POST', body }),
   stop: (runId?: string) =>
     request<Message>('/paper/stop', { method: 'POST', query: { run_id: runId } }),
+  pause: (runId?: string) =>
+    request<Message>('/paper/pause', { method: 'POST', query: { run_id: runId } }),
+  resume: (runId?: string) =>
+    request<Message>('/paper/resume', { method: 'POST', query: { run_id: runId } }),
   sessions: () => request<PaperState[]>('/paper/sessions'),
   state: () => request<PaperState | null>('/paper/state'),
   runs: () => request<RunSummary[]>('/paper/runs'),
@@ -358,6 +362,10 @@ export const liveApi = {
   start: (body: LiveStartRequest) => request<RunAccepted>('/live/start', { method: 'POST', body }),
   stop: (credentialId?: number) =>
     request<Message>('/live/stop', { method: 'POST', query: { credential_id: credentialId } }),
+  pause: (credentialId?: number) =>
+    request<Message>('/live/pause', { method: 'POST', query: { credential_id: credentialId } }),
+  resume: (credentialId?: number) =>
+    request<Message>('/live/resume', { method: 'POST', query: { credential_id: credentialId } }),
   sessions: () => request<LiveState[]>('/live/sessions'),
   state: () => request<LiveState | null>('/live/state'),
   runs: () => request<RunSummary[]>('/live/runs'),

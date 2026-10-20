@@ -81,6 +81,8 @@ class LiveEngine(BaseEngine):
         self.started_at: datetime | None = None
         self.reconcile_at: str | None = None
         self._last_reconcile = 0.0
+        # 暂停：保留会话、持仓与策略进度，只是暂不推进
+        self._paused = threading.Event()
 
     # ------------------------------------------------------------------ #
     def run(self) -> EngineResult:
@@ -209,6 +211,7 @@ class LiveEngine(BaseEngine):
         market = self.config.market
 
         while not self.cancelled:
+            self._wait_if_paused()
             now = datetime.now(CN_TZ)
             today = now.date()
 
@@ -294,9 +297,13 @@ class LiveEngine(BaseEngine):
     def _sleep(self, seconds: float) -> None:
         end = time.monotonic() + seconds
         while time.monotonic() < end:
-            if self.cancelled:
+            if self.cancelled or self._paused.is_set():
                 return
             time.sleep(min(0.5, end - time.monotonic()))
+
+    def _wait_if_paused(self) -> None:
+        while self._paused.is_set() and not self.cancelled:
+            time.sleep(0.1)
 
     # ------------------------------------------------------------------ #
     def _fill_result(self, result: EngineResult, session: TradingSession) -> None:
@@ -323,7 +330,23 @@ class LiveEngine(BaseEngine):
             if e.type is EventType.LOG
         ]
 
+    def pause(self) -> bool:
+        """暂停推进（不结束会话，持仓/策略/进度保留）。"""
+        if self.status is not EngineStatus.RUNNING:
+            return False
+        self._paused.set()
+        self.bus.emit_status("paused", "实盘已暂停", source="live")
+        return True
+
+    def resume(self) -> bool:
+        if not self._paused.is_set():
+            return False
+        self._paused.clear()
+        self.bus.emit_status("running", "实盘已继续", source="live")
+        return True
+
     def stop(self) -> None:
+        self._paused.clear()
         self.cancel()
         self.status = EngineStatus.STOPPING
 
@@ -357,7 +380,9 @@ class LiveEngine(BaseEngine):
             "adapter": self.adapter.name,
             "sandbox": self.adapter.sandbox,
             "credential_id": self.credential_id,
-            "status": self.status.value,
+            "status": "paused"
+            if self._paused.is_set() and self.status is EngineStatus.RUNNING
+            else self.status.value,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "last_prices": self.last_prices,
             "cash": round(account.cash, 2) if account else 0.0,
@@ -498,6 +523,14 @@ class LiveManager:
     def state(self, user_id: int, credential_id: int | None = None) -> dict[str, Any] | None:
         runner = self.runner(user_id, credential_id)
         return runner.state() if runner is not None else None
+
+    def pause(self, user_id: int, credential_id: int | None = None) -> bool:
+        engine = self.engine(user_id, credential_id)
+        return bool(engine and engine.pause())
+
+    def resume(self, user_id: int, credential_id: int | None = None) -> bool:
+        engine = self.engine(user_id, credential_id)
+        return bool(engine and engine.resume())
 
     def sessions(self, user_id: int) -> list[dict[str, Any]]:
         """运行中的实盘会话列表（每个凭证最多一个）。"""

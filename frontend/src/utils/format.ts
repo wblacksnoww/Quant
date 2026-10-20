@@ -172,9 +172,9 @@ export function normalizeInstrumentId(text: string): string | null {
   const raw = (text ?? '').trim().toUpperCase()
   if (!raw) return null
 
-  // 虚拟货币交易对：必须显式前缀（裸 BASE/QUOTE 会被误判为别的东西）
-  const cryptoPair = raw.match(/^(?:CRYPTO|CC)[:.]([A-Z0-9]{1,20})\/([A-Z0-9]{1,20})$/)
-  if (cryptoPair) return `CRYPTO:${cryptoPair[1]}/${cryptoPair[2]}`
+  // 虚拟货币交易对：必须显式前缀；省略报价币时默认 USDT（CRYPTO:BTC → BTC/USDT）
+  const cryptoPair = raw.match(/^(?:CRYPTO|CC)[:.]([A-Z0-9]{1,20})(?:\/([A-Z0-9]{1,20}))?$/)
+  if (cryptoPair) return `CRYPTO:${cryptoPair[1]}/${cryptoPair[2] ?? 'USDT'}`
 
   // 显式前缀：MARKET:CODE / MARKET.CODE / MARKET+CODE（无分隔符时要求代码 ≥2 位，
   // 避免把 "USX" 这类美股代码误拆成 US:X）

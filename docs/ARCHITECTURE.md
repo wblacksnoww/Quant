@@ -351,7 +351,7 @@ SQLite 默认 `data/quant.db`；PostgreSQL 用 `QUANT_DATABASE_URL` 切换，无
 - **数据隔离**：回测（`GET /api/backtests?mine=true`，详情/取消/删除校验归属）与纸盘记录
   按 `Run.user_id` 隔离；加密凭据按 `owner_id` 隔离；管理员可跨用户查看回测与凭据。
 - **会话控制**：停用用户或重置密码会吊销其全部 refresh 令牌；用户可查看并吊销自己的会话。
-- **纸盘与实时事件**：`PaperManager` 为每个用户维护独立的 `PaperRunner`，同一账号同时只能开一个会话，
+- **纸盘与实时事件**：`PaperManager` 为每个用户按 `run_id` 维护独立的 `PaperRunner`，同一账号可多开（上限 5 个），
   状态与历史只对自己可见；回测与纸盘的 WebSocket 事件在 `EventHub` 中按 `user_id` 定向投递，
   不会广播给其他登录用户。并发回测总量由 `QUANT_MAX_CONCURRENT_BACKTESTS` 统一限制。
 

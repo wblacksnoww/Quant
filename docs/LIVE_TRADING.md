@@ -34,7 +34,7 @@ Strategy ──submit──> RiskManager（前置风控）
 | 2 | 适配器 `sandbox=True`（默认）；关闭时必须 `confirm_live=true` | `LiveStartRequest` |
 | 3 | 凭据必须属于当前用户且 `kind=broker`，每次启动写审计 | `credentials` 表 / 审计链 |
 
-另外：同一账号同时只允许一个实盘会话（防止两套策略争抢同一笔资金）。
+另外：同一**凭证**同时只允许一个实盘会话（防止两套策略争抢同一笔资金）；不同凭证可并行。
 
 ## 2. 虚拟货币实盘（ccxt）
 

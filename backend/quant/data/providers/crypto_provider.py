@@ -184,9 +184,16 @@ class CryptoProvider(DataProvider):
         if wanted and wanted not in ("CRYPTO", "ALL", "全部"):
             return []
         kw = keyword.strip().upper()
+        # 允许用户直接输入 CRYPTO:BTC / CC:BTC（省略计价币时按 USDT 匹配）
+        for prefix in ("CRYPTO:", "CC:", "CRYPTO.", "CC."):
+            if kw.startswith(prefix):
+                kw = kw[len(prefix) :]
+                break
+        kw = kw.strip()
         out: list[SymbolInfo] = []
         for code, name in _TOP_PAIRS:
-            if kw and kw not in code and kw not in name.upper():
+            base = code.split("/")[0]
+            if kw and kw not in code and kw not in name.upper() and kw != base:
                 continue
             out.append(
                 SymbolInfo(

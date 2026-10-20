@@ -169,3 +169,13 @@ def test_search_all_includes_crypto(context):
 def test_search_all_matches_crypto_name(context):
     items = context.data.search("比特币", 10)
     assert any(item.symbol == "CRYPTO:BTC/USDT" for item in items)
+
+
+def test_crypto_search_accepts_market_prefix(monkeypatch):
+    from quant.data.providers.crypto_provider import CryptoProvider
+
+    provider = CryptoProvider()
+    monkeypatch.setattr(CryptoProvider, "_exchange", lambda self: None)
+    assert [i.symbol for i in provider.search("CRYPTO:BTC", 5)] == ["CRYPTO:BTC/USDT"]
+    assert [i.symbol for i in provider.search("cc:eth", 5)] == ["CRYPTO:ETH/USDT"]
+    assert [i.symbol for i in provider.search("BTC/USDT", 5)] == ["CRYPTO:BTC/USDT"]
