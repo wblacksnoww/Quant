@@ -410,14 +410,43 @@ class MarketDataService:
     def search(
         self, keyword: str = "", limit: int = 50, *, market: str | None = None
     ) -> list[SymbolInfo]:
-        provider = self._provider_for(market)
-        try:
-            return provider.search(keyword, limit, market=market)
-        except NotImplementedError:
-            return self._cached_search(keyword, limit, market)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("标的检索失败: %s", exc)
-            return self._cached_search(keyword, limit, market)
+        wanted = (market or "").strip().upper()
+        if wanted:
+            provider = self._provider_for(wanted)
+            try:
+                return provider.search(keyword, limit, market=market)
+            except NotImplementedError:
+                return self._cached_search(keyword, limit, market)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("标的检索失败: %s", exc)
+                return self._cached_search(keyword, limit, market)
+
+        # 不限市场（ALL）：主源 + 各市场专用源一起查。
+        # 之前只查主源（akshare），导致 BTC/ETH 等虚拟货币标的不出现在搜索结果里。
+        out: list[SymbolInfo] = []
+        seen: set[str] = set()
+        providers = [self.provider]
+        providers.extend(
+            item for item in self._all_providers() if item.markets and item is not self.provider
+        )
+        for provider in providers:
+            try:
+                items = provider.search(keyword, limit, market=None)
+            except NotImplementedError:
+                continue
+            except Exception as exc:  # noqa: BLE001 - 单个市场失败不影响其他市场
+                log.warning("数据源 %s 检索失败: %s", provider.name, exc)
+                continue
+            for item in items:
+                if item.symbol in seen:
+                    continue
+                seen.add(item.symbol)
+                out.append(item)
+                if len(out) >= limit:
+                    return out
+        if out:
+            return out
+        return self._cached_search(keyword, limit, market)
 
     def klines(self, symbol: str, *, interval: str = "1d", limit: int = 240) -> pd.DataFrame:
         """任意周期 K 线：分钟 / 日线 / 周线 / 月线（后两者由日线聚合）。"""

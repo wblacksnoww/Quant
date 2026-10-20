@@ -159,3 +159,13 @@ def test_provider_routing_by_market(context):
     # 检索同样按市场分派；crypto 搜索是静态白名单，不联网
     items = context.data.search("btc", 5, market="CRYPTO")
     assert [i.symbol for i in items] == ["CRYPTO:BTC/USDT"]
+
+def test_search_all_includes_crypto(context):
+    """不限市场的搜索要能搜到虚拟货币（之前只查股票主源）。"""
+    items = context.data.search("btc", 10)
+    assert any(item.symbol == "CRYPTO:BTC/USDT" for item in items)
+
+
+def test_search_all_matches_crypto_name(context):
+    items = context.data.search("比特币", 10)
+    assert any(item.symbol == "CRYPTO:BTC/USDT" for item in items)
