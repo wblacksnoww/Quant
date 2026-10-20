@@ -271,7 +271,7 @@ def openapi(args) -> int:
     from quant.config import Settings
     from quant.server.app import create_app
 
-    schema = create_app(Settings(env="test")).openapi()
+    schema = create_app(Settings(env="test", _env_file=None)).openapi()
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
