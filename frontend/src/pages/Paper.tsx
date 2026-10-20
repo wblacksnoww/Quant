@@ -2,20 +2,22 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { ApiError, paperApi, riskApi, strategyApi } from '../api/client'
+import { ApiError, backtestApi, paperApi, riskApi, strategyApi } from '../api/client'
 import type {
   PaperStartRequest,
   PaperState,
   RiskPresets,
   RiskRuleInput,
+  RunDetail,
   RunSummary,
   Strategy,
 } from '../api/types'
 import { EquityChart } from '../components/Charts'
 import { CustomStrategySelect } from '../components/CustomStrategySelect'
+import { RunDetailBody, RunMetrics } from '../components/RunDetail'
 import { SwitchStrategyModal } from '../components/SwitchStrategy'
 import { IconPlay, IconRefresh, IconStop } from '../components/icons'
-import { Badge, Banner, Button, Card, Empty, Field, Loading, Stat, StatusBadge } from '../components/ui'
+import { Badge, Banner, Button, Card, Empty, Field, Loading, Modal, Stat, StatusBadge } from '../components/ui'
 import { useEvents } from '../store/events'
 import { notify } from '../store/toast'
 import {
@@ -46,6 +48,10 @@ export function PaperPage() {
   const [stopping, setStopping] = useState(false)
   const [togglingPause, setTogglingPause] = useState(false)
   const [resumingRun, setResumingRun] = useState<string | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [detailRun, setDetailRun] = useState<RunDetail | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState('')
   const [switchOpen, setSwitchOpen] = useState(false)
   const [error, setError] = useState('')
 
@@ -235,6 +241,20 @@ export function PaperPage() {
       notify('error', err instanceof ApiError ? err.message : '停止失败')
     } finally {
       setStopping(false)
+    }
+  }
+
+  const openRunDetail = async (runId: string) => {
+    setDetailOpen(true)
+    setDetailRun(null)
+    setDetailError('')
+    setDetailLoading(true)
+    try {
+      setDetailRun(await backtestApi.get(runId))
+    } catch (err) {
+      setDetailError(err instanceof ApiError ? err.message : '读取运行详情失败')
+    } finally {
+      setDetailLoading(false)
     }
   }
 
@@ -780,20 +800,27 @@ export function PaperPage() {
                     <td className="right num tiny">{durationText(run.elapsed_seconds)}</td>
                     <td className="tiny faint">{fmtDateTime(run.finished_at ?? run.created_at)}</td>
                     <td>
-                      {run.status === 'stopped' ||
-                      (run.status === 'running' &&
-                        !sessions.some((item) => item.run_id === run.run_id)) ? (
+                      <div className="row" style={{ gap: 6 }}>
                         <Button
                           size="sm"
-                          loading={resumingRun === run.run_id}
-                          onClick={() => void continueRun(run.run_id)}
-                          title="从停止处继续（恢复现金、持仓与回放进度，沿用同一运行 ID）"
+                          variant="ghost"
+                          onClick={() => void openRunDetail(run.run_id)}
                         >
-                          继续
+                          详情
                         </Button>
-                      ) : (
-                        <span className="tiny faint">—</span>
-                      )}
+                        {(run.status === 'stopped' ||
+                          (run.status === 'running' &&
+                            !sessions.some((item) => item.run_id === run.run_id))) && (
+                          <Button
+                            size="sm"
+                            loading={resumingRun === run.run_id}
+                            onClick={() => void continueRun(run.run_id)}
+                            title="从停止处继续（恢复现金、持仓与回放进度，沿用同一运行 ID）"
+                          >
+                            继续
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -802,6 +829,42 @@ export function PaperPage() {
           </div>
         )}
       </Card>
+
+      <Modal
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        title={
+          <span className="row" style={{ gap: 8 }}>
+            运行详情
+            {detailRun && <Badge>{detailRun.run_id}</Badge>}
+          </span>
+        }
+        width={1100}
+      >
+        {detailLoading && <Loading text="正在读取运行详情…" />}
+        {detailError && <Banner kind="danger">{detailError}</Banner>}
+        {detailRun && (
+          <div className="col" style={{ gap: 16 }}>
+            <div className="row between wrap" style={{ gap: 8 }}>
+              <div className="row" style={{ gap: 8 }}>
+                <StatusBadge status={detailRun.status} />
+                <span className="small">{detailRun.strategy_id}</span>
+                <span className="tiny faint mono">{detailRun.symbols.join(', ')}</span>
+              </div>
+              <span className="tiny faint">
+                {durationText(detailRun.elapsed_seconds)} ·{' '}
+                {fmtDateTime(detailRun.finished_at ?? detailRun.created_at)}
+              </span>
+            </div>
+            {detailRun.status === 'running' && (
+              <Banner kind="info">会话仍在运行，以下为最近一次落库的进度快照。</Banner>
+            )}
+            {detailRun.error && <Banner kind="danger">运行失败：{detailRun.error}</Banner>}
+            {detailRun.status !== 'running' && <RunMetrics detail={detailRun} />}
+            <RunDetailBody detail={detailRun} />
+          </div>
+        )}
+      </Modal>
 
       <SwitchStrategyModal
         open={switchOpen}
