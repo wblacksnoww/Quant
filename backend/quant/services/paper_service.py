@@ -67,7 +67,17 @@ def start(ctx: Any, *, user_id: int, body: Any) -> str:
     )
     coord = _coordinator(ctx)
     key = _lease_key(config.run_id)
-    if coord is not None and not coord.acquire(key, kind="paper", user_id=user_id, run_id=config.run_id):
+    if coord is not None and not coord.acquire(
+        key,
+        kind="paper",
+        user_id=user_id,
+        run_id=config.run_id,
+        state={
+            "strategy_id": config.strategy_id,
+            "symbols": config.symbols,
+            "mode": body.mode,
+        },
+    ):
         raise ConflictError("该运行已在其他实例启动")
     recorder = RunRecorder(
         ctx.db,
@@ -194,7 +204,17 @@ def continue_run(ctx: Any, *, user_id: int, run_id: str) -> dict[str, Any]:
 
     coord = _coordinator(ctx)
     key = _lease_key(run_id)
-    if coord is not None and not coord.acquire(key, kind="paper", user_id=user_id, run_id=run_id):
+    if coord is not None and not coord.acquire(
+        key,
+        kind="paper",
+        user_id=user_id,
+        run_id=run_id,
+        state={
+            "strategy_id": config.strategy_id,
+            "symbols": config.symbols,
+            "mode": mode,
+        },
+    ):
         raise ConflictError("该会话正在其他实例运行")
 
     cash = initial_cash + sum(float(item.get("cash_flow") or 0.0) for item in trades)

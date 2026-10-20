@@ -89,7 +89,20 @@ def start(ctx: Any, *, user_id: int, body: Any) -> dict[str, Any]:
 
     coord = _coordinator(ctx)
     key = _lease_key(user_id, body.credential_id)
-    if coord is not None and not coord.acquire(key, kind="live", user_id=user_id, run_id=config.run_id):
+    if coord is not None and not coord.acquire(
+        key,
+        kind="live",
+        user_id=user_id,
+        run_id=config.run_id,
+        state={
+            "strategy_id": config.strategy_id,
+            "symbols": config.symbols,
+            "mode": "live",
+            "adapter": body.adapter,
+            "sandbox": body.sandbox,
+            "credential_id": body.credential_id,
+        },
+    ):
         raise ConflictError("该券商凭证正在其他实例运行")
 
     recorder = RunRecorder(

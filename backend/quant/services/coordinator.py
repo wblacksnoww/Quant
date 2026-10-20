@@ -260,13 +260,22 @@ class SessionCoordinator:
         self.leases.release_all()
 
     # ------------------------------------------------------------------ #
-    def acquire(self, key: str, *, kind: str, user_id: int, run_id: str) -> bool:
+    def acquire(
+        self,
+        key: str,
+        *,
+        kind: str,
+        user_id: int,
+        run_id: str,
+        state: dict[str, Any] | None = None,
+    ) -> bool:
+        initial = {"run_id": run_id, "status": "preparing", **(state or {})}
         return self.leases.acquire(
             key,
             kind=kind,
             user_id=user_id,
             run_id=run_id,
-            state={"run_id": run_id, "status": "preparing"},
+            state=initial,
             ttl=self.ttl,
         )
 
@@ -286,13 +295,20 @@ class SessionCoordinator:
             return None
         return lease if expires > utcnow_naive() else None
 
+    @staticmethod
+    def _complete(state: dict[str, Any], kind: str) -> bool:
+        required = ("run_id", "strategy_id", "symbols", "mode", "status")
+        if kind == "live":
+            required += ("adapter", "sandbox")
+        return all(key in state for key in required)
+
     def remote_sessions(self, user_id: int, kind: str) -> list[dict[str, Any]]:
         out = []
         for lease in self.leases.active_for_user(user_id):
             if lease["kind"] != kind or lease["owner"] == self.instance_id:
                 continue
             state = lease.get("state") or {}
-            if state:
+            if state and self._complete(state, kind):
                 out.append(state)
         return out
 
@@ -303,7 +319,7 @@ class SessionCoordinator:
             if run_id is not None and lease["run_id"] != run_id:
                 continue
             state = lease.get("state") or {}
-            if state:
+            if state and self._complete(state, kind):
                 return state
         return None
 
