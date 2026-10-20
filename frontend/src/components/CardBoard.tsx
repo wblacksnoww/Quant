@@ -54,13 +54,7 @@ function loadConfig(storageKey: string, items: BoardItem[]): CellConfig[] {
   }
 }
 
-export function CardBoard({
-  storageKey,
-  items,
-}: {
-  storageKey: string
-  items: BoardItem[]
-}) {
+export function CardBoard({ storageKey, items }: { storageKey: string; items: BoardItem[] }) {
   const [config, setConfig] = useState<CellConfig[]>(() => loadConfig(storageKey, items))
   const [editing, setEditing] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
@@ -116,9 +110,7 @@ export function CardBoard({
   return (
     <div className="board">
       <div className="board-toolbar">
-        <span className="tiny faint">
-          {editing ? '拖动 ⠿ 排序 · 「宽/窄」切换占宽 · ✕ 隐藏卡片' : ''}
-        </span>
+        <span className="tiny faint">{editing ? '拖动 ⠿ 排序 · 「宽/窄」切换占宽 · ✕ 隐藏卡片' : ''}</span>
         <div className="row" style={{ gap: 8 }}>
           {editing && (
             <Button size="sm" variant="ghost" onClick={reset}>

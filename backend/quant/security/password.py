@@ -26,8 +26,7 @@ log = logging.getLogger(__name__)
 _ARGON2_AVAILABLE = True
 try:  # pragma: no cover - 依赖可选
     from argon2 import PasswordHasher
-    from argon2.exceptions import InvalidHashError, VerifyMismatchError
-    from argon2.exceptions import VerificationError
+    from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 except ImportError:  # pragma: no cover
     _ARGON2_AVAILABLE = False
     PasswordHasher = None  # type: ignore[assignment]

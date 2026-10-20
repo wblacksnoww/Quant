@@ -89,7 +89,7 @@ class User(Base):
         DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False
     )
 
-    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
+    refresh_tokens: Mapped[list[RefreshToken]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -203,7 +203,9 @@ class Run(Base):
     __tablename__ = "runs"
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
-    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True)
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True
+    )
     kind: Mapped[str] = mapped_column(String(16), default="backtest", nullable=False)
     strategy_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
     symbols: Mapped[list | None] = mapped_column(JSON, nullable=True)
@@ -324,9 +326,7 @@ class UserCustomStrategy(Base):
         DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False
     )
 
-    __table_args__ = (
-        Index("uq_user_strategies_user_name", "user_id", "name", unique=True),
-    )
+    __table_args__ = (Index("uq_user_strategies_user_name", "user_id", "name", unique=True),)
 
     def to_dict(self, *, with_spec: bool = True) -> dict[str, Any]:
         return {
@@ -354,3 +354,60 @@ __all__ = [
     "UserCustomStrategy",
     "utcnow_naive",
 ]
+
+
+# --------------------------------------------------------------------------- #
+# 分布式会话协调（多 worker / 多副本）
+# --------------------------------------------------------------------------- #
+
+
+class SessionLease(Base):
+    """会话租约：谁拥有某个纸盘/实盘会话，以及最近一次状态快照。
+
+    多实例部署时，引擎只能由一个实例持有；租约通过数据库原子更新抢占，
+    过期后其他实例可以接管。状态快照让任意实例都能回答 ``/sessions``。
+    """
+
+    __tablename__ = "session_leases"
+
+    key: Mapped[str] = mapped_column(String(96), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+    run_id: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    owner: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="running", nullable=False)
+    state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True, nullable=False)
+
+
+class SessionCommand(Base):
+    """跨实例控制命令：stop / pause / resume / switch。
+
+    任意实例都可以写入；持有租约的实例轮询并执行。
+    """
+
+    __tablename__ = "session_commands"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(96), index=True, nullable=False)
+    action: Mapped[str] = mapped_column(String(24), nullable=False)
+    payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class BacktestJob(Base):
+    """持久化回测队列：提交先落库，重启或多实例下由 worker 原子认领。"""
+
+    __tablename__ = "backtest_jobs"
+
+    run_id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    config: Mapped[dict] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="queued", index=True, nullable=False)
+    owner: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, index=True, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)

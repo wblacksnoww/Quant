@@ -16,7 +16,7 @@
 │  中间件：RequestContext → 安全响应头 → 限流                      │
 │  路由：auth · market · strategies · backtest · paper ·          │
 │        risk · credentials · system · admin                      │
-│  BacktestManager（线程池、并发上限）· PaperManager（按用户会话池）  │
+│  BacktestManager（持久化队列 worker）· PaperManager（按用户会话池）  │
 │  EventHub（按用户投递事件到 WS）· RunRecorder（运行落库）           │
 └──────────────┬─────────────────────────────────────────────────┘
                │
@@ -102,8 +102,10 @@
 | `PaperEngine.live` | 真实时钟，轮询快照 | 市价单立即成交 | 盘中模拟 |
 | `LiveEngine` | 真实时钟，轮询快照 | **交易所真实撮合**（本地不撮合） | 实盘下单 |
 
-- 回测在 `BacktestManager` 的线程池中异步执行，`QUANT_MAX_CONCURRENT_BACKTESTS` 控制上限，
-  提交返回 `202` + `run_id`，前端轮询 `GET /api/backtests/{id}` 并订阅 WS 进度。
+- 回测走**持久化队列**：提交写入 `backtest_jobs`（`queued`），`BacktestManager` 的
+  worker 用条件更新原子认领；`QUANT_MAX_CONCURRENT_BACKTESTS` 控制本实例并发，
+  `QUANT_MAX_QUEUED_BACKTESTS` 控制队列长度。提交返回 `202` + `run_id`，前端轮询
+  `GET /api/backtests/{id}` 并订阅 WS 进度；重启后 queued 任务保留、失联的 running 自动重排。
 - 纸盘**按用户隔离、可多开**：`PaperManager` 为每个用户的每个 `run_id` 维护一个 `PaperRunner`
   （默认每用户最多 5 个并发会话）；每个会话有独立的虚拟账户与线程，可分别查看/停止。
   不同账号互不影响（各自线程、各自落库）。

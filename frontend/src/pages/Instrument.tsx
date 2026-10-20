@@ -6,15 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import {
-  ApiError,
-  credentialApi,
-  liveApi,
-  marketApi,
-  paperApi,
-  riskApi,
-  strategyApi,
-} from '../api/client'
+import { ApiError, credentialApi, liveApi, marketApi, paperApi, riskApi, strategyApi } from '../api/client'
 import type {
   BarsResponse,
   Credential,
@@ -36,7 +28,6 @@ import {
   marketLabel,
   marketTone,
   priceDigits,
-  todayISO,
 } from '../utils/format'
 import { cleanParams, defaultsFor, riskRulesFor } from '../utils/strategy'
 import { segmentToSymbol } from '../utils/symbolPath'
@@ -54,10 +45,42 @@ const RANGES: {
   defaultVisible: number
   upgradeAt: number
 }[] = [
-  { key: 'today', label: '今日', interval: '5m', limit: 500, minute: true, defaultVisible: 48, upgradeAt: 100 },
-  { key: 'week', label: '本周', interval: '30m', limit: 500, minute: true, defaultVisible: 40, upgradeAt: 80 },
-  { key: 'month', label: '本月', interval: '1d', limit: 40, minute: false, defaultVisible: 30, upgradeAt: 90 },
-  { key: '1y', label: '1 年', interval: '1d', limit: 260, minute: false, defaultVisible: 120, upgradeAt: 180 },
+  {
+    key: 'today',
+    label: '今日',
+    interval: '5m',
+    limit: 500,
+    minute: true,
+    defaultVisible: 48,
+    upgradeAt: 100,
+  },
+  {
+    key: 'week',
+    label: '本周',
+    interval: '30m',
+    limit: 500,
+    minute: true,
+    defaultVisible: 40,
+    upgradeAt: 80,
+  },
+  {
+    key: 'month',
+    label: '本月',
+    interval: '1d',
+    limit: 40,
+    minute: false,
+    defaultVisible: 30,
+    upgradeAt: 90,
+  },
+  {
+    key: '1y',
+    label: '1 年',
+    interval: '1d',
+    limit: 260,
+    minute: false,
+    defaultVisible: 120,
+    upgradeAt: 180,
+  },
   { key: '3y', label: '3 年', interval: '1w', limit: 160, minute: false, defaultVisible: 80, upgradeAt: 120 },
   { key: '5y', label: '5 年', interval: '1M', limit: 72, minute: false, defaultVisible: 60, upgradeAt: 9999 },
 ]
@@ -122,14 +145,8 @@ export function InstrumentPage() {
   const [starting, setStarting] = useState(false)
   const [runningNote, setRunningNote] = useState('')
 
-  const strategy = useMemo(
-    () => strategies.find((item) => item.id === strategyId),
-    [strategies, strategyId],
-  )
-  const brokerCredentials = useMemo(
-    () => credentials.filter((item) => item.kind === 'broker'),
-    [credentials],
-  )
+  const strategy = useMemo(() => strategies.find((item) => item.id === strategyId), [strategies, strategyId])
+  const brokerCredentials = useMemo(() => credentials.filter((item) => item.kind === 'broker'), [credentials])
 
   // ---- 基础数据（标的规则 + 策略/风控/实盘配置） --------------------------- //
   useEffect(() => {
@@ -182,7 +199,7 @@ export function InstrumentPage() {
 
   // ---- K 线 ---------------------------------------------------------------- //
   const loadChart = useCallback(
-    (refresh = false) => {
+    (_refresh = false) => {
       if (!symbol) return
       setBarsLoading(true)
       const config = RANGES.find((item) => item.key === range) ?? RANGES[0]
@@ -268,10 +285,18 @@ export function InstrumentPage() {
   useEffect(() => {
     Promise.allSettled([paperApi.state(), liveApi.state()]).then(([paper, live]) => {
       const notes: string[] = []
-      if (paper.status === 'fulfilled' && paper.value?.status === 'running' && paper.value.symbols.includes(symbol)) {
+      if (
+        paper.status === 'fulfilled' &&
+        paper.value?.status === 'running' &&
+        paper.value.symbols.includes(symbol)
+      ) {
         notes.push(`模拟盘正在运行（${paper.value.run_id}）`)
       }
-      if (live.status === 'fulfilled' && live.value?.status === 'running' && live.value.symbols.includes(symbol)) {
+      if (
+        live.status === 'fulfilled' &&
+        live.value?.status === 'running' &&
+        live.value.symbols.includes(symbol)
+      ) {
         notes.push(`实盘正在运行（${live.value.run_id}）`)
       }
       setRunningNote(notes.join('；'))
@@ -376,12 +401,10 @@ export function InstrumentPage() {
     return <Empty title="标的无效" hint="请从行情页选择一个标的。" />
   }
 
-
   const digits = info ? priceDigits(info.market, info.price) : 2
   const currency = info?.currency
   const changePct = info?.change_pct ?? null
-  const limitText =
-    info && info.limit_pct > 0 ? `±${(info.limit_pct * 100).toFixed(0)}%` : '无限制'
+  const limitText = info && info.limit_pct > 0 ? `±${(info.limit_pct * 100).toFixed(0)}%` : '无限制'
   const settleText = info?.t_plus_1 ? 'T+1（次日可卖）' : 'T+0（当日可卖）'
   const lotText = info && info.lot_size > 1 ? `${info.lot_size} 股/手` : '任意数量（含小数）'
 
@@ -432,7 +455,11 @@ export function InstrumentPage() {
         <Stat
           label="昨收 / 今开"
           value={info?.prev_close != null ? fmtPrice(info.prev_close, currency, digits) : '—'}
-          sub={info?.limit_up ? `涨停 ${fmtNumber(info.limit_up, digits)} / 跌停 ${fmtNumber(info.limit_down ?? 0, digits)}` : ''}
+          sub={
+            info?.limit_up
+              ? `涨停 ${fmtNumber(info.limit_up, digits)} / 跌停 ${fmtNumber(info.limit_down ?? 0, digits)}`
+              : ''
+          }
         />
         <Stat
           label="成交额"
@@ -455,8 +482,7 @@ export function InstrumentPage() {
         actions={
           <div className="row" style={{ gap: 4, flexWrap: 'wrap' }}>
             {RANGES.map((item) => {
-              const disabled =
-                item.minute && info != null && info.market !== 'CN' && info.market !== 'CRYPTO'
+              const disabled = item.minute && info != null && info.market !== 'CN' && info.market !== 'CRYPTO'
               return (
                 <Button
                   key={item.key}
@@ -618,7 +644,10 @@ export function InstrumentPage() {
             {panel === 'paper' ? (
               <>
                 <div className="form-grid">
-                  <Field label="模式" hint={paperMode === 'replay' ? '倍速回放最近 120 个交易日' : '盘中轮询实时价'}>
+                  <Field
+                    label="模式"
+                    hint={paperMode === 'replay' ? '倍速回放最近 120 个交易日' : '盘中轮询实时价'}
+                  >
                     <select
                       className="select"
                       value={paperMode}
@@ -649,7 +678,10 @@ export function InstrumentPage() {
             ) : (
               <>
                 <div className="form-grid">
-                  <Field label="通道" hint={adapters.find((a) => a.name === adapter)?.markets.join(' / ') || ''}>
+                  <Field
+                    label="通道"
+                    hint={adapters.find((a) => a.name === adapter)?.markets.join(' / ') || ''}
+                  >
                     <select
                       className="select"
                       value={adapter}

@@ -17,7 +17,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 import pandas as pd
@@ -321,9 +321,7 @@ class LiveEngine(BaseEngine):
         result.equity_curve = session.equity_curve
         result.trades = [t.to_dict() for t in session.fills]
         result.orders = [o.to_dict() for o in session.orders]
-        result.positions = [
-            p.to_dict() for p in session.account.positions.values() if not p.is_flat
-        ]
+        result.positions = [p.to_dict() for p in session.account.positions.values() if not p.is_flat]
         result.logs = [
             {"ts": e.ts.isoformat(), **e.payload}
             for e in self._recorder_events.events
@@ -477,9 +475,7 @@ class LiveManager:
         if credential_id is not None:
             runner = self.runner(user_id, credential_id)
             return bool(runner and runner.running)
-        return any(
-            runner.running for (uid, _cid), runner in self._runners.items() if uid == user_id
-        )
+        return any(runner.running for (uid, _cid), runner in self._runners.items() if uid == user_id)
 
     def start(self, user_id: int, credential_id: int, engine: LiveEngine) -> None:
         key = (user_id, int(credential_id))
@@ -532,14 +528,24 @@ class LiveManager:
         engine = self.engine(user_id, credential_id)
         return bool(engine and engine.resume())
 
+    def all_sessions(self) -> list[tuple[int, int, str, LiveRunner]]:
+        """本实例持有的全部实盘会话（协调器心跳用）。"""
+        with self._lock:
+            items = list(self._runners.items())
+        out: list[tuple[int, int, str, LiveRunner]] = []
+        for (user_id, credential_id), runner in items:
+            engine = runner.engine
+            if engine is None:
+                continue
+            out.append((user_id, credential_id, engine.config.run_id, runner))
+        return out
+
     def sessions(self, user_id: int) -> list[dict[str, Any]]:
         """运行中的实盘会话列表（每个凭证最多一个）。"""
         out: list[dict[str, Any]] = []
         with self._lock:
             items = [
-                runner
-                for (uid, _cid), runner in self._runners.items()
-                if uid == user_id and runner.running
+                runner for (uid, _cid), runner in self._runners.items() if uid == user_id and runner.running
             ]
         for runner in items:
             state = runner.state()

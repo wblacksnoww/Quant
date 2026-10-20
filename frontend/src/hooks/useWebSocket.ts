@@ -9,10 +9,7 @@ function socketUrl(token: string): string {
   return `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`
 }
 
-export function useWebSocket(
-  handler: (event: WsEvent) => void,
-  enabled = true,
-): { connected: boolean } {
+export function useWebSocket(handler: (event: WsEvent) => void, enabled = true): { connected: boolean } {
   const handlerRef = useRef(handler)
   const [connected, setConnected] = useState(false)
 

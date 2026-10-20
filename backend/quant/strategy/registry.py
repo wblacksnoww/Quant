@@ -9,7 +9,7 @@ from __future__ import annotations
 import importlib
 import logging
 import pkgutil
-from typing import Iterable
+from collections.abc import Iterable
 
 from .base import Strategy
 

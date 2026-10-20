@@ -7,49 +7,20 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from ...core.errors import EngineError
-from ...engine.base import EngineConfig
+from ...services.backtest_service import build_engine_config
+from ...services.custom_params import inject_custom_spec
 from ...storage.models import User
 from ...storage.repositories import RunRepository
 from ..context import AppContext
-from ..custom_params import inject_custom_spec
-from ..deps import audit, get_current_user, get_ctx, get_db
+from ..deps import audit, get_ctx, get_current_user, get_db
 from ..schemas import BacktestRequest, Message, RunAccepted, RunDetail, RunSummary
 
 router = APIRouter(prefix="/backtests", tags=["回测"])
 log = logging.getLogger(__name__)
-
-
-def build_engine_config(
-    body: BacktestRequest,
-    *,
-    user_id: int,
-    default_cash: float,
-    rf: float,
-    params: dict[str, Any] | None = None,
-) -> EngineConfig:
-    end = body.end or date.today()
-    start = body.start or (end - timedelta(days=365 * 3))
-    if start > end:
-        raise HTTPException(status_code=422, detail="开始日期不能晚于结束日期")
-    return EngineConfig(
-        strategy_id=body.strategy_id,
-        symbols=body.symbols,
-        start=start,
-        end=end,
-        initial_cash=body.initial_cash or default_cash,
-        params=body.params if params is None else params,
-        cost=body.cost.model_dump() if body.cost is not None else {},
-        risk=[r.model_dump(exclude_none=True) for r in body.risk] if body.risk else None,
-        benchmark=body.benchmark,
-        risk_free_rate=body.risk_free_rate or rf,
-        user_id=user_id,
-    )
 
 
 @router.post("", response_model=RunAccepted, status_code=202, summary="提交回测")
@@ -65,7 +36,7 @@ def create_backtest(
             detail=f"并发回测已达上限（{ctx.settings.max_concurrent_backtests}），请稍后再试",
         )
     try:
-        resolved_params = inject_custom_spec(body.params, user=user, session=session)
+        resolved_params = inject_custom_spec(body.params, user_id=user.id, session=session)
         config = build_engine_config(
             body,
             user_id=user.id,
@@ -151,4 +122,4 @@ def delete_backtest(
     return Message(message="已删除")
 
 
-__all__ = ["build_engine_config", "router"]
+__all__ = ["router"]

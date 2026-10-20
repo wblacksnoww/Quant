@@ -31,20 +31,15 @@ spec 结构（v1）::
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 import pandas as pd
 
-from .base import ParamSpec, Strategy
+from ..core.types import Bar
 from . import indicators as ta
-
-# 指标白名单唯一来源：v1 条件与 v2 蓝图共用（参数边界随之同源）
-from .indicators import (
-    INDICATOR_INT_BOUNDS as _INT_BOUNDS,
-    INDICATOR_SPECS as _INDICATORS,
-    INDICATOR_WIDTH_BOUNDS as _WIDTH_BOUNDS,
-)
+from .base import ParamSpec, Strategy
 from .custom_graph import (
     GRAPH_VERSION,
     MAX_GRAPH_SPEC_BYTES,
@@ -52,6 +47,17 @@ from .custom_graph import (
     graph_lookback,
     graph_signals,
     parse_graph_spec,
+)
+
+# 指标白名单唯一来源：v1 条件与 v2 蓝图共用（参数边界随之同源）
+from .indicators import (
+    INDICATOR_INT_BOUNDS as _INT_BOUNDS,
+)
+from .indicators import (
+    INDICATOR_SPECS as _INDICATORS,
+)
+from .indicators import (
+    INDICATOR_WIDTH_BOUNDS as _WIDTH_BOUNDS,
 )
 from .registry import register_strategy
 
@@ -407,9 +413,7 @@ class CustomRuleStrategy(Strategy):
         "在「策略库 → 我的拼装策略」里创建，回测/纸盘提交时选择即可。"
     )
 
-    param_specs = (
-        ParamSpec("spec", "json", {}, description="条件拼装 spec（由网页生成，一般不手动填）"),
-    )
+    param_specs = (ParamSpec("spec", "json", {}, description="条件拼装 spec（由网页生成，一般不手动填）"),)
 
     def __init__(self, ctx, params=None):
         super().__init__(ctx, params)

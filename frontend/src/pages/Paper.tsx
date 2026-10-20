@@ -12,23 +12,16 @@ import type {
   RunSummary,
   Strategy,
 } from '../api/types'
-import { EquityChart } from '../components/Charts'
 import { CustomStrategySelect } from '../components/CustomStrategySelect'
-import { RunDetailBody, RunMetrics } from '../components/RunDetail'
+import { PaperHistory } from '../components/paper/PaperHistory'
+import { PaperSessionResults } from '../components/paper/PaperSessionResults'
+import { PaperSessionStatus } from '../components/paper/PaperSessionStatus'
 import { SwitchStrategyModal } from '../components/SwitchStrategy'
-import { IconPlay, IconRefresh, IconStop } from '../components/icons'
-import { Badge, Banner, Button, Card, Empty, Field, Loading, Modal, Stat, StatusBadge } from '../components/ui'
+import { IconPlay, IconStop } from '../components/icons'
+import { Badge, Banner, Button, Card, Field, Loading } from '../components/ui'
 import { useEvents } from '../store/events'
 import { notify } from '../store/toast'
-import {
-  cx,
-  durationText,
-  fmtDateTime,
-  fmtMoney,
-  fmtNumber,
-  fmtSignedPct,
-  parseSymbols,
-} from '../utils/format'
+import { fmtMoney, fmtSignedPct, parseSymbols } from '../utils/format'
 
 function defaultsFor(strategy: Strategy | undefined): Record<string, unknown> {
   if (!strategy) return {}
@@ -71,10 +64,7 @@ export function PaperPage() {
 
   const isCustomRule = strategyId === 'custom_rule'
 
-  const strategy = useMemo(
-    () => strategies.find((item) => item.id === strategyId),
-    [strategies, strategyId],
-  )
+  const strategy = useMemo(() => strategies.find((item) => item.id === strategyId), [strategies, strategyId])
 
   // 通用参数表单（拼装策略的 spec 由下拉携带，不渲染 JSON 输入）
   const formParams = useMemo(
@@ -94,9 +84,7 @@ export function PaperPage() {
       const list = await paperApi.sessions()
       setSessions(list)
       setActiveRun((current) =>
-        current && list.some((item) => item.run_id === current)
-          ? current
-          : (list[0]?.run_id ?? null),
+        current && list.some((item) => item.run_id === current) ? current : (list[0]?.run_id ?? null),
       )
     } catch {
       // 状态轮询失败不弹窗，下一次重试
@@ -114,10 +102,7 @@ export function PaperPage() {
   useEffect(() => {
     let alive = true
     void (async () => {
-      const [strategyResult, presetResult] = await Promise.allSettled([
-        strategyApi.list(),
-        riskApi.presets(),
-      ])
+      const [strategyResult, presetResult] = await Promise.allSettled([strategyApi.list(), riskApi.presets()])
       if (!alive) return
       const strategyValue = strategyResult.status === 'fulfilled' ? strategyResult.value : []
       setStrategies(strategyValue)
@@ -275,6 +260,20 @@ export function PaperPage() {
     }
   }
 
+  const deleteRun = async (runId: string) => {
+    if (!window.confirm(`确定删除历史会话 ${runId}？删除后不可恢复。`)) return
+    try {
+      const message = await paperApi.removeRun(runId)
+      notify('success', message.message)
+      window.setTimeout(() => {
+        void loadSessions()
+        void loadRuns()
+      }, 300)
+    } catch (err) {
+      notify('error', err instanceof ApiError ? err.message : '删除失败')
+    }
+  }
+
   const togglePause = async (runId: string, paused: boolean) => {
     setTogglingPause(true)
     try {
@@ -367,7 +366,11 @@ export function PaperPage() {
           <form className="col" style={{ gap: 14 }} onSubmit={start}>
             <div className="form-grid">
               <Field label="策略">
-                <select className="select" value={strategyId} onChange={(event) => changeStrategy(event.target.value)}>
+                <select
+                  className="select"
+                  value={strategyId}
+                  onChange={(event) => changeStrategy(event.target.value)}
+                >
                   {strategies.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.name}（{item.id}）
@@ -375,8 +378,15 @@ export function PaperPage() {
                   ))}
                 </select>
               </Field>
-              <Field label="模式" hint={mode === 'replay' ? '按固定间隔重放最近 N 个交易日' : '盘中轮询实时价，非交易时段休眠'}>
-                <select className="select" value={mode} onChange={(event) => setMode(event.target.value as 'replay' | 'live')}>
+              <Field
+                label="模式"
+                hint={mode === 'replay' ? '按固定间隔重放最近 N 个交易日' : '盘中轮询实时价，非交易时段休眠'}
+              >
+                <select
+                  className="select"
+                  value={mode}
+                  onChange={(event) => setMode(event.target.value as 'replay' | 'live')}
+                >
                   <option value="replay">回放（历史行情）</option>
                   <option value="live">实时（盘中轮询）</option>
                 </select>
@@ -393,9 +403,7 @@ export function PaperPage() {
                 />
               </Field>
 
-              {isCustomRule && (
-                <CustomStrategySelect value={selectedCustom} onChange={setSelectedCustom} />
-              )}
+              {isCustomRule && <CustomStrategySelect value={selectedCustom} onChange={setSelectedCustom} />}
               <Field label="初始资金（元）">
                 <input
                   className="input mono"
@@ -432,10 +440,20 @@ export function PaperPage() {
                   />
                 </Field>
                 <Field label="风控预设">
-                  <select className="select" value={riskPreset} onChange={(event) => setRiskPreset(event.target.value)}>
+                  <select
+                    className="select"
+                    value={riskPreset}
+                    onChange={(event) => setRiskPreset(event.target.value)}
+                  >
                     {(presets ? Object.keys(presets.presets) : ['balanced']).map((key) => (
                       <option key={key} value={key}>
-                        {key === 'conservative' ? '保守' : key === 'balanced' ? '均衡' : key === 'aggressive' ? '激进' : key}
+                        {key === 'conservative'
+                          ? '保守'
+                          : key === 'balanced'
+                            ? '均衡'
+                            : key === 'aggressive'
+                              ? '激进'
+                              : key}
                       </option>
                     ))}
                   </select>
@@ -455,10 +473,20 @@ export function PaperPage() {
                   />
                 </Field>
                 <Field label="风控预设">
-                  <select className="select" value={riskPreset} onChange={(event) => setRiskPreset(event.target.value)}>
+                  <select
+                    className="select"
+                    value={riskPreset}
+                    onChange={(event) => setRiskPreset(event.target.value)}
+                  >
                     {(presets ? Object.keys(presets.presets) : ['balanced']).map((key) => (
                       <option key={key} value={key}>
-                        {key === 'conservative' ? '保守' : key === 'balanced' ? '均衡' : key === 'aggressive' ? '激进' : key}
+                        {key === 'conservative'
+                          ? '保守'
+                          : key === 'balanced'
+                            ? '均衡'
+                            : key === 'aggressive'
+                              ? '激进'
+                              : key}
                       </option>
                     ))}
                   </select>
@@ -499,7 +527,9 @@ export function PaperPage() {
                               <input
                                 type="checkbox"
                                 checked={Boolean(value)}
-                                onChange={(event) => setParams({ ...params, [param.name]: event.target.checked })}
+                                onChange={(event) =>
+                                  setParams({ ...params, [param.name]: event.target.checked })
+                                }
                               />
                               启用
                             </label>
@@ -567,304 +597,32 @@ export function PaperPage() {
           </form>
         </Card>
 
-        <Card
-          title="会话状态"
-          actions={
-            <Button size="sm" variant="ghost" onClick={() => void loadSessions()}>
-              <IconRefresh />
-            </Button>
-          }
-        >
-          {state ? (
-            <div className="col" style={{ gap: 12 }}>
-              <div className="row between">
-                <StatusBadge status={state.status} />
-                <Badge tone="accent">{state.mode === 'replay' ? '回放' : '实时'}</Badge>
-              </div>
-              <dl className="kv">
-                <dt>运行 ID</dt>
-                <dd className="mono tiny">{state.run_id}</dd>
-                <dt>策略</dt>
-                <dd>{state.strategy_id}</dd>
-                <dt>标的</dt>
-                <dd className="mono">{state.symbols.join(', ')}</dd>
-                <dt>启动时间</dt>
-                <dd>{fmtDateTime(state.started_at)}</dd>
-                <dt>已推进</dt>
-                <dd>{state.steps} 步</dd>
-                <dt>最后价格</dt>
-                <dd className="mono tiny">
-                  {Object.entries(state.last_prices)
-                    .map(([symbol, price]) => `${symbol} ${fmtMoney(price)}`)
-                    .join(' · ') || '—'}
-                </dd>
-              </dl>
-              {state.error && <Banner kind="danger">{state.error}</Banner>}
-              {(state.status === 'running' || state.status === 'paused') && (
-                <>
-                  {state.status === 'running' && (
-                    <Button block onClick={() => setSwitchOpen(true)}>
-                      切换策略（下一轮生效）
-                    </Button>
-                  )}
-                  <Button
-                    block
-                    loading={togglingPause}
-                    onClick={() =>
-                      void togglePause(state.run_id, state.status === 'paused')
-                    }
-                  >
-                    {state.status === 'paused' ? '继续运行' : '暂停（保留进度）'}
-                  </Button>
-                  <Button variant="danger" block loading={stopping} onClick={() => void stop(state?.run_id)}>
-                    <IconStop /> 停止当前会话（结束）
-                  </Button>
-                </>
-              )}
-            </div>
-          ) : (
-            <Empty
-              title="尚未启动"
-              hint="左侧配置策略与标的，启动后这里显示实时状态。"
-            />
-          )}
-        </Card>
+        <PaperSessionStatus
+          state={state}
+          stopping={stopping}
+          togglingPause={togglingPause}
+          onStop={stop}
+          onTogglePause={togglePause}
+          onSwitch={() => setSwitchOpen(true)}
+          onRefresh={() => void loadSessions()}
+        />
       </div>
 
-      {state && (
-        <>
-          <div className="grid grid-4">
-            <Stat
-              label="总权益"
-              value={fmtMoney(state.equity)}
-              sub={`现金 ${fmtMoney(state.cash)}`}
-              tone={state.total_return >= 0 ? 'up' : 'down'}
-            />
-            <Stat
-              label="总收益率"
-              value={fmtSignedPct(state.total_return)}
-              sub={`冻结 ${fmtMoney(state.frozen_cash)}`}
-              tone={state.total_return >= 0 ? 'up' : 'down'}
-            />
-            <Stat label="持仓数量" value={`${state.positions.length} 只`} sub={`挂单 ${state.open_orders.length} 笔`} />
-            <Stat label="成交笔数" value={`${state.recent_fills.length} 笔`} sub={`已推进 ${state.steps} 步`} />
-          </div>
+      {state && <PaperSessionResults state={state} />}
 
-          <Card title="实时权益曲线" description="最近 500 个快照">
-            <EquityChart points={state.equity_curve} height={320} showDrawdown={false} />
-          </Card>
-
-          <div className="grid grid-2">
-            <Card title="持仓" flush>
-              {state.positions.length === 0 ? (
-                <Empty title="空仓" />
-              ) : (
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>代码</th>
-                        <th className="right">数量</th>
-                        <th className="right">可用</th>
-                        <th className="right">成本</th>
-                        <th className="right">现价</th>
-                        <th className="right">浮动盈亏</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {state.positions.map((position) => (
-                        <tr key={position.symbol}>
-                          <td className="strong mono">{position.symbol}</td>
-                          <td className="right num">{position.quantity.toLocaleString('zh-CN')}</td>
-                          <td className="right num">{position.available.toLocaleString('zh-CN')}</td>
-                          <td className="right num">{fmtMoney(position.avg_cost)}</td>
-                          <td className="right num">{fmtMoney(position.last_price)}</td>
-                          <td className={cx('right num', position.unrealized_pnl >= 0 ? 'up' : 'down')}>
-                            {fmtMoney(position.unrealized_pnl)}（{fmtSignedPct(position.unrealized_pct)}）
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </Card>
-
-            <Card title="挂单" flush>
-              {state.open_orders.length === 0 ? (
-                <Empty title="没有未完成委托" />
-              ) : (
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>时间</th>
-                        <th>代码</th>
-                        <th>方向</th>
-                        <th className="right">数量</th>
-                        <th className="right">限价</th>
-                        <th>状态</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {state.open_orders.map((order) => (
-                        <tr key={order.id}>
-                          <td className="tiny faint">{fmtDateTime(order.created_at)}</td>
-                          <td className="strong mono">{order.symbol}</td>
-                          <td className={order.side === 'buy' ? 'up' : 'down'}>
-                            {order.side === 'buy' ? '买入' : '卖出'}
-                          </td>
-                          <td className="right num">{order.quantity.toLocaleString('zh-CN')}</td>
-                          <td className="right num">{order.limit_price ? fmtMoney(order.limit_price) : '市价'}</td>
-                          <td><StatusBadge status={order.status} /></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </Card>
-          </div>
-
-          <Card title="最近成交" description="最多展示 50 笔" flush>
-            {state.recent_fills.length === 0 ? (
-              <Empty title="还没有成交" hint="策略触发信号后，成交会实时出现在这里。" />
-            ) : (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>时间</th>
-                      <th>代码</th>
-                      <th>方向</th>
-                      <th className="right">数量</th>
-                      <th className="right">价格</th>
-                      <th className="right">金额</th>
-                      <th className="right">费用</th>
-                      <th className="right">已实现盈亏</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...state.recent_fills].reverse().map((fill) => (
-                      <tr key={fill.id}>
-                        <td className="tiny faint nowrap">{fmtDateTime(fill.dt)}</td>
-                        <td className="strong mono">{fill.symbol}</td>
-                        <td className={fill.side === 'buy' ? 'up' : 'down'}>
-                          {fill.side === 'buy' ? '买入' : '卖出'}
-                        </td>
-                        <td className="right num">{fill.quantity.toLocaleString('zh-CN')}</td>
-                        <td className="right num">{fmtMoney(fill.price)}</td>
-                        <td className="right num">{fmtMoney(fill.gross)}</td>
-                        <td className="right num tiny">{fmtMoney(fill.fees.total)}</td>
-                        <td className={cx('right num', fill.realized_pnl > 0 ? 'up' : fill.realized_pnl < 0 ? 'down' : '')}>
-                          {fill.realized_pnl ? fmtMoney(fill.realized_pnl) : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Card>
-        </>
-      )}
-
-      <Card title="历史会话" description="纸盘结果同样落库；停止后可点「继续」从停止处接着跑（同一运行 ID）" flush>
-        {runs.length === 0 ? (
-          <Empty title="暂无历史会话" />
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>运行 ID</th>
-                  <th>策略</th>
-                  <th>标的</th>
-                  <th>状态</th>
-                  <th className="right">收益率</th>
-                  <th className="right">耗时</th>
-                  <th>结束时间</th>
-                  <th>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {runs.map((run) => (
-                  <tr key={run.run_id}>
-                    <td className="mono tiny">{run.run_id}</td>
-                    <td className="strong">{run.strategy_id}</td>
-                    <td className="mono tiny">{run.symbols.join(', ')}</td>
-                    <td><StatusBadge status={run.status} /></td>
-                    <td className={cx('right num', Number(run.metrics?.total_return ?? 0) >= 0 ? 'up' : 'down')}>
-                      {run.metrics?.total_return !== undefined ? fmtSignedPct(run.metrics.total_return) : '—'}
-                    </td>
-                    <td className="right num tiny">{durationText(run.elapsed_seconds)}</td>
-                    <td className="tiny faint">{fmtDateTime(run.finished_at ?? run.created_at)}</td>
-                    <td>
-                      <div className="row" style={{ gap: 6 }}>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => void openRunDetail(run.run_id)}
-                        >
-                          详情
-                        </Button>
-                        {(run.status === 'stopped' ||
-                          (run.status === 'running' &&
-                            !sessions.some((item) => item.run_id === run.run_id))) && (
-                          <Button
-                            size="sm"
-                            loading={resumingRun === run.run_id}
-                            onClick={() => void continueRun(run.run_id)}
-                            title="从停止处继续（恢复现金、持仓与回放进度，沿用同一运行 ID）"
-                          >
-                            继续
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
-
-      <Modal
-        open={detailOpen}
-        onClose={() => setDetailOpen(false)}
-        title={
-          <span className="row" style={{ gap: 8 }}>
-            运行详情
-            {detailRun && <Badge>{detailRun.run_id}</Badge>}
-          </span>
-        }
-        width={1100}
-      >
-        {detailLoading && <Loading text="正在读取运行详情…" />}
-        {detailError && <Banner kind="danger">{detailError}</Banner>}
-        {detailRun && (
-          <div className="col" style={{ gap: 16 }}>
-            <div className="row between wrap" style={{ gap: 8 }}>
-              <div className="row" style={{ gap: 8 }}>
-                <StatusBadge status={detailRun.status} />
-                <span className="small">{detailRun.strategy_id}</span>
-                <span className="tiny faint mono">{detailRun.symbols.join(', ')}</span>
-              </div>
-              <span className="tiny faint">
-                {durationText(detailRun.elapsed_seconds)} ·{' '}
-                {fmtDateTime(detailRun.finished_at ?? detailRun.created_at)}
-              </span>
-            </div>
-            {detailRun.status === 'running' && (
-              <Banner kind="info">会话仍在运行，以下为最近一次落库的进度快照。</Banner>
-            )}
-            {detailRun.error && <Banner kind="danger">运行失败：{detailRun.error}</Banner>}
-            {detailRun.status !== 'running' && <RunMetrics detail={detailRun} />}
-            <RunDetailBody detail={detailRun} />
-          </div>
-        )}
-      </Modal>
+      <PaperHistory
+        runs={runs}
+        sessions={sessions}
+        resumingRun={resumingRun}
+        detailOpen={detailOpen}
+        detailRun={detailRun}
+        detailLoading={detailLoading}
+        detailError={detailError}
+        onDetail={(runId) => void openRunDetail(runId)}
+        onContinue={(runId) => void continueRun(runId)}
+        onDelete={(runId) => void deleteRun(runId)}
+        onCloseDetail={() => setDetailOpen(false)}
+      />
 
       <SwitchStrategyModal
         open={switchOpen}

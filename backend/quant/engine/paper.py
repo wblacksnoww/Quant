@@ -17,8 +17,8 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
-from typing import Any, Callable
+from datetime import date, datetime
+from typing import Any
 
 import pandas as pd
 
@@ -188,9 +188,7 @@ class PaperEngine(BaseEngine):
         if self.resume_state is not None:
             self._restore_account(account)
             self.last_prices = {
-                item.symbol: item.last_price
-                for item in account.holdings()
-                if item.last_price
+                item.symbol: item.last_price for item in account.holdings() if item.last_price
             }
         else:
             for symbol, frame in frames.items():
@@ -344,11 +342,7 @@ class PaperEngine(BaseEngine):
             prices = self.data.realtime(symbols)
             if not prices:
                 # 数据源不支持实时：退回上一根收盘价并告警（不静默）
-                prices = {
-                    s: float(live_frames[s]["close"].iloc[-1])
-                    for s in symbols
-                    if len(live_frames[s])
-                }
+                prices = {s: float(live_frames[s]["close"].iloc[-1]) for s in symbols if len(live_frames[s])}
                 self.bus.emit_log("实时行情不可用，使用最近收盘价模拟", level="warning", source="paper")
 
             # 新交易日：先把昨日的 DAY 挂单过期，再给每个标的追加"今日"的活 bar
@@ -357,7 +351,9 @@ class PaperEngine(BaseEngine):
                     session.broker.end_of_day()
                 current_day = today
                 for symbol in symbols:
-                    live_frames[symbol] = self._append_today_row(live_frames[symbol], today, prices.get(symbol))
+                    live_frames[symbol] = self._append_today_row(
+                        live_frames[symbol], today, prices.get(symbol)
+                    )
                 session.frames = live_frames
                 session.ctx._frames = live_frames  # 会话与上下文共享同一份引用
 
@@ -514,7 +510,9 @@ class PaperRunner:
             if self.running:
                 raise RuntimeError("已有纸盘会话在运行，请先停止")
             self._engine = engine
-            self._thread = threading.Thread(target=self._wrap, args=(engine,), name="paper-engine", daemon=True)
+            self._thread = threading.Thread(
+                target=self._wrap, args=(engine,), name="paper-engine", daemon=True
+            )
             self._thread.start()
 
     def _wrap(self, engine: PaperEngine) -> None:
@@ -584,9 +582,7 @@ class PaperManager:
     def active_users(self) -> list[int]:
         with self._lock:
             return [
-                uid
-                for uid, slots in self._runners.items()
-                if any(item.running for item in slots.values())
+                uid for uid, slots in self._runners.items() if any(item.running for item in slots.values())
             ]
 
     # ------------------------------------------------------------------ #
@@ -601,9 +597,7 @@ class PaperManager:
             if run_id in slots:
                 raise RuntimeError("该运行已在运行")
             if len(slots) >= self.max_sessions_per_user:
-                raise RuntimeError(
-                    f"同时运行的模拟盘不能超过 {self.max_sessions_per_user} 个，请先停止一些"
-                )
+                raise RuntimeError(f"同时运行的模拟盘不能超过 {self.max_sessions_per_user} 个，请先停止一些")
             runner = PaperRunner()
             slots[run_id] = runner
         runner.start(engine)
@@ -644,6 +638,13 @@ class PaperManager:
     def resume(self, user_id: int, run_id: str | None = None) -> bool:
         engine = self.engine(user_id, run_id)
         return bool(engine and engine.resume())
+
+    def all_sessions(self) -> list[tuple[int, str, PaperRunner]]:
+        """本实例持有的全部会话（协调器心跳用）。"""
+        with self._lock:
+            return [
+                (uid, rid, runner) for uid, slots in self._runners.items() for rid, runner in slots.items()
+            ]
 
     def sessions(self, user_id: int) -> list[dict[str, Any]]:
         """运行中的会话状态列表（多会话页面用）。"""

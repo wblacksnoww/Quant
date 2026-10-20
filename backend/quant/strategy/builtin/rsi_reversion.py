@@ -13,10 +13,7 @@ class RsiReversionStrategy(Strategy):
     strategy_id = "rsi_reversion"
     display_name = "RSI 均值回归"
     category = "mean_reversion"
-    description = (
-        "RSI 跌破超卖线买入，回到超买线卖出。震荡市表现优于趋势市，"
-        "单边下跌行情需要靠止损控制回撤。"
-    )
+    description = "RSI 跌破超卖线买入，回到超买线卖出。震荡市表现优于趋势市，单边下跌行情需要靠止损控制回撤。"
 
     param_specs = (
         ParamSpec("period", "int", 14, 2, 60, description="RSI 周期"),

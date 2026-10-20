@@ -16,16 +16,17 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Mapping, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import pandas as pd
 
 from ..core.clock import Clock
 from ..core.events import EventBus
 from ..core.portfolio import Account
-from ..core.types import AccountSnapshot, Bar, Fill, Order, utcnow
+from ..core.types import AccountSnapshot, Bar, Fill, Order
 from ..execution.broker import Broker
 from ..risk.base import RiskManager
 from ..strategy.base import Strategy, StrategyContext
@@ -182,9 +183,7 @@ class TradingSession:
             log.exception("新策略 on_start 异常 %s", new_strategy.strategy_id)
 
         suffix = f"（已撤销旧挂单 {cancelled} 笔）" if cancelled else ""
-        self.bus.emit_log(
-            f"策略切换：{old_id} → {new_strategy.strategy_id}{suffix}", source="session"
-        )
+        self.bus.emit_log(f"策略切换：{old_id} → {new_strategy.strategy_id}{suffix}", source="session")
         self.bus.emit_status(
             "running", f"策略已切换为 {new_strategy.strategy_id}", source=new_strategy.strategy_id
         )

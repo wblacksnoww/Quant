@@ -9,14 +9,7 @@ import { marketApi } from '../api/client'
 import type { QuoteItem, Ranking } from '../api/types'
 import { Card, Empty, Button } from './ui'
 import { IconRefresh } from './icons'
-import {
-  classForSign,
-  fmtCompact,
-  fmtPrice,
-  fmtSignedPct,
-  marketLabel,
-  priceDigits,
-} from '../utils/format'
+import { classForSign, fmtCompact, fmtPrice, fmtSignedPct, marketLabel, priceDigits } from '../utils/format'
 
 export const RANK_MARKETS = [
   { code: 'CN', label: 'A股' },
@@ -249,11 +242,7 @@ export function RankingBoard({
                   const digits = priceDigits(market, item.price)
                   const inWatch = watchlist.includes(item.symbol)
                   return (
-                    <tr
-                      key={item.symbol}
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => onSelect(item.symbol)}
-                    >
+                    <tr key={item.symbol} style={{ cursor: 'pointer' }} onClick={() => onSelect(item.symbol)}>
                       <td className="mono strong">{item.symbol.split(':')[1] ?? item.symbol}</td>
                       <td>{item.name || '—'}</td>
                       <td className="right num">{fmtPrice(item.price, currency, digits)}</td>

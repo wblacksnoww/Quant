@@ -1,0 +1,17 @@
+# 本地质量门：ruff（后端）+ eslint/prettier（前端）
+# 安装：pip install pre-commit && pre-commit install
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.13.2
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+  - repo: local
+    hooks:
+      - id: frontend-lint
+        name: frontend lint + format check
+        entry: bash -c 'cd frontend && npm run lint && npm run format:check'
+        language: system
+        pass_filenames: false
+        files: ^frontend/src/

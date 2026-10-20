@@ -6,11 +6,10 @@ Pydantic v2 负责三件事：入参校验、OpenAPI 文档、前端类型生成
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
-
 
 # --------------------------------------------------------------------------- #
 # 通用
@@ -46,7 +45,7 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int
     refresh_expires_in: int
-    user: "UserOut"
+    user: UserOut
 
 
 class RefreshRequest(BaseModel):
@@ -425,9 +424,7 @@ class SwitchStrategyRequest(BaseModel):
 
     strategy_id: str = Field(min_length=1, max_length=64)
     params: dict[str, Any] = Field(default_factory=dict)
-    cancel_open_orders: bool = Field(
-        default=True, description="切换时撤销旧策略的未成交挂单（推荐）"
-    )
+    cancel_open_orders: bool = Field(default=True, description="切换时撤销旧策略的未成交挂单（推荐）")
 
 
 class LiveAdapterOut(BaseModel):

@@ -142,9 +142,7 @@ class MatchingEngine:
         if lot > 1 and side is Side.BUY:
             quantity = math.floor(quantity / lot) * lot
         if quantity <= 0:
-            return MatchOutcome(
-                False, reason=BlockReason.NO_LIQUIDITY, detail="不足一个交易单位"
-            )
+            return MatchOutcome(False, reason=BlockReason.NO_LIQUIDITY, detail="不足一个交易单位")
 
         return MatchOutcome(True, fill_price=price, quantity=quantity)
 

@@ -49,9 +49,7 @@ class CostModel:
             return price
         return price * (1.0 + rate) if side is Side.BUY else price * (1.0 - rate)
 
-    def fees(
-        self, side: Side, price: float, quantity: float, *, gross: float | None = None
-    ) -> FeeBreakdown:
+    def fees(self, side: Side, price: float, quantity: float, *, gross: float | None = None) -> FeeBreakdown:
         """计算一笔成交的全部费用。
 
         ``gross`` 允许显式传入成交金额（当成交价与参考价不同时可保持口径一致）。

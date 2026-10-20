@@ -26,10 +26,11 @@ from __future__ import annotations
 
 import json
 import logging
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from abc import ABC
+from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 import pandas as pd
 
@@ -244,13 +245,17 @@ class StrategyContext:
                 return order
 
         result = self.broker.submit(order)
-        self.bus.emit(EventType.SIGNAL, {
-            "symbol": order.symbol,
-            "side": order.side.value,
-            "quantity": order.quantity,
-            "status": result.status.value,
-            "reason": result.reason,
-        }, source=self.strategy_name)
+        self.bus.emit(
+            EventType.SIGNAL,
+            {
+                "symbol": order.symbol,
+                "side": order.side.value,
+                "quantity": order.quantity,
+                "status": result.status.value,
+                "reason": result.reason,
+            },
+            source=self.strategy_name,
+        )
         return result
 
     def cancel(self, order_id: str) -> bool:
@@ -426,7 +431,9 @@ class Strategy(ABC):
             return None
         if diff_value > 0:
             return self.buy(symbol, amount=diff_value, tag=tag)
-        return self.sell(symbol, quantity=min(round_down_lot(abs(diff_value) / price, symbol), pos.available), tag=tag)
+        return self.sell(
+            symbol, quantity=min(round_down_lot(abs(diff_value) / price, symbol), pos.available), tag=tag
+        )
 
     # -- 内部 -------------------------------------------------------------- #
     def _size(

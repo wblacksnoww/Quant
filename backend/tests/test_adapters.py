@@ -285,7 +285,9 @@ def test_miniqmt_balance_positions_and_status(fake_xt):
 
     # 未跟踪的委托不产生事件
     trader.orders = [
-        SimpleNamespace(order_id=1001, traded_volume=100, traded_price=1510.0, order_status=56, order_time=1_700_000_000)
+        SimpleNamespace(
+            order_id=1001, traded_volume=100, traded_price=1510.0, order_status=56, order_time=1_700_000_000
+        )
     ]
     adapter.place_order(_order(symbol="CN:600519", qty=100))
     events = adapter.sync()

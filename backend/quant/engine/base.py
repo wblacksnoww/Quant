@@ -9,14 +9,14 @@ from __future__ import annotations
 import abc
 import threading
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Any, Callable
+from typing import Any
 
 import pandas as pd
 
-from ..core.types import AccountSnapshot, Fill, Order, utcnow
-from ..metrics.performance import PerformanceReport, compute
+from ..metrics.performance import PerformanceReport
 
 
 @dataclass

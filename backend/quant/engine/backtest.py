@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import time
 from datetime import date, datetime
-from typing import Any, Callable
+from typing import Any
 
 import pandas as pd
 
@@ -26,7 +26,7 @@ from ..metrics.performance import compute
 from ..risk.base import RiskManager
 from ..strategy.base import Strategy
 from ..strategy.registry import get_strategy
-from .base import BaseEngine, EngineConfig, EngineResult, build_benchmark_curve
+from .base import BaseEngine, EngineConfig, EngineResult
 from .session import TradingSession, bar_from_frame
 
 log = logging.getLogger(__name__)
@@ -81,7 +81,10 @@ class BacktestEngine(BaseEngine):
 
             dates = self._trading_dates(frames)
             total = max(1, len(dates))
-            index_map = {symbol: {d: i for i, d in enumerate(frame["date"].dt.date)} for symbol, frame in frames.items()}
+            index_map = {
+                symbol: {d: i for i, d in enumerate(frame["date"].dt.date)}
+                for symbol, frame in frames.items()
+            }
 
             self._report(0.15, f"开始回测，共 {total} 个交易日")
             for step, day in enumerate(dates, start=1):
@@ -167,7 +170,9 @@ class BacktestEngine(BaseEngine):
         for symbol, frame in frames.items():
             account.mark_price(symbol, float(frame["close"].iloc[0]))
 
-        broker = SimBroker(account, self.bus, matching=matching, match_on_submit=False, name=f"backtest:{cfg.run_id}")
+        broker = SimBroker(
+            account, self.bus, matching=matching, match_on_submit=False, name=f"backtest:{cfg.run_id}"
+        )
         risk = RiskManager.from_config(cfg.risk, bus=self.bus)
         strategy_cls: type[Strategy] = get_strategy(cfg.strategy_id)
 
@@ -192,7 +197,9 @@ class BacktestEngine(BaseEngine):
         return session
 
     # ------------------------------------------------------------------ #
-    def _finalize(self, result: EngineResult, session: TradingSession, frames: dict[str, pd.DataFrame]) -> None:
+    def _finalize(
+        self, result: EngineResult, session: TradingSession, frames: dict[str, pd.DataFrame]
+    ) -> None:
         cfg = self.config
         curve = pd.DataFrame(session.equity_curve)
         equity = pd.Series(curve["total_equity"].to_numpy(), index=pd.to_datetime(curve["dt"]))

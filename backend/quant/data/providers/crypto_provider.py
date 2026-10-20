@@ -129,9 +129,7 @@ class CryptoProvider(DataProvider):
             columns=["date", "open", "high", "low", "close", "volume"],
         )
         # ccxt 时间戳是 UTC 毫秒；1d bar 的时间戳即 UTC 当日 0 点
-        df["date"] = (
-            pd.to_datetime(df["date"], unit="ms", utc=True).dt.tz_localize(None).dt.normalize()
-        )
+        df["date"] = pd.to_datetime(df["date"], unit="ms", utc=True).dt.tz_localize(None).dt.normalize()
         df["amount"] = df["close"] * df["volume"]
         out = normalize_frame(df, symbol=inst.id)
         out = out[(out["date"].dt.date >= start) & (out["date"].dt.date <= end)]
@@ -177,9 +175,7 @@ class CryptoProvider(DataProvider):
         return out
 
     # ------------------------------------------------------------------ #
-    def search(
-        self, keyword: str = "", limit: int = 50, *, market: str | None = None
-    ) -> list[SymbolInfo]:
+    def search(self, keyword: str = "", limit: int = 50, *, market: str | None = None) -> list[SymbolInfo]:
         wanted = (market or "").strip().upper()
         if wanted and wanted not in ("CRYPTO", "ALL", "全部"):
             return []

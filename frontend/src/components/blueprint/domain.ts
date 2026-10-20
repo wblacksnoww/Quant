@@ -59,28 +59,19 @@ const INDICATOR_DEFS: [string, string, BpParamDef[], string][] = [
   [
     'boll_upper',
     '布林上轨',
-    [
-      PERIOD_PARAM,
-      { key: 'width', label: '宽度', def: 2, min: 0.1, max: 10, step: 0.1 },
-    ],
+    [PERIOD_PARAM, { key: 'width', label: '宽度', def: 2, min: 0.1, max: 10, step: 0.1 }],
     '腰带 = 均线 + N 倍标准差',
   ],
   [
     'boll_mid',
     '布林中轨',
-    [
-      PERIOD_PARAM,
-      { key: 'width', label: '宽度', def: 2, min: 0.1, max: 10, step: 0.1 },
-    ],
+    [PERIOD_PARAM, { key: 'width', label: '宽度', def: 2, min: 0.1, max: 10, step: 0.1 }],
     '腰带均线本身',
   ],
   [
     'boll_lower',
     '布林下轨',
-    [
-      PERIOD_PARAM,
-      { key: 'width', label: '宽度', def: 2, min: 0.1, max: 10, step: 0.1 },
-    ],
+    [PERIOD_PARAM, { key: 'width', label: '宽度', def: 2, min: 0.1, max: 10, step: 0.1 }],
     '腰带 = 均线 - N 倍标准差',
   ],
   [

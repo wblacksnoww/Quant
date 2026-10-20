@@ -13,16 +13,16 @@ from quant.execution.matching import BlockReason, MatchingEngine
 
 
 def make_bar(**overrides) -> Bar:
-    defaults = dict(
-        symbol="600519",
-        dt=datetime(2024, 1, 2),
-        open=10.0,
-        high=10.6,
-        low=9.8,
-        close=10.3,
-        volume=1_000_000,
-        prev_close=10.0,
-    )
+    defaults = {
+        "symbol": "600519",
+        "dt": datetime(2024, 1, 2),
+        "open": 10.0,
+        "high": 10.6,
+        "low": 9.8,
+        "close": 10.3,
+        "volume": 1_000_000,
+        "prev_close": 10.0,
+    }
     defaults.update(overrides)
     return Bar(**defaults)
 

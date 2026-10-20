@@ -56,13 +56,7 @@ function pageMeta(pathname: string): { title: string; sub: string } {
   return prefix ? PAGES[prefix] : { title: 'Quant Terminal', sub: '' }
 }
 
-export function Layout({
-  children,
-  wsConnected,
-}: {
-  children: ReactNode
-  wsConnected: boolean
-}) {
+export function Layout({ children, wsConnected }: { children: ReactNode; wsConnected: boolean }) {
   const user = useAuth((state) => state.user)
   const logout = useAuth((state) => state.logout)
   const location = useLocation()

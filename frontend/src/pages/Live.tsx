@@ -12,14 +12,7 @@ import { EquityChart } from '../components/Charts'
 import { SwitchStrategyModal } from '../components/SwitchStrategy'
 import { Badge, Banner, Button, Card, Empty, Field, Loading, Stat, StatusBadge } from '../components/ui'
 import { IconPlay, IconRefresh, IconStop } from '../components/icons'
-import {
-  classForSign,
-  fmtDateTime,
-  fmtMoney,
-  fmtNumber,
-  fmtSignedPct,
-  parseSymbols,
-} from '../utils/format'
+import { classForSign, fmtDateTime, fmtMoney, fmtNumber, fmtSignedPct, parseSymbols } from '../utils/format'
 import { notify } from '../store/toast'
 
 function defaultsFor(strategy?: Strategy): Record<string, unknown> {
@@ -55,19 +48,12 @@ export function LivePage() {
   const [pollInterval, setPollInterval] = useState(5)
   const [params, setParams] = useState<Record<string, unknown>>({})
 
-  const strategy = useMemo(
-    () => strategies.find((item) => item.id === strategyId),
-    [strategies, strategyId],
-  )
-  const brokerCredentials = useMemo(
-    () => credentials.filter((item) => item.kind === 'broker'),
-    [credentials],
-  )
+  const strategy = useMemo(() => strategies.find((item) => item.id === strategyId), [strategies, strategyId])
+  const brokerCredentials = useMemo(() => credentials.filter((item) => item.kind === 'broker'), [credentials])
   const active = sessions.length > 0
   // 当前选中凭证的会话；没有选中时回落到第一个运行中的会话
   const state = useMemo(
-    () =>
-      sessions.find((item) => item.credential_id === activeCredential) ?? sessions[0] ?? null,
+    () => sessions.find((item) => item.credential_id === activeCredential) ?? sessions[0] ?? null,
     [sessions, activeCredential],
   )
   const adapterMeta = adapters.find((item) => item.name === adapter)
@@ -179,7 +165,7 @@ export function LivePage() {
     }
     setStarting(true)
     try {
-      const accepted = await liveApi.start(body)
+      await liveApi.start(body)
       setActiveCredential(body.credential_id)
       notify('success', `实盘已启动（${sandbox ? '测试网' : '真实资金'}）`)
       window.setTimeout(() => void loadAll(), 800)
@@ -323,8 +309,15 @@ export function LivePage() {
                   ))}
                 </select>
               </Field>
-              <Field label="通道" hint={adapterMeta ? `支持市场：${adapterMeta.markets.join(' / ') || '—'}` : ''}>
-                <select className="select" value={adapter} onChange={(event) => setAdapter(event.target.value)}>
+              <Field
+                label="通道"
+                hint={adapterMeta ? `支持市场：${adapterMeta.markets.join(' / ') || '—'}` : ''}
+              >
+                <select
+                  className="select"
+                  value={adapter}
+                  onChange={(event) => setAdapter(event.target.value)}
+                >
                   {adapters.map((item) => (
                     <option key={item.name} value={item.name}>
                       {item.name}
@@ -348,7 +341,9 @@ export function LivePage() {
                 <select
                   className="select"
                   value={credentialId ?? ''}
-                  onChange={(event) => setCredentialId(event.target.value ? Number(event.target.value) : null)}
+                  onChange={(event) =>
+                    setCredentialId(event.target.value ? Number(event.target.value) : null)
+                  }
                 >
                   <option value="">— 请选择 —</option>
                   {brokerCredentials.map((item) => (
@@ -446,12 +441,7 @@ export function LivePage() {
                 <Button
                   block
                   loading={togglingPause}
-                  onClick={() =>
-                    void togglePause(
-                      state?.credential_id,
-                      state?.status === 'paused',
-                    )
-                  }
+                  onClick={() => void togglePause(state?.credential_id, state?.status === 'paused')}
                 >
                   {state?.status === 'paused' ? '继续运行' : '暂停（保留持仓）'}
                 </Button>
@@ -602,7 +592,9 @@ export function LivePage() {
                         </td>
                         <td className="right num">{fmtNumber(item.quantity, 4)}</td>
                         <td className="right num">{fmtNumber(item.filled_quantity, 4)}</td>
-                        <td className="right num">{item.limit_price ? fmtNumber(item.limit_price, 4) : '市价'}</td>
+                        <td className="right num">
+                          {item.limit_price ? fmtNumber(item.limit_price, 4) : '市价'}
+                        </td>
                         <td>{item.status}</td>
                         <td className="mono tiny">{String(item.meta?.external_id ?? '—')}</td>
                       </tr>

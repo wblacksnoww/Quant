@@ -10,9 +10,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -100,11 +100,9 @@ def max_drawdown(equity: pd.Series) -> tuple[float, int]:
     dd = drawdown_series(equity)
     mdd = float(-dd.min())
     # 持续期：从峰值到恢复
-    peak_value = -np.inf
     longest = current = 0
     for value, peak in zip(equity.to_numpy(), equity.cummax().to_numpy(), strict=False):
         if value >= peak - 1e-12:
-            peak_value = peak
             current = 0
         else:
             current += 1
@@ -161,7 +159,9 @@ def trade_stats(trades: Sequence[Any]) -> dict[str, float]:
         "win_count": len(wins),
         "loss_count": len(losses),
         "win_rate": len(wins) / len(closed) if closed else 0.0,
-        "profit_factor": (gross_win / gross_loss) if gross_loss > 0 else (float("inf") if gross_win > 0 else 0.0),
+        "profit_factor": (gross_win / gross_loss)
+        if gross_loss > 0
+        else (float("inf") if gross_win > 0 else 0.0),
         "avg_win": (gross_win / len(wins)) if wins else 0.0,
         "avg_loss": (-gross_loss / len(losses)) if losses else 0.0,
         "expectancy": (sum(pnls) / len(pnls)) if pnls else 0.0,
@@ -233,7 +233,9 @@ def compute(
     report.avg_loss = stats["avg_loss"]
     report.expectancy = stats["expectancy"]
 
-    report.total_fees = float(sum(float(getattr(t, "fees", None).total) if getattr(t, "fees", None) else 0.0 for t in trades))
+    report.total_fees = float(
+        sum(float(getattr(t, "fees", None).total) if getattr(t, "fees", None) else 0.0 for t in trades)
+    )
     report.turnover = float(sum(float(getattr(t, "gross", 0.0)) for t in trades))
 
     if isinstance(series.index, pd.DatetimeIndex):

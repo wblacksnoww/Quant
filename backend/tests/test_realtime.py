@@ -235,8 +235,7 @@ def test_fetch_quotes_falls_back_to_next_source(monkeypatch):
 
     def working(instruments, timeout):
         return {
-            inst.id: rt.RealtimeQuote(symbol=inst.id, price=9.9, source="eastmoney")
-            for inst in instruments
+            inst.id: rt.RealtimeQuote(symbol=inst.id, price=9.9, source="eastmoney") for inst in instruments
         }
 
     monkeypatch.setattr(rt, "_SOURCES", (("腾讯", broken), ("东财", working)))
@@ -275,10 +274,7 @@ class _StubProvider:
         self.calls += 1
         if self.fail:
             raise RuntimeError("数据源挂了")
-        return {
-            code: rt.RealtimeQuote(symbol=code, price=10.0, name="测试", source="stub")
-            for code in codes
-        }
+        return {code: rt.RealtimeQuote(symbol=code, price=10.0, name="测试", source="stub") for code in codes}
 
 
 def test_service_snapshot_ttl_and_stale_fallback():
@@ -378,9 +374,7 @@ def test_tencent_daily_us_uses_suffix_code(monkeypatch):
     payload = {
         "code": 0,
         "data": {
-            "usAAPL.OQ": {
-                "qfqday": [["2026-10-16", "346.09", "343.46", "347.82", "340.46", "59946368"]]
-            }
+            "usAAPL.OQ": {"qfqday": [["2026-10-16", "346.09", "343.46", "347.82", "340.46", "59946368"]]}
         },
     }
 

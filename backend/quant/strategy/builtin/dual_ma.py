@@ -15,10 +15,7 @@ class DualMaStrategy(Strategy):
     strategy_id = "dual_ma"
     display_name = "双均线趋势"
     category = "trend"
-    description = (
-        "快慢均线金叉买入、死叉卖出。经典趋势跟随，震荡市会被反复打脸，"
-        "适合配合止损与仓位控制使用。"
-    )
+    description = "快慢均线金叉买入、死叉卖出。经典趋势跟随，震荡市会被反复打脸，适合配合止损与仓位控制使用。"
 
     param_specs = (
         ParamSpec("fast", "int", 10, 2, 120, description="快线周期（日）"),

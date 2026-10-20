@@ -18,7 +18,10 @@ function formatValue(ruleId: string, key: string, value: unknown): string {
   if (typeof value === 'boolean') return value ? '启用' : '关闭'
   if (Array.isArray(value)) return value.length === 0 ? '空' : value.join(', ')
   if (typeof value === 'number') {
-    if (key === 'limit' && (ruleId.includes('pct') || ruleId.includes('loss') || ruleId.includes('drawdown'))) {
+    if (
+      key === 'limit' &&
+      (ruleId.includes('pct') || ruleId.includes('loss') || ruleId.includes('drawdown'))
+    ) {
       return fmtPct(value, 1)
     }
     return Number.isInteger(value) ? String(value) : value.toFixed(2)
@@ -58,7 +61,11 @@ export function RiskPage() {
 
   return (
     <div className="col" style={{ gap: 18 }}>
-      {error && <Card><Empty title="加载失败" hint={error} /></Card>}
+      {error && (
+        <Card>
+          <Empty title="加载失败" hint={error} />
+        </Card>
+      )}
 
       <Card
         title="风控执行链路"
@@ -78,7 +85,9 @@ export function RiskPage() {
           ].map(([title, text]) => (
             <div key={title} className="stat">
               <div className="stat-label">{title}</div>
-              <div className="small muted" style={{ marginTop: 4 }}>{text}</div>
+              <div className="small muted" style={{ marginTop: 4 }}>
+                {text}
+              </div>
             </div>
           ))}
         </div>
@@ -164,7 +173,15 @@ export function RiskPage() {
                         .join(', ') || '—'}
                     </td>
                     <td>
-                      <Badge tone={rule.severity === 'critical' ? 'danger' : rule.severity === 'warning' ? 'warn' : 'neutral'}>
+                      <Badge
+                        tone={
+                          rule.severity === 'critical'
+                            ? 'danger'
+                            : rule.severity === 'warning'
+                              ? 'warn'
+                              : 'neutral'
+                        }
+                      >
                         {rule.severity}
                       </Badge>
                     </td>

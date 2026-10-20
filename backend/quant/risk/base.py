@@ -13,16 +13,16 @@
 from __future__ import annotations
 
 import logging
-import time
 from abc import ABC, abstractmethod
 from collections import deque
-from dataclasses import dataclass, field
+from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any, Iterable
+from typing import Any
 
 from ..core.events import EventBus, EventType
 from ..core.portfolio import Account
-from ..core.types import AccountSnapshot, Fill, Order, Side, utcnow
+from ..core.types import Fill, Order, Side, utcnow
 from ..execution.rules import round_down_lot, rules_for
 
 log = logging.getLogger(__name__)
@@ -285,7 +285,16 @@ class LotSizeCheck(RiskRule):
 
 RULE_TYPES: dict[str, type[RiskRule]] = {
     cls.rule_id: cls
-    for cls in (MaxPositionPct, MaxOrderValuePct, MaxPositions, DailyLossLimit, MaxDrawdown, OrderRateLimit, Blacklist, LotSizeCheck)
+    for cls in (
+        MaxPositionPct,
+        MaxOrderValuePct,
+        MaxPositions,
+        DailyLossLimit,
+        MaxDrawdown,
+        OrderRateLimit,
+        Blacklist,
+        LotSizeCheck,
+    )
 }
 
 
@@ -378,7 +387,9 @@ class RiskManager:
         )
 
     # ------------------------------------------------------------------ #
-    def pre_trade(self, order: Order, account: Account, now: datetime | None = None, open_orders: int = 0) -> RiskDecision:
+    def pre_trade(
+        self, order: Order, account: Account, now: datetime | None = None, open_orders: int = 0
+    ) -> RiskDecision:
         """依次执行所有启用规则，任一拒绝即返回。"""
         state = self.build_state(account, now, open_orders)
         for rule in self.rules:
@@ -397,7 +408,9 @@ class RiskManager:
                     {"order": order.to_dict(), **decision.to_dict()},
                     source="risk",
                 )
-                log.info("风控拒单 %s %s %s: %s", order.symbol, order.side.value, order.quantity, decision.reason)
+                log.info(
+                    "风控拒单 %s %s %s: %s", order.symbol, order.side.value, order.quantity, decision.reason
+                )
                 return decision
         self.last_decision = RiskDecision.ok()
         return self.last_decision

@@ -161,9 +161,7 @@ class FundProvider(DataProvider):
         )
         return normalize_frame(out, symbol=inst.id)
 
-    def search(
-        self, keyword: str = "", limit: int = 50, *, market: str | None = None
-    ) -> list[SymbolInfo]:
+    def search(self, keyword: str = "", limit: int = 50, *, market: str | None = None) -> list[SymbolInfo]:
         wanted = (market or "").strip().upper()
         if wanted and wanted not in ("FUND", "ALL", "全部"):
             return []

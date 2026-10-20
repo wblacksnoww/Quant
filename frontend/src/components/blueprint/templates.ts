@@ -79,11 +79,24 @@ export const TEMPLATES: BpTemplate[] = [
     key: 'blank',
     name: '空白画布',
     hint: '从数据源开始自己连线',
-    spec: { version: 2, description: '', category: 'trend', position_pct: 0.9, stop_loss: 0.08, take_profit: 0, nodes: [], edges: [], outputs: { entry: '', exit: '' } },
+    spec: {
+      version: 2,
+      description: '',
+      category: 'trend',
+      position_pct: 0.9,
+      stop_loss: 0.08,
+      take_profit: 0,
+      nodes: [],
+      edges: [],
+      outputs: { entry: '', exit: '' },
+    },
   },
 ]
 
-export function templateToCanvas(tpl: BpTemplate, onParams: (nodeId: string) => (next: Record<string, number>) => void) {
+export function templateToCanvas(
+  tpl: BpTemplate,
+  onParams: (nodeId: string) => (next: Record<string, number>) => void,
+) {
   if (tpl.spec.nodes.length === 0) {
     const nodes: Node[] = [
       {

@@ -5,12 +5,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from datetime import datetime
-from typing import Iterable, Mapping
 
 from .errors import InsufficientCash, InsufficientPosition
 from .markets import rules_for
-from .types import AccountSnapshot, FeeBreakdown, Fill, Position, Side, utcnow
+from .types import AccountSnapshot, Fill, Position, Side, utcnow
 
 
 class Account:

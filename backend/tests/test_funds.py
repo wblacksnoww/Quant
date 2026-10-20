@@ -6,12 +6,11 @@ from datetime import date, datetime
 
 import pandas as pd
 import pytest
+from conftest import login_headers
 
 from quant.core.markets import Market, parse_instrument
 from quant.data.providers.fund_provider import FundProvider
 from quant.funds import FundPosition, compute_positions
-
-from conftest import login_headers
 
 # --------------------------------------------------------------------------- #
 # 聚合纯函数
@@ -271,9 +270,7 @@ def test_subscribe_redeem_and_holdings(client, stub_fund_router):
     redeemed = resp.json()
     # 接口按分四舍五入展示，断言允许 0.005 误差
     assert redeemed["fee"] == pytest.approx(985.0 * 1.02 * 0.005, abs=0.005)
-    assert redeemed["amount"] == pytest.approx(
-        985.0 * 1.02 - 985.0 * 1.02 * 0.005, abs=0.005
-    )
+    assert redeemed["amount"] == pytest.approx(985.0 * 1.02 - 985.0 * 1.02 * 0.005, abs=0.005)
 
     resp = client.get("/api/funds/holdings", headers=headers)
     assert resp.json()["holdings"][0]["shares"] == pytest.approx(9000.0)

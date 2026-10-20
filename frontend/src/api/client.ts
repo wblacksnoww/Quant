@@ -15,7 +15,6 @@ import type {
   BarsResponse,
   Credential,
   AnyStrategySpec,
-  CustomSpec,
   CustomStrategy,
   DataCacheItem,
   FundNav,
@@ -248,8 +247,7 @@ export const authApi = {
   sessions: () => request<SessionInfo[]>('/auth/sessions'),
   revokeSession: (id: number) => request<Message>(`/auth/sessions/${id}`, { method: 'DELETE' }),
   totpSetup: () => request<TotpSetup>('/auth/totp/setup', { method: 'POST' }),
-  totpEnable: (code: string) =>
-    request<Message>('/auth/totp/enable', { method: 'POST', body: { code } }),
+  totpEnable: (code: string) => request<Message>('/auth/totp/enable', { method: 'POST', body: { code } }),
   totpDisable: (password: string, code: string) =>
     request<Message>('/auth/totp/disable', { method: 'POST', body: { password, code } }),
 }
@@ -263,8 +261,7 @@ export const marketApi = {
   bars: (symbol: string, start?: string, end?: string, refresh = false) =>
     request<BarsResponse>('/market/bars', { query: { symbol, start, end, refresh } }),
   indices: () => request<IndexQuote[]>('/market/indices'),
-  instrument: (symbol: string) =>
-    request<InstrumentInfo>('/market/instrument', { query: { symbol } }),
+  instrument: (symbol: string) => request<InstrumentInfo>('/market/instrument', { query: { symbol } }),
   intraday: (symbol: string, freq: '1m' | '5m' | '15m' | '30m' | '60m' = '5m', limit = 240) =>
     request<BarsResponse>('/market/intraday', { query: { symbol, freq, limit } }),
   klines: (
@@ -299,8 +296,7 @@ export const strategyApi = {
     request<CustomStrategy>('/strategies/custom', { method: 'POST', body }),
   updateCustom: (id: number, body: { name?: string; spec?: AnyStrategySpec; enabled?: boolean }) =>
     request<CustomStrategy>(`/strategies/custom/${id}`, { method: 'PATCH', body }),
-  removeCustom: (id: number) =>
-    request<Message>(`/strategies/custom/${id}`, { method: 'DELETE' }),
+  removeCustom: (id: number) => request<Message>(`/strategies/custom/${id}`, { method: 'DELETE' }),
 }
 
 export const backtestApi = {
@@ -314,14 +310,12 @@ export const backtestApi = {
 
 export const paperApi = {
   start: (body: PaperStartRequest) => request<RunAccepted>('/paper/start', { method: 'POST', body }),
-  stop: (runId?: string) =>
-    request<Message>('/paper/stop', { method: 'POST', query: { run_id: runId } }),
-  pause: (runId?: string) =>
-    request<Message>('/paper/pause', { method: 'POST', query: { run_id: runId } }),
-  resume: (runId?: string) =>
-    request<Message>('/paper/resume', { method: 'POST', query: { run_id: runId } }),
+  stop: (runId?: string) => request<Message>('/paper/stop', { method: 'POST', query: { run_id: runId } }),
+  pause: (runId?: string) => request<Message>('/paper/pause', { method: 'POST', query: { run_id: runId } }),
+  resume: (runId?: string) => request<Message>('/paper/resume', { method: 'POST', query: { run_id: runId } }),
   continueRun: (runId: string) =>
     request<RunAccepted>('/paper/continue', { method: 'POST', query: { run_id: runId } }),
+  removeRun: (runId: string) => request<Message>(`/paper/runs/${runId}`, { method: 'DELETE' }),
   sessions: () => request<PaperState[]>('/paper/sessions'),
   state: () => request<PaperState | null>('/paper/state'),
   runs: () => request<RunSummary[]>('/paper/runs'),
@@ -338,8 +332,7 @@ export const riskApi = {
 }
 
 export const fundApi = {
-  search: (q: string, limit = 30) =>
-    request<SymbolInfo[]>('/funds/search', { query: { q, limit } }),
+  search: (q: string, limit = 30) => request<SymbolInfo[]>('/funds/search', { query: { q, limit } }),
   nav: (symbol: string, start?: string, end?: string) =>
     request<FundNav>('/funds/nav', { query: { symbol, start, end } }),
   holdings: () => request<FundPortfolio>('/funds/holdings'),
@@ -407,14 +400,17 @@ export const adminApi = {
 
 export const credentialApi = {
   list: () => request<Credential[]>('/credentials'),
-  create: (body: { name: string; kind: 'broker' | 'datasource'; payload: Record<string, unknown>; description?: string }) =>
-    request<Credential>('/credentials', { method: 'POST', body }),
+  create: (body: {
+    name: string
+    kind: 'broker' | 'datasource'
+    payload: Record<string, unknown>
+    description?: string
+  }) => request<Credential>('/credentials', { method: 'POST', body }),
   update: (id: number, body: { name?: string; description?: string; payload?: Record<string, unknown> }) =>
     request<Credential>(`/credentials/${id}`, { method: 'PUT', body }),
   reveal: (id: number) =>
-    request<{ id: number; name: string; payload: Record<string, unknown> }>(
-      `/credentials/${id}/reveal`,
-      { method: 'POST' },
-    ),
+    request<{ id: number; name: string; payload: Record<string, unknown> }>(`/credentials/${id}/reveal`, {
+      method: 'POST',
+    }),
   remove: (id: number) => request<Message>(`/credentials/${id}`, { method: 'DELETE' }),
 }

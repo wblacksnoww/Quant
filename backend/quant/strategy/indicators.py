@@ -63,13 +63,15 @@ def rsi(series: pd.Series, period: int = 14) -> pd.Series:
 
 def atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
     prev_close = close.shift(1)
-    tr = pd.concat(
-        [(high - low).abs(), (high - prev_close).abs(), (low - prev_close).abs()], axis=1
-    ).max(axis=1)
+    tr = pd.concat([(high - low).abs(), (high - prev_close).abs(), (low - prev_close).abs()], axis=1).max(
+        axis=1
+    )
     return tr.ewm(alpha=1 / period, adjust=False, min_periods=period).mean()
 
 
-def bollinger(series: pd.Series, period: int = 20, width: float = 2.0) -> tuple[pd.Series, pd.Series, pd.Series]:
+def bollinger(
+    series: pd.Series, period: int = 20, width: float = 2.0
+) -> tuple[pd.Series, pd.Series, pd.Series]:
     mid = sma(series, period)
     dev = std(series, period)
     return mid - width * dev, mid, mid + width * dev

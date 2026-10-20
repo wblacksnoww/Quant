@@ -21,8 +21,7 @@ from abc import ABC, abstractmethod
 
 from ..core.events import EventBus
 from ..core.portfolio import Account
-from ..core.types import Bar, Fill, Order, OrderStatus, OrderType, Side, TimeInForce
-from .cost import CostModel
+from ..core.types import Bar, Fill, Order, OrderType, Side, TimeInForce
 from .matching import BlockReason, MatchingEngine
 from .rules import is_valid_lot, round_down_lot, rules_for
 
@@ -280,9 +279,7 @@ class SimBroker(Broker):
         if order.side is Side.BUY:
             need = self._estimate_cash(order)
             if need > self.account.available_cash + 1e-6:
-                return (
-                    f"可用资金不足：需要 {need:.2f}，可用 {self.account.available_cash:.2f}"
-                )
+                return f"可用资金不足：需要 {need:.2f}，可用 {self.account.available_cash:.2f}"
         else:
             sellable = self._sellable(order.symbol, exclude_id=order.id)
             if order.quantity > sellable + 1e-9:

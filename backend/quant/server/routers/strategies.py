@@ -6,13 +6,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from ...strategy.custom import validate_spec
-from ...strategy.registry import get_strategy, list_strategies
 from ...storage.models import User, UserCustomStrategy
 from ...storage.repositories import UserStrategyRepository
+from ...strategy.custom import validate_spec
+from ...strategy.registry import get_strategy, list_strategies
 from ..deps import audit, get_current_user, get_db
 from ..schemas import CustomStrategyIn, CustomStrategyOut, CustomStrategyPatch, Message, StrategyOut
 

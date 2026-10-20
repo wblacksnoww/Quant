@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
 from ..config import Settings, get_settings
-from ..data.base import DataProvider, available_providers, create_provider
+from ..data.base import DataProvider, create_provider
 from ..data.store import DataStore, MarketDataService
 from ..engine.live import LiveManager
 from ..engine.paper import PaperManager
@@ -21,7 +22,7 @@ from ..security.password import hash_password
 from ..security.tokens import TokenService
 from ..security.totp import TotpService
 from ..storage.db import Database
-from ..storage.repositories import UserRepository, bootstrap
+from ..storage.repositories import bootstrap
 from .ws import EventHub
 
 log = logging.getLogger(__name__)
@@ -42,6 +43,8 @@ class AppContext:
     started_at: float = field(default_factory=time.monotonic)
     warnings: list[str] = field(default_factory=list)
     backtests: Any = None  # BacktestManager，延迟注入以避免循环导入
+    coordinator: Any = None  # SessionCoordinator，多实例会话租约/命令
+    instance_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     extra: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -154,12 +157,28 @@ def build_context(settings: Settings | None = None) -> AppContext:
         warnings=warnings,
     )
 
-    # 上次进程异常退出残留的 running 记录
+    # 多实例协调器：租约 + 命令 + 状态快照（lifespan 中启动心跳）
+    from ..services.coordinator import SessionCoordinator
+
+    ctx.coordinator = SessionCoordinator(
+        db=db,
+        paper=ctx.paper,
+        live=ctx.live,
+        instance_id=ctx.instance_id,
+    )
+
+    # 上次进程异常退出残留的 running 记录：活跃租约不标记，避免误伤其他实例
     try:
+        active = set(ctx.coordinator.leases.active_run_ids())
         with db.session() as session:
+            from sqlalchemy import select
+
+            from ..storage.models import BacktestJob
             from ..storage.repositories import RunRepository
 
-            count = RunRepository(session).mark_interrupted()
+            # 其他实例正在跑的回测任务也不能误标中断
+            active.update(session.scalars(select(BacktestJob.run_id).where(BacktestJob.status == "running")))
+            count = RunRepository(session).mark_interrupted(exclude_run_ids=active)
             if count:
                 log.warning("已将 %d 条残留的运行记录标记为 interrupted", count)
     except Exception:  # noqa: BLE001

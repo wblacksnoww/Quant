@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
@@ -21,8 +21,9 @@ from sqlalchemy.orm import Session
 from ...core.errors import AuthError, PermissionDenied
 from ...security.password import WeakPassword, hash_password, needs_rehash, validate_strength, verify_password
 from ...storage.models import RefreshToken, User
-from ...storage.repositories import AuditRepository, TokenRepository, UserRepository
-from ..deps import audit, client_ip, get_current_user, get_db, get_ctx
+from ...storage.repositories import TokenRepository, UserRepository
+from ..context import AppContext
+from ..deps import audit, client_ip, get_ctx, get_current_user, get_db
 from ..schemas import (
     ChangePasswordRequest,
     LoginRequest,
@@ -35,7 +36,6 @@ from ..schemas import (
     TotpSetupResponse,
     UserOut,
 )
-from ..context import AppContext
 
 router = APIRouter(prefix="/auth", tags=["认证"])
 log = logging.getLogger(__name__)
@@ -72,11 +72,19 @@ def login(
 
     if user is None:
         verify_password(body.password, _DUMMY_HASH)
-        audit(session, request, actor=body.username, action="auth.login.failed", detail={"reason": "user_not_found"})
+        audit(
+            session,
+            request,
+            actor=body.username,
+            action="auth.login.failed",
+            detail={"reason": "user_not_found"},
+        )
         _fail(session, "用户名或密码错误")
 
     if not user.is_active:
-        audit(session, request, actor=user.username, action="auth.login.failed", detail={"reason": "inactive"})
+        audit(
+            session, request, actor=user.username, action="auth.login.failed", detail={"reason": "inactive"}
+        )
         _fail(session, "账号已停用，请联系管理员", 403)
 
     if users.is_locked(user):
@@ -89,7 +97,13 @@ def login(
             threshold=ctx.settings.login_max_attempts,
             lock_minutes=ctx.settings.login_lock_minutes,
         )
-        audit(session, request, actor=user.username, action="auth.login.failed", detail={"reason": "bad_password"})
+        audit(
+            session,
+            request,
+            actor=user.username,
+            action="auth.login.failed",
+            detail={"reason": "bad_password"},
+        )
         _fail(session, "用户名或密码错误")
 
     # 密码算法升级（scrypt → Argon2id，或参数过期）
@@ -107,7 +121,13 @@ def login(
             used_recovery = _consume_recovery(user, body.totp_code)
             if not used_recovery:
                 users.register_failure(user, threshold=ctx.settings.login_max_attempts)
-                audit(session, request, actor=user.username, action="auth.login.failed", detail={"reason": "bad_totp"})
+                audit(
+                    session,
+                    request,
+                    actor=user.username,
+                    action="auth.login.failed",
+                    detail={"reason": "bad_totp"},
+                )
                 _fail(session, "两步验证码不正确")
 
     users.register_success(user)
@@ -360,7 +380,9 @@ def revoke_session(
     if record is None or record.user_id != user.id:
         raise PermissionDenied("会话不存在")
     TokenRepository(session).revoke(record)
-    audit(session, request, actor=user.username, action="auth.session.revoked", target=f"session:{session_id}")
+    audit(
+        session, request, actor=user.username, action="auth.session.revoked", target=f"session:{session_id}"
+    )
     return Message(message="会话已吊销")
 
 

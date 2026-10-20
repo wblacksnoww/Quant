@@ -9,7 +9,7 @@ from __future__ import annotations
 import math
 import uuid
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from enum import Enum
 from typing import Any
 
@@ -20,7 +20,7 @@ from typing import Any
 
 def utcnow() -> datetime:
     """带时区的当前时间（UTC）。全系统时间统一存 UTC，展示层再转本地时区。"""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def new_id(prefix: str) -> str:
@@ -255,9 +255,7 @@ class Order:
         total_qty = self.filled_quantity + quantity
         if total_qty <= 0:
             return
-        self.avg_fill_price = (
-            self.avg_fill_price * self.filled_quantity + price * quantity
-        ) / total_qty
+        self.avg_fill_price = (self.avg_fill_price * self.filled_quantity + price * quantity) / total_qty
         self.filled_quantity = total_qty
         prev = self.fees
         self.fees = FeeBreakdown(

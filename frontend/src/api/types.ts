@@ -1,3 +1,7 @@
+import type { components } from './schema'
+
+type Schemas = components['schemas']
+
 /**
  * 与后端 Pydantic schema 一一对应的 TypeScript 类型。
  *
@@ -337,18 +341,11 @@ export interface Metrics {
   [key: string]: unknown
 }
 
-export interface RunSummary {
-  run_id: string
+export type RunSummary = Omit<Schemas['RunSummary'], 'kind' | 'status' | 'metrics' | 'symbols'> & {
   kind: 'backtest' | 'paper' | string
-  strategy_id: string
-  symbols: string[]
   status: RunStatus
-  progress: number
   metrics: Metrics
-  error?: string | null
-  created_at?: string | null
-  finished_at?: string | null
-  elapsed_seconds: number
+  symbols: string[]
 }
 
 export interface EquityPoint {
@@ -433,7 +430,23 @@ export interface LogEntry {
   [key: string]: unknown
 }
 
-export interface RunDetail extends RunSummary {
+export type RunDetail = Omit<
+  Schemas['RunDetail'],
+  | 'kind'
+  | 'status'
+  | 'metrics'
+  | 'config'
+  | 'equity_curve'
+  | 'trades'
+  | 'orders'
+  | 'positions'
+  | 'logs'
+  | 'symbols'
+> & {
+  kind: 'backtest' | 'paper' | string
+  status: RunStatus
+  metrics: Metrics
+  symbols: string[]
   config: Record<string, unknown>
   equity_curve: EquityPoint[]
   trades: FillRecord[]
@@ -442,34 +455,23 @@ export interface RunDetail extends RunSummary {
   logs: LogEntry[]
 }
 
-export interface RunAccepted {
-  run_id: string
-  status: string
-  mode?: string
-}
+export type RunAccepted = Schemas['RunAccepted']
 
 // --------------------------------------------------------------------------- //
 // 纸盘
 // --------------------------------------------------------------------------- //
 
-export interface PaperState {
-  run_id: string
-  strategy_id: string
-  symbols: string[]
+export type PaperState = Omit<
+  Schemas['PaperStateOut'],
+  'mode' | 'last_prices' | 'positions' | 'open_orders' | 'recent_fills' | 'equity_curve' | 'symbols'
+> & {
   mode: 'replay' | 'live' | string
-  status: string
-  started_at?: string | null
+  symbols: string[]
   last_prices: Record<string, number>
-  cash: number
-  frozen_cash: number
-  equity: number
-  total_return: number
   positions: PositionRecord[]
   open_orders: OrderRecord[]
   recent_fills: FillRecord[]
   equity_curve: EquityPoint[]
-  error?: string | null
-  steps: number
 }
 
 // --------------------------------------------------------------------------- //
@@ -492,11 +494,25 @@ export interface LiveStartRequest extends BacktestRequest {
   warmup_days?: number
 }
 
-export interface LiveState extends PaperState {
-  adapter: string
-  sandbox: boolean
+export type LiveState = Omit<
+  Schemas['LiveStateOut'],
+  | 'mode'
+  | 'last_prices'
+  | 'positions'
+  | 'open_orders'
+  | 'recent_fills'
+  | 'equity_curve'
+  | 'credential_id'
+  | 'symbols'
+> & {
+  mode: 'replay' | 'live' | string
+  symbols: string[]
+  last_prices: Record<string, number>
+  positions: PositionRecord[]
+  open_orders: OrderRecord[]
+  recent_fills: FillRecord[]
+  equity_curve: EquityPoint[]
   credential_id?: number | null
-  reconcile_at?: string | null
 }
 
 // --------------------------------------------------------------------------- //

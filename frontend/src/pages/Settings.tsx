@@ -14,7 +14,15 @@ import type {
   User,
 } from '../api/types'
 import { Badge, Banner, Button, Card, Empty, Field, Loading, Modal } from '../components/ui'
-import { IconCheck, IconKey, IconLock, IconPlus, IconRefresh, IconShield, IconTrash } from '../components/icons'
+import {
+  IconCheck,
+  IconKey,
+  IconLock,
+  IconPlus,
+  IconRefresh,
+  IconShield,
+  IconTrash,
+} from '../components/icons'
 import { useAuth } from '../store/auth'
 import { notify } from '../store/toast'
 import { fmtDateTime } from '../utils/format'
@@ -219,7 +227,8 @@ export function SettingsPage() {
     let payload: Record<string, unknown>
     try {
       const parsed = JSON.parse(credentialPayload) as unknown
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('payload 必须是 JSON 对象')
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+        throw new Error('payload 必须是 JSON 对象')
       payload = parsed as Record<string, unknown>
     } catch (err) {
       notify('error', `凭据内容不是合法 JSON 对象：${errorText(err, '')}`)
@@ -414,11 +423,7 @@ export function SettingsPage() {
             title="两步验证"
             description="基于 TOTP（RFC 6238），兼容 Google Authenticator、1Password 等"
             actions={
-              user?.totp_enabled ? (
-                <Badge tone="success">已启用</Badge>
-              ) : (
-                <Badge tone="warn">未启用</Badge>
-              )
+              user?.totp_enabled ? <Badge tone="success">已启用</Badge> : <Badge tone="warn">未启用</Badge>
             }
           >
             {user?.totp_enabled ? (
@@ -432,9 +437,7 @@ export function SettingsPage() {
               </div>
             ) : (
               <div className="col" style={{ gap: 12 }}>
-                <div className="small muted">
-                  强烈建议在远程部署时启用。启用后登录需要「密码 + 动态码」。
-                </div>
+                <div className="small muted">强烈建议在远程部署时启用。启用后登录需要「密码 + 动态码」。</div>
                 <Button variant="primary" loading={totpBusy} onClick={() => void beginTotpSetup()}>
                   <IconShield /> 生成 TOTP 种子
                 </Button>
@@ -518,7 +521,11 @@ export function SettingsPage() {
                       <tr key={session.id}>
                         <td>
                           <div className="mono tiny">{session.ip || '—'}</div>
-                          <div className="tiny faint truncate" style={{ maxWidth: 220 }} title={session.user_agent}>
+                          <div
+                            className="tiny faint truncate"
+                            style={{ maxWidth: 220 }}
+                            title={session.user_agent}
+                          >
                             {session.user_agent || '未知客户端'}
                           </div>
                         </td>
@@ -579,7 +586,9 @@ export function SettingsPage() {
                 {credentials.map((item) => (
                   <tr key={item.id}>
                     <td className="strong">{item.name}</td>
-                    <td><Badge tone={item.kind === 'broker' ? 'warn' : 'accent'}>{item.kind}</Badge></td>
+                    <td>
+                      <Badge tone={item.kind === 'broker' ? 'warn' : 'accent'}>{item.kind}</Badge>
+                    </td>
                     <td className="tiny faint">{item.description || '—'}</td>
                     <td className="tiny faint">{fmtDateTime(item.updated_at ?? item.created_at)}</td>
                     <td className="right">
@@ -737,9 +746,13 @@ export function SettingsPage() {
                       <td className="tiny faint nowrap">{fmtDateTime(item.ts)}</td>
                       <td className="strong">{item.actor}</td>
                       <td className="mono tiny">{item.action}</td>
-                      <td className="tiny faint truncate" style={{ maxWidth: 200 }}>{item.target || '—'}</td>
+                      <td className="tiny faint truncate" style={{ maxWidth: 200 }}>
+                        {item.target || '—'}
+                      </td>
                       <td className="mono tiny">{item.ip || '—'}</td>
-                      <td className="mono tiny faint" title={item.hash}>{item.hash.slice(0, 12)}…</td>
+                      <td className="mono tiny faint" title={item.hash}>
+                        {item.hash.slice(0, 12)}…
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -875,17 +888,23 @@ export function SettingsPage() {
             )}
             <div>
               <div className="label">密钥（手动输入到验证器）</div>
-              <div className="code-block" style={{ marginTop: 4 }}>{setup.secret}</div>
+              <div className="code-block" style={{ marginTop: 4 }}>
+                {setup.secret}
+              </div>
             </div>
             <div>
               <div className="label">配置 URI</div>
-              <div className="code-block" style={{ marginTop: 4 }}>{setup.provisioning_uri}</div>
+              <div className="code-block" style={{ marginTop: 4 }}>
+                {setup.provisioning_uri}
+              </div>
             </div>
             <div>
               <div className="label">恢复码</div>
               <div className="row wrap" style={{ gap: 6, marginTop: 6 }}>
                 {setup.recovery_codes.map((code) => (
-                  <span key={code} className="badge badge-neutral mono">{code}</span>
+                  <span key={code} className="badge badge-neutral mono">
+                    {code}
+                  </span>
                 ))}
               </div>
             </div>
@@ -1006,7 +1025,9 @@ export function SettingsPage() {
         footer={<Button onClick={() => setRevealed(null)}>关闭</Button>}
       >
         <Banner kind="warn">本次查看已写入审计日志。</Banner>
-        <pre className="code-block" style={{ marginTop: 12 }}>{JSON.stringify(revealed?.payload ?? {}, null, 2)}</pre>
+        <pre className="code-block" style={{ marginTop: 12 }}>
+          {JSON.stringify(revealed?.payload ?? {}, null, 2)}
+        </pre>
       </Modal>
     </div>
   )

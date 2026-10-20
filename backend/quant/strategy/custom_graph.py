@@ -39,7 +39,11 @@ from . import indicators as ta
 # 指标白名单唯一来源：v1 条件与 v2 蓝图共用（参数边界随之同源）
 from .indicators import (
     INDICATOR_INT_BOUNDS as _INT_BOUNDS,
+)
+from .indicators import (
     INDICATOR_SPECS as _INDICATORS,
+)
+from .indicators import (
     INDICATOR_WIDTH_BOUNDS as _WIDTH_BOUNDS,
 )
 
@@ -66,7 +70,12 @@ _LOGIC_1 = ("not",)
 _LOGIC_2 = ("and", "or")
 
 _BOOL_NODES = frozenset(_COMPARE + _LOGIC_1 + _LOGIC_2)
-_ALL_TYPES = frozenset(_SOURCES) | frozenset(_INDICATORS) | frozenset(_ARITH + _COMPARE + _LOGIC_1 + _LOGIC_2) | {"const"}
+_ALL_TYPES = (
+    frozenset(_SOURCES)
+    | frozenset(_INDICATORS)
+    | frozenset(_ARITH + _COMPARE + _LOGIC_1 + _LOGIC_2)
+    | {"const"}
+)
 
 # 每个 "kind" 在画布上是一种颜色：
 #   const  —— 标量常数（可连任何数值输入）
@@ -129,9 +138,7 @@ class GraphSpec:
                 item["pos"] = n.pos
             nodes_out.append(item)
         edges_out = [
-            {"from": src, "to": n.id, "to_port": port}
-            for n in self.nodes
-            for port, src in n.inputs.items()
+            {"from": src, "to": n.id, "to_port": port} for n in self.nodes for port, src in n.inputs.items()
         ]
         return {
             "version": GRAPH_VERSION,
@@ -166,7 +173,11 @@ def _expected_inputs(node_type: str) -> dict[str, str]:
     if node_type in _INDICATORS:
         return {"in": "series"}  # 指标必须吃序列（常数接指标无意义，直接拒绝更清晰）
     if node_type in _ARITH or node_type in _COMPARE:
-        return {"left": "series", "right": "series"} if node_type in ("cross_above", "cross_below") else {"left": "series|const", "right": "series|const"}
+        return (
+            {"left": "series", "right": "series"}
+            if node_type in ("cross_above", "cross_below")
+            else {"left": "series|const", "right": "series|const"}
+        )
     if node_type in _LOGIC_1:
         return {"in": "bool"}
     if node_type in _LOGIC_2:
@@ -233,8 +244,15 @@ def parse_graph_spec(raw: Any) -> GraphSpec:
         _fail("spec 必须是 JSON 对象")
 
     unknown = set(raw) - {
-        "version", "description", "category", "position_pct", "stop_loss", "take_profit",
-        "nodes", "edges", "outputs",
+        "version",
+        "description",
+        "category",
+        "position_pct",
+        "stop_loss",
+        "take_profit",
+        "nodes",
+        "edges",
+        "outputs",
     }
     if unknown:
         _fail(f"spec 含未知字段 {sorted(unknown)}")
@@ -280,8 +298,10 @@ def parse_graph_spec(raw: Any) -> GraphSpec:
         pos_raw = item.get("pos")
         pos: dict[str, float] | None = None
         if pos_raw is not None:
-            if not isinstance(pos_raw, dict) or set(pos_raw) - {"x", "y"} or not all(
-                isinstance(v, (int, float)) and not isinstance(v, bool) for v in pos_raw.values()
+            if (
+                not isinstance(pos_raw, dict)
+                or set(pos_raw) - {"x", "y"}
+                or not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in pos_raw.values())
             ):
                 _fail(f"{path}.pos 必须是只含数字 x/y 的对象")
             pos = {k: float(v) for k, v in pos_raw.items()}
@@ -331,7 +351,7 @@ def parse_graph_spec(raw: Any) -> GraphSpec:
             _fail(f"outputs.{side} 必须是布尔节点（比较/交叉/逻辑）")
 
     # --- 环检测（Kahn） ---------------------------------------------------- #
-    indegree = {nid: 0 for nid in by_id}
+    indegree = dict.fromkeys(by_id, 0)
     outs: dict[str, list[str]] = {nid: [] for nid in by_id}
     for node in by_id.values():
         for src in node.inputs.values():

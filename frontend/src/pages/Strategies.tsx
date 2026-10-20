@@ -142,7 +142,11 @@ export function StrategiesPage() {
         </div>
       </Card>
 
-      {error && <Card><Empty title="加载失败" hint={error} /></Card>}
+      {error && (
+        <Card>
+          <Empty title="加载失败" hint={error} />
+        </Card>
+      )}
 
       {filtered.length === 0 ? (
         <Card>
@@ -197,9 +201,7 @@ export function StrategiesPage() {
               <div className="divider" />
               <div className="row wrap" style={{ gap: 6 }}>
                 <Badge tone="accent">{strategy.category || '未分类'}</Badge>
-                <span className="tiny faint">
-                  参数由后端 ParamSpec 自动生成，新增策略无需改前端。
-                </span>
+                <span className="tiny faint">参数由后端 ParamSpec 自动生成，新增策略无需改前端。</span>
               </div>
             </Card>
           ))}
@@ -244,15 +246,26 @@ export function StrategiesPage() {
                   const spec = item.spec
                   const isGraph = spec != null && (spec as CustomGraphSpec).version === 2 && 'nodes' in spec
                   const nodeCount = isGraph ? (spec as CustomGraphSpec).nodes.length : 0
-                  const position = spec?.position_pct != null ? `${Math.round(spec.position_pct * 100)}%` : '—'
-                  const stop = spec?.stop_loss != null && spec.stop_loss > 0 ? `${Math.round(spec.stop_loss * 100)}%` : '无'
-                  const take = spec?.take_profit != null && spec.take_profit > 0 ? `${Math.round(spec.take_profit * 100)}%` : '无'
+                  const position =
+                    spec?.position_pct != null ? `${Math.round(spec.position_pct * 100)}%` : '—'
+                  const stop =
+                    spec?.stop_loss != null && spec.stop_loss > 0
+                      ? `${Math.round(spec.stop_loss * 100)}%`
+                      : '无'
+                  const take =
+                    spec?.take_profit != null && spec.take_profit > 0
+                      ? `${Math.round(spec.take_profit * 100)}%`
+                      : '无'
                   return (
                     <tr key={item.id}>
                       <td>
                         <div className="strong">{item.name}</div>
                         <div className="row tiny faint" style={{ gap: 4 }}>
-                          {item.enabled ? <Badge tone="success">启用</Badge> : <Badge tone="warn">已停用</Badge>}
+                          {item.enabled ? (
+                            <Badge tone="success">启用</Badge>
+                          ) : (
+                            <Badge tone="warn">已停用</Badge>
+                          )}
                           {isGraph && <Badge tone="accent">蓝图 · {nodeCount} 节点</Badge>}
                         </div>
                       </td>

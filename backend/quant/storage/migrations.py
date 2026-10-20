@@ -20,6 +20,7 @@ from sqlalchemy import Engine, inspect
 
 log = logging.getLogger(__name__)
 
+
 def _alembic_ini() -> Path:
     """定位 alembic.ini。
 

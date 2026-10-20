@@ -12,9 +12,7 @@ from datetime import date
 import pandas as pd
 
 
-def append_today_row(
-    frame: pd.DataFrame, today: date, price: float | None
-) -> pd.DataFrame:
+def append_today_row(frame: pd.DataFrame, today: date, price: float | None) -> pd.DataFrame:
     """追加/复用今天的活 bar（不会重复追加）。"""
     price = price or float(frame["close"].iloc[-1])
     if len(frame) and frame["date"].iloc[-1].date() == today:

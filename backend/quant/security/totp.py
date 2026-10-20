@@ -15,7 +15,7 @@ import hashlib
 import hmac
 import logging
 import secrets
-from typing import Iterable
+from collections.abc import Iterable
 
 import pyotp
 

@@ -14,10 +14,10 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Iterable, Sequence
 from dataclasses import replace
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Iterable, Sequence
 
 import pandas as pd
 
@@ -135,9 +135,7 @@ class DataStore:
             frame = self._fetch_with_fallback(inst, start, end)
             if frame is None:
                 if cached is not None:
-                    log.warning(
-                        "%s 刷新失败，使用过期缓存（截止 %s）", inst.id, cached["date"].max()
-                    )
+                    log.warning("%s 刷新失败，使用过期缓存（截止 %s）", inst.id, cached["date"].max())
                     return self._slice(cached, start, end)
                 frame = self._seed_from_legacy(inst)
                 if frame is None:
@@ -297,9 +295,7 @@ class MarketDataService:
         self._snap_note = ""
         self._last_good: dict[str, RealtimeQuote] = {}
         # 排行榜缓存：(市场, 排序, 方向, 周期) → (时间戳, 榜单)
-        self._rank_cache: dict[
-            tuple[str, str, str, str], tuple[float, list[RealtimeQuote]]
-        ] = {}
+        self._rank_cache: dict[tuple[str, str, str, str], tuple[float, list[RealtimeQuote]]] = {}
         self._rank_lock = threading.Lock()
         self._index_cache: tuple[float, list[dict]] | None = None
 
@@ -407,9 +403,7 @@ class MarketDataService:
         quotes, _ = self.snapshot(symbols)
         return {code: quote.price for code, quote in quotes.items() if quote.price > 0}
 
-    def search(
-        self, keyword: str = "", limit: int = 50, *, market: str | None = None
-    ) -> list[SymbolInfo]:
+    def search(self, keyword: str = "", limit: int = 50, *, market: str | None = None) -> list[SymbolInfo]:
         wanted = (market or "").strip().upper()
         if wanted:
             provider = self._provider_for(wanted)
@@ -426,9 +420,7 @@ class MarketDataService:
         out: list[SymbolInfo] = []
         seen: set[str] = set()
         providers = [self.provider]
-        providers.extend(
-            item for item in self._all_providers() if item.markets and item is not self.provider
-        )
+        providers.extend(item for item in self._all_providers() if item.markets and item is not self.provider)
         for provider in providers:
             try:
                 items = provider.search(keyword, limit, market=None)
@@ -553,9 +545,7 @@ class MarketDataService:
                 ("change_pct", "asc", 15),
             ):
                 try:
-                    for quote in provider.ranking(
-                        market, sort=sort_key, order=direction, limit=size
-                    ):
+                    for quote in provider.ranking(market, sort=sort_key, order=direction, limit=size):
                         merged.setdefault(quote.symbol, quote)
                 except Exception as exc:  # noqa: BLE001 - 单个榜单失败不影响其他
                     log.debug("候选榜单 %s/%s 失败: %s", sort_key, direction, exc)
@@ -616,7 +606,9 @@ class MarketDataService:
                     for i in provider.search(inst.code, limit=5, market=inst.market.value)
                     if i.symbol == key
                 ]
-                self._info_cache[key] = items[0] if items else SymbolInfo(symbol=key, market=inst.market.value)
+                self._info_cache[key] = (
+                    items[0] if items else SymbolInfo(symbol=key, market=inst.market.value)
+                )
             except Exception:  # noqa: BLE001
                 self._info_cache[key] = SymbolInfo(symbol=key, market=inst.market.value)
         return self._info_cache[key]

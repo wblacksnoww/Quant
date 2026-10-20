@@ -17,11 +17,13 @@ from .crypto import (
 )
 from .password import (
     WeakPassword,
-    algorithm as password_algorithm,
     hash_password,
     needs_rehash,
     validate_strength,
     verify_password,
+)
+from .password import (
+    algorithm as password_algorithm,
 )
 from .tokens import ACCESS_TYPE, REFRESH_TYPE, TokenClaims, TokenPair, TokenService
 from .totp import TotpService

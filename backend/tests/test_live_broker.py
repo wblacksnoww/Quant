@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -75,7 +75,7 @@ class FakeAdapter(BrokerAdapter):
                         filled=rec["filled"],
                         avg_price=rec["avg"],
                         fee=rec["fee"],
-                        dt=datetime(2024, 1, 2, tzinfo=timezone.utc).replace(tzinfo=None),
+                        dt=datetime(2024, 1, 2, tzinfo=UTC).replace(tzinfo=None),
                     )
                 )
             if rec["status"] != "open":
@@ -86,7 +86,7 @@ class FakeAdapter(BrokerAdapter):
         if self.quote_prices:
             return {s: p for s, p in self.quote_prices.items() if s in set(symbols)}
         # 默认给一个稳定报价，避免实盘引擎回退到真实行情数据源（测试要离线）
-        return {s: 100.0 for s in symbols}
+        return dict.fromkeys(symbols, 100.0)
 
     # 测试驱动 -------------------------------------------------------- #
     def fill(self, ext: str, filled: float, avg: float, fee: float = 0.0, status: str = "closed"):

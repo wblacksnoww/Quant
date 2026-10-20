@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -18,7 +18,8 @@ from ...core.markets import Market, currency_symbol, parse_instrument, price_lim
 from ...data.base import frame_to_bars
 from ...data.calendar import trading_days
 from ...storage.models import User
-from ..deps import get_current_user, get_ctx
+from ..context import AppContext
+from ..deps import get_ctx, get_current_user
 from ..schemas import (
     BarsResponse,
     DataCacheOut,
@@ -30,7 +31,6 @@ from ..schemas import (
     RankingOut,
     SymbolOut,
 )
-from ..context import AppContext
 
 router = APIRouter(prefix="/market", tags=["行情"])
 log = logging.getLogger(__name__)
@@ -227,7 +227,7 @@ def get_quote(
     quotes, note = ctx.data.snapshot(ids[:50])
     return QuoteResponse(
         quotes={code: QuoteOut(**quote.to_dict()) for code, quote in quotes.items()},
-        ts=datetime.now(timezone.utc).isoformat(),
+        ts=datetime.now(UTC).isoformat(),
         note=note,
     )
 
@@ -307,7 +307,7 @@ def ranking(
         period=period,
         items=[QuoteOut(**quote.to_dict()) for quote in items],
         note=note,
-        ts=datetime.now(timezone.utc).isoformat(),
+        ts=datetime.now(UTC).isoformat(),
     )
 
 

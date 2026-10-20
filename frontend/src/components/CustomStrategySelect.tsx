@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ApiError, strategyApi } from '../api/client'
+import { strategyApi } from '../api/client'
 import type { CustomGraphSpec, CustomSpec, CustomStrategy } from '../api/types'
 import { Button, Loading } from './ui'
 import { IconRefresh } from './icons'

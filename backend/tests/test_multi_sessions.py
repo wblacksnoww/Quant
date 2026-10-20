@@ -5,7 +5,6 @@ from __future__ import annotations
 import time
 
 import pytest
-
 from conftest import login_headers
 from test_live_broker import FakeAdapter
 
@@ -32,7 +31,7 @@ def fake_adapter(monkeypatch, context):
         adapter.cash = 100_000.0
         return adapter
 
-    monkeypatch.setattr("quant.server.routers.live.create_adapter", _factory)
+    monkeypatch.setattr("quant.services.live_service.create_adapter", _factory)
     return _factory
 
 
@@ -113,15 +112,11 @@ def test_live_multiple_credentials_same_user(client, live_enabled, fake_adapter)
     resp = client.post("/api/live/start", json={**body, "credential_id": first}, headers=headers)
     assert resp.status_code == 202, resp.text
     try:
-        resp = client.post(
-            "/api/live/start", json={**body, "credential_id": second}, headers=headers
-        )
+        resp = client.post("/api/live/start", json={**body, "credential_id": second}, headers=headers)
         assert resp.status_code == 202, resp.text
 
         # 同一凭证不允许第二个会话
-        resp = client.post(
-            "/api/live/start", json={**body, "credential_id": first}, headers=headers
-        )
+        resp = client.post("/api/live/start", json={**body, "credential_id": first}, headers=headers)
         assert resp.status_code == 409
 
         time.sleep(1.5)
@@ -130,9 +125,7 @@ def test_live_multiple_credentials_same_user(client, live_enabled, fake_adapter)
         assert {item["credential_id"] for item in sessions} == {first, second}
 
         # 只停一个凭证
-        resp = client.post(
-            "/api/live/stop", params={"credential_id": first}, headers=headers
-        )
+        resp = client.post("/api/live/stop", params={"credential_id": first}, headers=headers)
         assert resp.status_code == 200
         assert resp.json()["detail"]["stopped"] == 1
         time.sleep(0.5)
@@ -204,7 +197,10 @@ def test_live_pause_and_resume(client, live_enabled, fake_adapter):
     assert resp.status_code == 202, resp.text
     time.sleep(1.5)
 
-    assert client.post("/api/live/pause", params={"credential_id": credential}, headers=headers).status_code == 200
+    assert (
+        client.post("/api/live/pause", params={"credential_id": credential}, headers=headers).status_code
+        == 200
+    )
     time.sleep(0.3)
     sessions = client.get("/api/live/sessions", headers=headers).json()
     assert [item["status"] for item in sessions] == ["paused"]
@@ -214,13 +210,19 @@ def test_live_pause_and_resume(client, live_enabled, fake_adapter):
     still = client.get("/api/live/sessions", headers=headers).json()
     assert still[0]["steps"] == steps_at_pause
 
-    assert client.post("/api/live/resume", params={"credential_id": credential}, headers=headers).status_code == 200
+    assert (
+        client.post("/api/live/resume", params={"credential_id": credential}, headers=headers).status_code
+        == 200
+    )
     time.sleep(1.2)
     resumed = client.get("/api/live/sessions", headers=headers).json()
     assert resumed[0]["status"] == "running"
     assert resumed[0]["steps"] > steps_at_pause
 
-    assert client.post("/api/live/stop", params={"credential_id": credential}, headers=headers).status_code == 200
+    assert (
+        client.post("/api/live/stop", params={"credential_id": credential}, headers=headers).status_code
+        == 200
+    )
 
 
 def test_paper_resume_stopped_run_keeps_history(client, context, monkeypatch):
@@ -273,3 +275,34 @@ def test_paper_resume_stopped_run_keeps_history(client, context, monkeypatch):
     assert len(after["trades"]) >= trades_before
     # 恢复时的现金/持仓与停止时一致（buy_hold 已建仓）
     assert after["positions"] == before["positions"] or after["positions"]
+
+
+def test_delete_stopped_paper_run(client, context, monkeypatch):
+    """历史纸盘记录可删除；运行中的会话拒绝删除。"""
+    from quant.data.providers.synthetic import SyntheticProvider
+
+    synth = SyntheticProvider()
+    monkeypatch.setattr(
+        context.data,
+        "bars",
+        lambda symbol, start, end, refresh=False: synth.daily(symbol, start, end),
+    )
+    headers = login_headers(client)
+    body = {
+        "strategy_id": "buy_hold",
+        "symbols": ["CN:600519"],
+        "mode": "replay",
+        "replay_days": 60,
+        "replay_interval": 0.05,
+        "poll_interval": 5,
+    }
+    resp = client.post("/api/paper/start", json=body, headers=headers)
+    assert resp.status_code == 202, resp.text
+    run_id = resp.json()["run_id"]
+    assert client.delete(f"/api/paper/runs/{run_id}", headers=headers).status_code == 409
+
+    time.sleep(0.4)
+    assert client.post("/api/paper/stop", params={"run_id": run_id}, headers=headers).status_code == 200
+    assert client.delete(f"/api/paper/runs/{run_id}", headers=headers).status_code == 200
+    assert client.delete(f"/api/paper/runs/{run_id}", headers=headers).status_code == 404
+    assert client.get(f"/api/backtests/{run_id}", headers=headers).status_code == 404

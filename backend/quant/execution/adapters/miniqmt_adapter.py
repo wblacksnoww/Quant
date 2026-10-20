@@ -14,8 +14,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from datetime import datetime
-from typing import Any, Iterable
+from typing import Any
 
 from ...core.markets import parse_instrument
 from ...core.types import Order, OrderType, Side

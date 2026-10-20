@@ -118,6 +118,7 @@ const STATUS_MAP: Record<string, { text: string; tone: string }> = {
   failed: { text: '失败', tone: 'danger' },
   cancelled: { text: '已取消', tone: 'warn' },
   stopped: { text: '已停止', tone: 'warn' },
+  interrupted: { text: '已中断', tone: 'danger' },
   filled: { text: '已成交', tone: 'success' },
   partially_filled: { text: '部分成交', tone: 'accent' },
   new: { text: '已报', tone: 'accent' },

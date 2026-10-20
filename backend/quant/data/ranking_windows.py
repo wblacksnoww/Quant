@@ -11,9 +11,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
-from typing import Callable, Iterable
 
 import pandas as pd
 
@@ -39,7 +39,7 @@ def window_change(frame: pd.DataFrame, period: str) -> float | None:
         return None
 
     base: float | None = None
-    for day, close in zip(dates, closes):
+    for day, close in zip(dates, closes, strict=False):
         if day <= anchor and close > 0:
             base = close
     if base is None:

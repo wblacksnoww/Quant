@@ -33,10 +33,7 @@ export function SwitchStrategyModal({
     if (!open) return
     setError('')
     void (async () => {
-      const [listR, customR] = await Promise.allSettled([
-        strategyApi.list(),
-        strategyApi.custom(),
-      ])
+      const [listR, customR] = await Promise.allSettled([strategyApi.list(), strategyApi.custom()])
       if (listR.status === 'fulfilled') {
         setStrategies(listR.value)
         const first = listR.value.find((item) => item.id === 'dual_ma') ?? listR.value[0]
@@ -53,10 +50,7 @@ export function SwitchStrategyModal({
     })()
   }, [open])
 
-  const strategy = useMemo(
-    () => strategies.find((item) => item.id === strategyId),
-    [strategies, strategyId],
-  )
+  const strategy = useMemo(() => strategies.find((item) => item.id === strategyId), [strategies, strategyId])
 
   const changeStrategy = (id: string) => {
     setStrategyId(id)
@@ -79,9 +73,7 @@ export function SwitchStrategyModal({
     setBusy(true)
     try {
       const result =
-        kind === 'paper'
-          ? await paperApi.switchStrategy(body)
-          : await liveApi.switchStrategy(body)
+        kind === 'paper' ? await paperApi.switchStrategy(body) : await liveApi.switchStrategy(body)
       notify('success', result.message)
       onClose()
       onDone?.()
@@ -158,17 +150,13 @@ export function SwitchStrategyModal({
                 <input
                   type="checkbox"
                   checked={Boolean(params[spec.name])}
-                  onChange={(event) =>
-                    setParams((prev) => ({ ...prev, [spec.name]: event.target.checked }))
-                  }
+                  onChange={(event) => setParams((prev) => ({ ...prev, [spec.name]: event.target.checked }))}
                 />
               ) : spec.type === 'choice' ? (
                 <select
                   className="select"
                   value={String(params[spec.name] ?? '')}
-                  onChange={(event) =>
-                    setParams((prev) => ({ ...prev, [spec.name]: event.target.value }))
-                  }
+                  onChange={(event) => setParams((prev) => ({ ...prev, [spec.name]: event.target.value }))}
                 >
                   {(spec.choices ?? []).map((choice) => (
                     <option key={String(choice)} value={String(choice)}>
@@ -184,9 +172,7 @@ export function SwitchStrategyModal({
                   min={spec.min ?? undefined}
                   max={spec.max ?? undefined}
                   value={String(params[spec.name] ?? '')}
-                  onChange={(event) =>
-                    setParams((prev) => ({ ...prev, [spec.name]: event.target.value }))
-                  }
+                  onChange={(event) => setParams((prev) => ({ ...prev, [spec.name]: event.target.value }))}
                 />
               )}
             </Field>

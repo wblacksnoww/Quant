@@ -11,10 +11,16 @@ function portColor(kind: 'value' | 'bool'): string {
 export function BpNode(props: NodeProps) {
   const data = props.data as BpNodeData
   const def = BP_DEFS[data.btype] ?? BP_DEFS['const']
-  const groupColor = { const: '#94a3b8', data: '#a78bfa', indicator: '#3b82f6', arith: '#64748b', compare: '#f59e0b', logic: '#10b981' }[def.group]
+  const groupColor = {
+    const: '#94a3b8',
+    data: '#a78bfa',
+    indicator: '#3b82f6',
+    arith: '#64748b',
+    compare: '#f59e0b',
+    logic: '#10b981',
+  }[def.group]
   const params = def.params ?? []
   const isConst = def.btype === 'const'
-  const portTop = (index: number, total: number): string => (total === 1 ? '50%' : `${32 + (index * 36)}%`)
   const rightLabel = isConst ? `值 ${data.params?.['value'] ?? 0}` : def.emit === 'bool' ? '信号' : '数值'
 
   const handleTop = def.inputs.length === 2 ? '38%' : '50%'
@@ -86,7 +92,9 @@ export function BpOutNode(props: NodeProps) {
   const data = props.data as BpOutData
   const isEntry = data.btype === 'out_entry'
   return (
-    <div className={`bp-out ${isEntry ? 'bp-out-entry' : 'bp-out-exit'} ${props.selected ? 'bp-node-selected' : ''}`}>
+    <div
+      className={`bp-out ${isEntry ? 'bp-out-entry' : 'bp-out-exit'} ${props.selected ? 'bp-node-selected' : ''}`}
+    >
       <span className="bp-out-title">{isEntry ? '▶ 买入输出' : '■ 卖出输出'}</span>
       <span className="bp-out-sub tiny">接一条布尔信号线</span>
       <Handle

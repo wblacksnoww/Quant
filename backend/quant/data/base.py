@@ -22,14 +22,18 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any, Callable, Iterable
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
 from ..core.errors import DataNotFound
 from ..core.types import Bar
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .realtime import RealtimeQuote
 
 log = logging.getLogger(__name__)
 
@@ -238,7 +242,7 @@ class DataProvider(ABC):
         """实时快照（仅最新价）。不支持则抛 NotImplementedError。"""
         raise NotImplementedError(f"{self.name} 不支持实时行情")
 
-    def snapshot(self, symbols: Iterable[str]) -> dict[str, "RealtimeQuote"]:
+    def snapshot(self, symbols: Iterable[str]) -> dict[str, RealtimeQuote]:
         """富快照（名称/涨跌/量额等）。默认用 ``realtime()`` 的现价拼一个最小结构；
         真正支持实时行情的 Provider（如 akshare 多源聚合）会覆盖它。"""
         from .realtime import RealtimeQuote  # 惰性导入避免循环依赖
@@ -248,9 +252,7 @@ class DataProvider(ABC):
             for code, price in self.realtime(symbols).items()
         }
 
-    def search(
-        self, keyword: str = "", limit: int = 50, *, market: str | None = None
-    ) -> list[SymbolInfo]:
+    def search(self, keyword: str = "", limit: int = 50, *, market: str | None = None) -> list[SymbolInfo]:
         """标的检索；``market`` 限定市场（``CN``/``US``/``HK``/``None`` 全部）。"""
         raise NotImplementedError(f"{self.name} 不支持标的检索")
 
@@ -261,7 +263,7 @@ class DataProvider(ABC):
         sort: str = "change_pct",
         order: str = "desc",
         limit: int = 20,
-    ) -> list["RealtimeQuote"]:
+    ) -> list[RealtimeQuote]:
         """市场排行榜（涨幅/成交额）。不支持的数据源抛 ``NotImplementedError``。"""
         raise NotImplementedError(f"{self.name} 不支持排行榜")
 

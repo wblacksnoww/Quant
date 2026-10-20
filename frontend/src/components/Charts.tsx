@@ -37,7 +37,11 @@ export function Chart({ option, height = 300, className, onZoomOut, onZoomChange
     const chart = echarts.init(host, undefined, { renderer: 'canvas' })
     chartRef.current = chart
     const zoomHandler = (event: unknown) => {
-      const payload = event as { start?: number; end?: number; batch?: Array<{ start?: number; end?: number }> }
+      const payload = event as {
+        start?: number
+        end?: number
+        batch?: Array<{ start?: number; end?: number }>
+      }
       const item = payload.batch?.[0] ?? payload
       const start = item.start ?? 0
       const end = item.end ?? 100
@@ -448,7 +452,11 @@ export function MonthlyReturnChart({
       },
       yAxis: {
         type: 'value',
-        axisLabel: { color: AXIS, fontSize: 10, formatter: (value: number) => `${(value * 100).toFixed(0)}%` },
+        axisLabel: {
+          color: AXIS,
+          fontSize: 10,
+          formatter: (value: number) => `${(value * 100).toFixed(0)}%`,
+        },
         splitLine: { lineStyle: { color: GRID_LINE } },
       },
       series: [

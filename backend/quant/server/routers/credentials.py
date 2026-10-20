@@ -15,7 +15,7 @@ from ...core.errors import CryptoError
 from ...storage.models import User
 from ...storage.repositories import CredentialRepository
 from ..context import AppContext
-from ..deps import audit, get_current_user, get_ctx, get_db
+from ..deps import audit, get_ctx, get_current_user, get_db
 from ..schemas import CredentialCreate, CredentialOut, Message
 
 router = APIRouter(prefix="/credentials", tags=["凭据"])
@@ -65,7 +65,13 @@ def update_credential(
     if record is None:
         raise HTTPException(status_code=404, detail="凭据不存在")
     repo.update(record, body.payload)
-    audit(session, request=None, actor=user.username, action="credential.update", target=f"credential:{record.id}")
+    audit(
+        session,
+        request=None,
+        actor=user.username,
+        action="credential.update",
+        target=f"credential:{record.id}",
+    )
     return CredentialOut(**record.to_dict())
 
 
@@ -109,7 +115,13 @@ def delete_credential(
     if record is None:
         raise HTTPException(status_code=404, detail="凭据不存在")
     repo.delete(record)
-    audit(session, request=None, actor=user.username, action="credential.delete", target=f"credential:{credential_id}")
+    audit(
+        session,
+        request=None,
+        actor=user.username,
+        action="credential.delete",
+        target=f"credential:{credential_id}",
+    )
     return Message(message="已删除")
 
 

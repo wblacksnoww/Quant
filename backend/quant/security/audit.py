@@ -16,9 +16,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 GENESIS = "0" * 64
 
@@ -58,7 +59,7 @@ class AuditEntry:
 
 
 def chain_hash(prev_hash: str, body: Mapping[str, Any]) -> str:
-    return hashlib.sha256(f"{prev_hash}|{canonical(body)}".encode("utf-8")).hexdigest()
+    return hashlib.sha256(f"{prev_hash}|{canonical(body)}".encode()).hexdigest()
 
 
 class AuditChain:

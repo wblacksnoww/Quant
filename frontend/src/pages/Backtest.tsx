@@ -20,14 +20,7 @@ import { RunDetailBody, RunMetrics } from '../components/RunDetail'
 import { Badge, Banner, Button, Card, Empty, Field, Loading, Progress, StatusBadge } from '../components/ui'
 import { useEvents } from '../store/events'
 import { notify } from '../store/toast'
-import {
-  durationText,
-  fmtDateTime,
-  fmtSignedPct,
-  parseSymbols,
-  todayISO,
-  yearsAgoISO,
-} from '../utils/format'
+import { durationText, fmtDateTime, fmtSignedPct, parseSymbols, todayISO, yearsAgoISO } from '../utils/format'
 
 const DEFAULT_COST: CostConfig = {
   commission_rate: 3e-4,
@@ -81,10 +74,7 @@ export function BacktestPage() {
 
   const isCustomRule = strategyId === 'custom_rule'
 
-  const strategy = useMemo(
-    () => strategies.find((item) => item.id === strategyId),
-    [strategies, strategyId],
-  )
+  const strategy = useMemo(() => strategies.find((item) => item.id === strategyId), [strategies, strategyId])
 
   // 通用参数表单要渲染的参数（拼装策略的 spec 由下面专门的下拉处理，不渲染 JSON 输入）
   const formParams = useMemo(
@@ -199,7 +189,10 @@ export function BacktestPage() {
       return
     }
     if (['run.finished', 'run.failed', 'run.cancelled'].includes(lastEvent.type)) {
-      void backtestApi.get(selectedId).then(setDetail).catch(() => undefined)
+      void backtestApi
+        .get(selectedId)
+        .then(setDetail)
+        .catch(() => undefined)
       void refreshRuns()
     }
   }, [lastEvent, selectedId, refreshRuns])
@@ -307,7 +300,6 @@ export function BacktestPage() {
     }
   }
 
-
   return (
     <div className="col" style={{ gap: 18 }}>
       <div className="grid grid-sidebar">
@@ -316,14 +308,25 @@ export function BacktestPage() {
           description="事件驱动 · 收盘价撮合在下一根 K 线 · 默认含 A 股涨跌停与整手约束"
           actions={
             <Badge tone="accent">
-              默认风控：{riskPreset === 'balanced' ? '均衡' : riskPreset === 'conservative' ? '保守' : riskPreset === 'aggressive' ? '激进' : riskPreset}
+              默认风控：
+              {riskPreset === 'balanced'
+                ? '均衡'
+                : riskPreset === 'conservative'
+                  ? '保守'
+                  : riskPreset === 'aggressive'
+                    ? '激进'
+                    : riskPreset}
             </Badge>
           }
         >
           <form className="col" style={{ gap: 14 }} onSubmit={submit}>
             <div className="form-grid">
               <Field label="策略">
-                <select className="select" value={strategyId} onChange={(event) => changeStrategy(event.target.value)}>
+                <select
+                  className="select"
+                  value={strategyId}
+                  onChange={(event) => changeStrategy(event.target.value)}
+                >
                   {strategies.length === 0 && <option value="">加载中…</option>}
                   {strategies.map((item) => (
                     <option key={item.id} value={item.id}>
@@ -333,38 +336,56 @@ export function BacktestPage() {
                 </select>
               </Field>
               <Field label="风控预设">
-                <select className="select" value={riskPreset} onChange={(event) => setRiskPreset(event.target.value)}>
+                <select
+                  className="select"
+                  value={riskPreset}
+                  onChange={(event) => setRiskPreset(event.target.value)}
+                >
                   {(presets ? Object.keys(presets.presets) : ['balanced']).map((key) => (
                     <option key={key} value={key}>
-                      {key === 'conservative' ? '保守' : key === 'balanced' ? '均衡' : key === 'aggressive' ? '激进' : key}
+                      {key === 'conservative'
+                        ? '保守'
+                        : key === 'balanced'
+                          ? '均衡'
+                          : key === 'aggressive'
+                            ? '激进'
+                            : key}
                     </option>
                   ))}
                 </select>
               </Field>
             </div>
 
-              <Field
-                label="标的代码"
-                hint="规范符号如 CN:600519 / US:AAPL / HK:00700 / CRYPTO:BTC/USDT，兼容旧 6 位代码；逗号或换行分隔。"
-              >
-                <input
-                  className="input mono"
-                  value={symbolsText}
-                  onChange={(event) => setSymbolsText(event.target.value)}
-                  placeholder="600519, 000001, 300059"
-                />
-              </Field>
+            <Field
+              label="标的代码"
+              hint="规范符号如 CN:600519 / US:AAPL / HK:00700 / CRYPTO:BTC/USDT，兼容旧 6 位代码；逗号或换行分隔。"
+            >
+              <input
+                className="input mono"
+                value={symbolsText}
+                onChange={(event) => setSymbolsText(event.target.value)}
+                placeholder="600519, 000001, 300059"
+              />
+            </Field>
 
-              {isCustomRule && (
-                <CustomStrategySelect value={selectedCustom} onChange={setSelectedCustom} />
-              )}
+            {isCustomRule && <CustomStrategySelect value={selectedCustom} onChange={setSelectedCustom} />}
 
             <div className="form-grid-3">
               <Field label="开始日期">
-                <input className="input" type="date" value={start} onChange={(event) => setStart(event.target.value)} />
+                <input
+                  className="input"
+                  type="date"
+                  value={start}
+                  onChange={(event) => setStart(event.target.value)}
+                />
               </Field>
               <Field label="结束日期">
-                <input className="input" type="date" value={end} onChange={(event) => setEnd(event.target.value)} />
+                <input
+                  className="input"
+                  type="date"
+                  value={end}
+                  onChange={(event) => setEnd(event.target.value)}
+                />
               </Field>
               <Field label="初始资金（元）">
                 <input
@@ -445,7 +466,7 @@ export function BacktestPage() {
               </div>
             )}
 
-            {(strategy && formParams.length > 0) && (
+            {strategy && formParams.length > 0 && (
               <>
                 <div className="divider" />
                 <div className="label">策略参数</div>
@@ -552,11 +573,15 @@ export function BacktestPage() {
                       }}
                     >
                       <td>
-                        <div className="strong truncate" style={{ maxWidth: 180 }}>{run.strategy_id}</div>
+                        <div className="strong truncate" style={{ maxWidth: 180 }}>
+                          {run.strategy_id}
+                        </div>
                         <div className="tiny faint mono">{run.symbols.join(' · ')}</div>
                         <div className="tiny faint">{fmtDateTime(run.created_at)}</div>
                       </td>
-                      <td className={`right num ${Number(run.metrics?.total_return ?? 0) >= 0 ? 'up' : 'down'}`}>
+                      <td
+                        className={`right num ${Number(run.metrics?.total_return ?? 0) >= 0 ? 'up' : 'down'}`}
+                      >
                         {run.status === 'finished' ? fmtSignedPct(run.metrics?.total_return) : '—'}
                         {isActive(run.status) && (
                           <div style={{ marginTop: 4 }}>
@@ -564,7 +589,9 @@ export function BacktestPage() {
                           </div>
                         )}
                       </td>
-                      <td><StatusBadge status={run.status} /></td>
+                      <td>
+                        <StatusBadge status={run.status} />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -574,14 +601,12 @@ export function BacktestPage() {
         </Card>
       </div>
 
-      {detailError && (
-        <Banner kind="danger">
-          结果加载失败：{detailError}
-        </Banner>
-      )}
+      {detailError && <Banner kind="danger">结果加载失败：{detailError}</Banner>}
 
       {detailLoading && !detail ? (
-        <Card><Loading text="正在读取回测结果…" /></Card>
+        <Card>
+          <Loading text="正在读取回测结果…" />
+        </Card>
       ) : detail ? (
         <>
           <Card
@@ -623,10 +648,7 @@ export function BacktestPage() {
         </>
       ) : (
         <Card>
-          <Empty
-            title="选择一条记录查看结果"
-            hint="或在上方配置策略并提交新的回测。"
-          />
+          <Empty title="选择一条记录查看结果" hint="或在上方配置策略并提交新的回测。" />
         </Card>
       )}
     </div>

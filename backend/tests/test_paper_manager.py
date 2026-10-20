@@ -104,7 +104,7 @@ def test_state_is_per_user():
 def test_stop_all():
     manager = PaperManager()
     engines = [FakeEngine(f"paper:{i}") for i in (1, 2)]
-    for user_id, engine in zip((1, 2), engines):
+    for user_id, engine in zip((1, 2), engines, strict=False):
         manager.start(user_id, engine)
         _wait_started(engine)
     manager.stop_all()

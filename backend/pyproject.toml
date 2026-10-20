@@ -70,7 +70,7 @@ extend-exclude = ["tests/fixtures"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
-ignore = ["B008", "E501"]
+ignore = ["B008", "E501", "UP042", "SIM105", "SIM102", "B024"]
 
 [tool.mypy]
 python_version = "3.11"

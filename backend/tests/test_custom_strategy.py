@@ -7,11 +7,10 @@ from datetime import date
 
 import pandas as pd
 import pytest
+from conftest import login_headers  # pytest 把 tests 目录加入 sys.path
 
 from quant.engine import BacktestEngine, EngineConfig
 from quant.strategy.custom import STRATEGY_ID, parse_spec, validate_spec
-
-from conftest import login_headers  # pytest 把 tests 目录加入 sys.path
 
 # --------------------------------------------------------------------------- #
 # 测试用 spec
@@ -40,8 +39,12 @@ GOLDEN_CROSS_SPEC = {
 }
 
 ALWAYS_BUY_SPEC = {
-    "entry": [{"type": "gt", "left": {"kind": "field", "field": "close"}, "right": {"kind": "const", "value": 0}}],
-    "exit": [{"type": "lt", "left": {"kind": "field", "field": "close"}, "right": {"kind": "const", "value": 1e12}}],
+    "entry": [
+        {"type": "gt", "left": {"kind": "field", "field": "close"}, "right": {"kind": "const", "value": 0}}
+    ],
+    "exit": [
+        {"type": "lt", "left": {"kind": "field", "field": "close"}, "right": {"kind": "const", "value": 1e12}}
+    ],
     "position_pct": 0.5,
     "stop_loss": 0.0,
 }
@@ -98,25 +101,45 @@ def test_parse_spec_accepts_json_string():
         (lambda s: s.update({"stop_loss": 1.2}), "stop_loss"),
         (
             lambda s: s["entry"].__setitem__(
-                0, {"type": "gt", "left": {"kind": "indicator", "name": "secret_math", "params": {}}, "right": {"kind": "const", "value": 1}}
+                0,
+                {
+                    "type": "gt",
+                    "left": {"kind": "indicator", "name": "secret_math", "params": {}},
+                    "right": {"kind": "const", "value": 1},
+                },
             ),
             "只支持",
         ),
         (
             lambda s: s["entry"].__setitem__(
-                0, {"type": "eval", "left": {"kind": "const", "value": 1}, "right": {"kind": "const", "value": 1}}
+                0,
+                {
+                    "type": "eval",
+                    "left": {"kind": "const", "value": 1},
+                    "right": {"kind": "const", "value": 1},
+                },
             ),
             "type",
         ),
         (
             lambda s: s["entry"].__setitem__(
-                0, {"type": "gt", "left": {"kind": "field", "field": "password_hash"}, "right": {"kind": "const", "value": 1}}
+                0,
+                {
+                    "type": "gt",
+                    "left": {"kind": "field", "field": "password_hash"},
+                    "right": {"kind": "const", "value": 1},
+                },
             ),
             "field",
         ),
         (
             lambda s: s["entry"].__setitem__(
-                0, {"type": "gt", "left": {"kind": "const", "value": "1+1"}, "right": {"kind": "const", "value": 1}}
+                0,
+                {
+                    "type": "gt",
+                    "left": {"kind": "const", "value": "1+1"},
+                    "right": {"kind": "const", "value": 1},
+                },
             ),
             "value",
         ),
@@ -137,7 +160,18 @@ def test_parse_spec_accepts_json_string():
             "不支持参数",
         ),
         (
-            lambda s: s.update({"entry": [{"type": "gt", "left": {"kind": "const", "value": 1}, "right": {"kind": "const", "value": 1}}] * 7}),
+            lambda s: s.update(
+                {
+                    "entry": [
+                        {
+                            "type": "gt",
+                            "left": {"kind": "const", "value": 1},
+                            "right": {"kind": "const", "value": 1},
+                        }
+                    ]
+                    * 7
+                }
+            ),
             "最多",
         ),
     ],
@@ -186,8 +220,20 @@ def test_compare_condition_semantics():
     frame = _frame([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
     cond_series = _series(
         {
-            "entry": [{"type": "gt", "left": {"kind": "field", "field": "close"}, "right": {"kind": "const", "value": 4}}],
-            "exit": [{"type": "gt", "left": {"kind": "field", "field": "close"}, "right": {"kind": "const", "value": 100}}],
+            "entry": [
+                {
+                    "type": "gt",
+                    "left": {"kind": "field", "field": "close"},
+                    "right": {"kind": "const", "value": 4},
+                }
+            ],
+            "exit": [
+                {
+                    "type": "gt",
+                    "left": {"kind": "field", "field": "close"},
+                    "right": {"kind": "const", "value": 100},
+                }
+            ],
         },
         frame,
     )
@@ -195,9 +241,15 @@ def test_compare_condition_semantics():
 
 
 def test_cross_condition_fires_once_on_trend_change():
-    closes = [10.0] * 6 + [c * 1.2 for c in [10, 11, 12, 13, 14, 15]] + [16.0, 15.0, 13.0, 11.0, 9.0, 8.0, 7.0]
+    closes = (
+        [10.0] * 6 + [c * 1.2 for c in [10, 11, 12, 13, 14, 15]] + [16.0, 15.0, 13.0, 11.0, 9.0, 8.0, 7.0]
+    )
     frame = _frame(closes)
-    always_true = {"type": "gt", "left": {"kind": "field", "field": "close"}, "right": {"kind": "const", "value": 0}}
+    always_true = {
+        "type": "gt",
+        "left": {"kind": "field", "field": "close"},
+        "right": {"kind": "const", "value": 0},
+    }
     golden = _series(
         {
             "entry": [
@@ -260,7 +312,11 @@ def test_custom_strategy_runs_and_trades(context):
 
 
 def test_custom_strategy_rejects_bad_spec(context):
-    bad = {"entry": [{"type": "nope", "left": {"kind": "const", "value": 1}, "right": {"kind": "const", "value": 1}}]}
+    bad = {
+        "entry": [
+            {"type": "nope", "left": {"kind": "const", "value": 1}, "right": {"kind": "const", "value": 1}}
+        ]
+    }
     result = BacktestEngine(custom_config(bad, "run_bad"), context.data).run()
     assert result.status == "failed"
     assert "spec 无效" in (result.error or "")
@@ -313,19 +369,31 @@ def test_custom_strategy_crud_and_isolation(client, second_user):
     theirs = second_user
 
     # 创建（admin）
-    resp = client.post("/api/strategies/custom", json={"name": "我的金叉", "spec": GOLDEN_CROSS_SPEC}, headers=mine)
+    resp = client.post(
+        "/api/strategies/custom", json={"name": "我的金叉", "spec": GOLDEN_CROSS_SPEC}, headers=mine
+    )
     assert resp.status_code == 201, resp.text
     created = resp.json()
     assert created["spec"]["entry"][0]["left"]["params"]["period"] == 5
     sid = created["id"]
 
     # 同名冲突
-    resp = client.post("/api/strategies/custom", json={"name": "我的金叉", "spec": GOLDEN_CROSS_SPEC}, headers=mine)
+    resp = client.post(
+        "/api/strategies/custom", json={"name": "我的金叉", "spec": GOLDEN_CROSS_SPEC}, headers=mine
+    )
     assert resp.status_code == 409
 
     # 无效 spec
-    bad = {"entry": [{"type": "gt", "left": {"kind": "const", "value": 1}, "right": {"kind": "const", "value": 1}}]}
-    resp = client.post("/api/strategies/custom", json={"name": "bad", "spec": {**bad, "exit": bad["entry"], "version": 99}}, headers=mine)
+    bad = {
+        "entry": [
+            {"type": "gt", "left": {"kind": "const", "value": 1}, "right": {"kind": "const", "value": 1}}
+        ]
+    }
+    resp = client.post(
+        "/api/strategies/custom",
+        json={"name": "bad", "spec": {**bad, "exit": bad["entry"], "version": 99}},
+        headers=mine,
+    )
     assert resp.status_code == 422
 
     # 用户隔离：bob 看不到 admin 的策略
@@ -351,14 +419,22 @@ def test_custom_strategy_crud_and_isolation(client, second_user):
 
 def test_backtest_with_custom_strategy_id(client):
     headers = login_headers(client)
-    resp = client.post("/api/strategies/custom", json={"name": "恒买", "spec": ALWAYS_BUY_SPEC}, headers=headers)
+    resp = client.post(
+        "/api/strategies/custom", json={"name": "恒买", "spec": ALWAYS_BUY_SPEC}, headers=headers
+    )
     assert resp.status_code == 201, resp.text
     sid = resp.json()["id"]
 
     # 正常提交
     resp = client.post(
         "/api/backtests",
-        json={"strategy_id": "custom_rule", "symbols": ["600519"], "start": "2023-01-01", "end": "2024-06-30", "params": {"custom_strategy_id": sid}},
+        json={
+            "strategy_id": "custom_rule",
+            "symbols": ["600519"],
+            "start": "2023-01-01",
+            "end": "2024-06-30",
+            "params": {"custom_strategy_id": sid},
+        },
         headers=headers,
     )
     assert resp.status_code == 202, resp.text
@@ -377,7 +453,18 @@ def test_backtest_with_custom_strategy_id(client):
         json={
             "strategy_id": "custom_rule",
             "symbols": ["600519"],
-            "params": {"spec": {"entry": [], "exit": [{"type": "gt", "left": {"kind": "const", "value": 1}, "right": {"kind": "const", "value": 1}}]}},
+            "params": {
+                "spec": {
+                    "entry": [],
+                    "exit": [
+                        {
+                            "type": "gt",
+                            "left": {"kind": "const", "value": 1},
+                            "right": {"kind": "const", "value": 1},
+                        }
+                    ],
+                }
+            },
         },
         headers=headers,
     )
@@ -386,7 +473,9 @@ def test_backtest_with_custom_strategy_id(client):
 
 def test_backtest_with_disabled_custom_strategy(client):
     headers = login_headers(client)
-    resp = client.post("/api/strategies/custom", json={"name": "停用", "spec": ALWAYS_BUY_SPEC}, headers=headers)
+    resp = client.post(
+        "/api/strategies/custom", json={"name": "停用", "spec": ALWAYS_BUY_SPEC}, headers=headers
+    )
     sid = resp.json()["id"]
     resp = client.patch(f"/api/strategies/custom/{sid}", json={"enabled": False}, headers=headers)
     assert resp.status_code == 200
@@ -396,7 +485,7 @@ def test_backtest_with_disabled_custom_strategy(client):
         headers=headers,
     )
     assert resp.status_code == 422
-    assert "停用" in resp.json()["detail"]
+    assert "停用" in resp.json()["message"]
 
 
 def test_custom_rule_in_registry():
@@ -406,13 +495,13 @@ def test_custom_rule_in_registry():
     assert schema["name"] == "条件拼装策略"
     assert any(p["type"] == "json" for p in schema["params"])
 
+
 # --------------------------------------------------------------------------- #
 # spec v2：蓝图节点图
 # --------------------------------------------------------------------------- #
 
-from quant.strategy.custom import _condition_series, spec_lookback
-
-from quant.strategy.custom_graph import GraphSpec, graph_lookback, graph_signals
+from quant.strategy.custom import _condition_series, spec_lookback  # noqa: E402
+from quant.strategy.custom_graph import GraphSpec, graph_lookback, graph_signals  # noqa: E402
 
 GOLDEN_GRAPH_SPEC = {
     "version": 2,
@@ -450,7 +539,9 @@ def graph_variant(mutate):
 
 def test_parse_v2_accepts_and_normalizes():
     # 悬挂节点（编辑器常见遗留物）应保留结构，但不影响预热与信号
-    dangling = graph_variant(lambda s: s["nodes"].append({"id": "d1", "type": "close", "pos": {"x": 900, "y": 40}}))
+    dangling = graph_variant(
+        lambda s: s["nodes"].append({"id": "d1", "type": "close", "pos": {"x": 900, "y": 40}})
+    )
     spec = parse_spec(dangling)
     assert isinstance(spec, GraphSpec)
     assert spec.lookback == 21  # max(5, 20) + 1（交叉自身要前一根）
@@ -471,8 +562,14 @@ def test_parse_v2_accepts_and_normalizes():
         (lambda s: s["nodes"].__setitem__(0, {"id": "UPPER", "type": "close"}), "id 必须是"),
         (lambda s: s["nodes"].__setitem__(1, {"id": "s1", "type": "close"}), "重复"),
         (lambda s: s["nodes"].__setitem__(0, {"id": "s9", "type": "open_sesame"}), "未知节点类型"),
-        (lambda s: s["nodes"].__setitem__(2, {"id": "f1", "type": "sma", "params": {"period": 10.5}}), "整数"),
-        (lambda s: s["nodes"].__setitem__(5, {"id": "x2", "type": "cross_below", "params": {"evil": 1}}), "不支持参数"),
+        (
+            lambda s: s["nodes"].__setitem__(2, {"id": "f1", "type": "sma", "params": {"period": 10.5}}),
+            "整数",
+        ),
+        (
+            lambda s: s["nodes"].__setitem__(5, {"id": "x2", "type": "cross_below", "params": {"evil": 1}}),
+            "不支持参数",
+        ),
         (lambda s: s["nodes"].__setitem__(1, {"id": "s2", "type": "const"}), "value"),
         (lambda s: s["nodes"].__setitem__(0, {"id": "s1", "type": "close", "pos": {"x": "a"}}), "pos"),
         (lambda s: s["edges"].append({"from": "s1", "to": "s1"}), "自环"),
@@ -484,7 +581,11 @@ def test_parse_v2_accepts_and_normalizes():
         (lambda s: s.update({"outputs": {"entry": "f1", "exit": "x2"}}), "布尔节点"),
         (
             lambda s: s.update(
-                {"nodes": [{"id": "s1", "type": "close"}, {"id": "x1", "type": "and"}], "edges": [], "outputs": {"entry": "x1", "exit": "x1"}}
+                {
+                    "nodes": [{"id": "s1", "type": "close"}, {"id": "x1", "type": "and"}],
+                    "edges": [],
+                    "outputs": {"entry": "x1", "exit": "x1"},
+                }
             ),
             "缺少输入",
         ),
@@ -574,7 +675,12 @@ def _slide_signals(spec_raw, closes, min_rows):
     return entry_fired, exit_fired
 
 
-CROSS_CLOSES = [10.0] * 6 + [12.0, 13.2, 14.4, 15.6, 16.8, 18.0] + [17.0, 16.0, 15.0, 14.0, 13.0] + [14.0, 16.0, 18.0, 20.0]
+CROSS_CLOSES = (
+    [10.0] * 6
+    + [12.0, 13.2, 14.4, 15.6, 16.8, 18.0]
+    + [17.0, 16.0, 15.0, 14.0, 13.0]
+    + [14.0, 16.0, 18.0, 20.0]
+)
 
 
 def test_v2_cross_graph_matches_v1_conditions():
@@ -626,7 +732,24 @@ def test_v2_cross_graph_matches_v1_conditions():
 
 def test_v2_and_logic_graph():
     """AND/比较/常数/动量/RSI 组合入场，恒真离场；与 v1 组合条件逐点一致。"""
-    closes = [100.0, 99.0, 98.0, 97.0, 96.0, 95.0, 94.0, 93.0, 92.0, 91.0, 93.0, 95.0, 97.0, 99.0, 101.0, 103.0]
+    closes = [
+        100.0,
+        99.0,
+        98.0,
+        97.0,
+        96.0,
+        95.0,
+        94.0,
+        93.0,
+        92.0,
+        91.0,
+        93.0,
+        95.0,
+        97.0,
+        99.0,
+        101.0,
+        103.0,
+    ]
     graph = {
         "version": 2,
         "nodes": [
@@ -658,10 +781,24 @@ def test_v2_and_logic_graph():
     }
     v1_spec = {
         "entry": [
-            {"type": "lt", "left": {"kind": "indicator", "name": "momentum", "params": {"period": 3}}, "right": {"kind": "const", "value": -0.01}},
-            {"type": "lt", "left": {"kind": "indicator", "name": "rsi", "params": {"period": 6}}, "right": {"kind": "const", "value": 40}},
+            {
+                "type": "lt",
+                "left": {"kind": "indicator", "name": "momentum", "params": {"period": 3}},
+                "right": {"kind": "const", "value": -0.01},
+            },
+            {
+                "type": "lt",
+                "left": {"kind": "indicator", "name": "rsi", "params": {"period": 6}},
+                "right": {"kind": "const", "value": 40},
+            },
         ],
-        "exit": [{"type": "gt", "left": {"kind": "field", "field": "close"}, "right": {"kind": "const", "value": 0}}],
+        "exit": [
+            {
+                "type": "gt",
+                "left": {"kind": "field", "field": "close"},
+                "right": {"kind": "const", "value": 0},
+            }
+        ],
     }
     min_rows = max(spec_lookback(parse_spec(v1_spec)), graph_lookback(parse_spec(graph)))
     entry_v1, exit_v1 = _slide_signals(v1_spec, closes, min_rows)
@@ -708,7 +845,9 @@ def test_v2_graph_equivalent_to_dual_ma(context):
 
 def test_v2_save_and_run_via_api(client):
     headers = login_headers(client)
-    resp = client.post("/api/strategies/custom", json={"name": "蓝图金叉", "spec": GOLDEN_GRAPH_SPEC}, headers=headers)
+    resp = client.post(
+        "/api/strategies/custom", json={"name": "蓝图金叉", "spec": GOLDEN_GRAPH_SPEC}, headers=headers
+    )
     assert resp.status_code == 201, resp.text
     sid = resp.json()["id"]
     resp = client.get("/api/strategies/custom", headers=headers)

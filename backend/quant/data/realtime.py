@@ -23,8 +23,9 @@ A 股实时行情没有"官方免费 API"，可用的公开接口各有各的限
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable
+from typing import Any
 
 import requests
 
@@ -166,7 +167,7 @@ def parse_tencent(text: str) -> dict[str, RealtimeQuote]:
         prefix = head.removeprefix("v_")[:2].lower()
         if prefix not in ("sh", "sz", "bj", "hk", "us"):
             continue
-        fields = body.rstrip('\";').split("~")
+        fields = body.rstrip('";').split("~")
         if len(fields) < 39 or not fields[2]:
             continue
         market = {"hk": Market.HK, "us": Market.US}.get(prefix, Market.CN)
@@ -257,7 +258,7 @@ def parse_sina(text: str) -> dict[str, RealtimeQuote]:
             continue
         head, _, body = line.partition('="')
         key = head.removeprefix("var hq_str_").strip()
-        fields = body.rstrip('\";').split(",")
+        fields = body.rstrip('";').split(",")
         if key.startswith("gb_"):  # 美股
             if len(fields) < 31 or not fields[0]:
                 continue
@@ -384,9 +385,7 @@ _SOURCES: tuple[tuple[str, Callable[[list[Instrument], float], dict[str, Realtim
 )
 
 
-def fetch_quotes(
-    symbols: Iterable[str], *, timeout: float = _FETCH_TIMEOUT
-) -> dict[str, RealtimeQuote]:
+def fetch_quotes(symbols: Iterable[str], *, timeout: float = _FETCH_TIMEOUT) -> dict[str, RealtimeQuote]:
     """多源批量快照。返回已取到的标的（键为规范 id）；全部失败抛 ``DataProviderUnavailable``。"""
     instruments: list[Instrument] = []
     seen: set[str] = set()

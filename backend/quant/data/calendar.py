@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -56,9 +56,7 @@ def _as_date(value: object) -> date:
     return date.fromisoformat(str(value)[:10])
 
 
-def trading_days(
-    start: date | None = None, end: date | None = None, *, market: str = "CN"
-) -> list[date]:
+def trading_days(start: date | None = None, end: date | None = None, *, market: str = "CN") -> list[date]:
     """返回 ``[start, end]`` 区间内的交易日（升序）。
 
     真实日历（akshare）只有 A 股口径；美股/港股退化为工作日近似，
@@ -145,9 +143,7 @@ def is_market_open(market: str = "CN", moment: datetime | None = None) -> bool:
         return True
     if key not in offsets:
         key = "CN"
-    local = (moment or datetime.now(timezone.utc)).astimezone(
-        timezone(timedelta(hours=offsets[key]))
-    )
+    local = (moment or datetime.now(UTC)).astimezone(timezone(timedelta(hours=offsets[key])))
     if local.weekday() >= 5:
         return False
     minutes = local.hour * 60 + local.minute

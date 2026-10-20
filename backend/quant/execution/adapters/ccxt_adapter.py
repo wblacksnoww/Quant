@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timezone
-from typing import Any, Iterable
+from collections.abc import Iterable
+from datetime import UTC, datetime
+from typing import Any
 
 from ...core.markets import parse_instrument
 from ...core.types import Order, OrderType, Side
@@ -231,7 +232,7 @@ def _ts(value: Any) -> datetime | None:
     try:
         if not value:
             return None
-        return datetime.fromtimestamp(int(value) / 1000.0, tz=timezone.utc).replace(tzinfo=None)
+        return datetime.fromtimestamp(int(value) / 1000.0, tz=UTC).replace(tzinfo=None)
     except (TypeError, ValueError, OSError):
         return None
 

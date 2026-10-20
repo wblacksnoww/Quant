@@ -23,7 +23,7 @@ graph TB
     subgraph server["③ 服务层 — FastAPI quant.server"]
         routers["routers ×11：auth · market · strategies · backtest · paper · live · funds · risk · credentials · system · admin"]
         guard["deps 鉴权 · schemas 校验 · custom_params 服务端白名单"]
-        btmgr["BacktestManager 线程池（并发上限, 超限 429）"]
+        btmgr["BacktestManager 持久化队列（原子认领, 每实例并发上限）"]
         ppmgr["PaperManager 每用户一线程（同账号单会话）"]
         lvmgr["LiveManager 每用户一线程（实盘，单会话）"]
         hub["ws.EventHub 按用户定向推送（断线回放 200 条）"]
@@ -104,7 +104,7 @@ sequenceDiagram
     FE->>API: POST /api/backtests（spec + 参数）
     API->>API: schemas 校验 · 按用户注入 custom spec（服务端白名单）
     API-->>FE: 202 + run_id
-    API->>BM: 提交线程池任务（超并发 429）
+    API->>BM: 写入 backtest_jobs（queued）
     loop 逐交易日推进
         ENG->>BK: 跨日解冻(T+1/T+0) → 撮合「昨日」订单（开盘价）
         ENG->>ENG: 收盘价重估权益 → strategy.on_bars（游标防未来函数）

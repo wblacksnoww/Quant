@@ -4,14 +4,7 @@ import { useState } from 'react'
 import type { RunDetail } from '../api/types'
 import { EquityChart, MonthlyReturnChart } from './Charts'
 import { Card, Empty, Stat, StatusBadge, Tabs } from './ui'
-import {
-  cx,
-  fmtDateTime,
-  fmtMoney,
-  fmtNumber,
-  fmtPct,
-  fmtSignedPct,
-} from '../utils/format'
+import { cx, fmtDateTime, fmtMoney, fmtNumber, fmtPct, fmtSignedPct } from '../utils/format'
 
 type ResultTab = 'trades' | 'orders' | 'positions' | 'logs' | 'config'
 
@@ -89,19 +82,31 @@ export function RunDetailBody({ detail }: { detail: RunDetail }) {
                     {fmtSignedPct(metrics.total_return)}
                   </td>
                 </tr>
-                <tr><td>年化收益</td><td className="right num">{fmtSignedPct(metrics.annual_return)}</td></tr>
-                <tr><td>卡玛比率</td><td className="right num">{fmtNumber(metrics.calmar, 2)}</td></tr>
+                <tr>
+                  <td>年化收益</td>
+                  <td className="right num">{fmtSignedPct(metrics.annual_return)}</td>
+                </tr>
+                <tr>
+                  <td>卡玛比率</td>
+                  <td className="right num">{fmtNumber(metrics.calmar, 2)}</td>
+                </tr>
                 <tr>
                   <td>平均盈利 / 平均亏损</td>
-                  <td className="right num">{fmtMoney(metrics.avg_win)} / {fmtMoney(metrics.avg_loss)}</td>
+                  <td className="right num">
+                    {fmtMoney(metrics.avg_win)} / {fmtMoney(metrics.avg_loss)}
+                  </td>
                 </tr>
                 <tr>
                   <td>基准收益 / 超额</td>
-                  <td className="right num">{fmtSignedPct(metrics.benchmark_return)} / {fmtSignedPct(metrics.excess_return)}</td>
+                  <td className="right num">
+                    {fmtSignedPct(metrics.benchmark_return)} / {fmtSignedPct(metrics.excess_return)}
+                  </td>
                 </tr>
                 <tr>
                   <td>回测区间</td>
-                  <td className="right num tiny">{metrics.start ?? '—'} → {metrics.end ?? '—'}</td>
+                  <td className="right num tiny">
+                    {metrics.start ?? '—'} → {metrics.end ?? '—'}
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -126,8 +131,8 @@ export function RunDetailBody({ detail }: { detail: RunDetail }) {
         }
         flush
       >
-        {tab === 'trades' && (
-          detail.trades.length === 0 ? (
+        {tab === 'trades' &&
+          (detail.trades.length === 0 ? (
             <Empty title="没有成交" hint="策略可能未触发信号，或订单被风控拒绝（见委托页）。" />
           ) : (
             <div className="table-wrap">
@@ -158,7 +163,12 @@ export function RunDetailBody({ detail }: { detail: RunDetail }) {
                       <td className="right num">{fmtMoney(trade.price)}</td>
                       <td className="right num">{fmtMoney(trade.gross)}</td>
                       <td className="right num tiny">{fmtMoney(trade.fees.total)}</td>
-                      <td className={cx('right num', trade.realized_pnl > 0 ? 'up' : trade.realized_pnl < 0 ? 'down' : '')}>
+                      <td
+                        className={cx(
+                          'right num',
+                          trade.realized_pnl > 0 ? 'up' : trade.realized_pnl < 0 ? 'down' : '',
+                        )}
+                      >
                         {trade.realized_pnl ? fmtMoney(trade.realized_pnl) : '—'}
                       </td>
                     </tr>
@@ -166,11 +176,10 @@ export function RunDetailBody({ detail }: { detail: RunDetail }) {
                 </tbody>
               </table>
             </div>
-          )
-        )}
+          ))}
 
-        {tab === 'orders' && (
-          detail.orders.length === 0 ? (
+        {tab === 'orders' &&
+          (detail.orders.length === 0 ? (
             <Empty title="没有委托" />
           ) : (
             <div className="table-wrap">
@@ -198,9 +207,15 @@ export function RunDetailBody({ detail }: { detail: RunDetail }) {
                       <td className="tiny">{order.order_type}</td>
                       <td className="right num">{order.quantity.toLocaleString('zh-CN')}</td>
                       <td className="right num">
-                        {order.avg_fill_price ? fmtMoney(order.avg_fill_price) : order.limit_price ? fmtMoney(order.limit_price) : '—'}
+                        {order.avg_fill_price
+                          ? fmtMoney(order.avg_fill_price)
+                          : order.limit_price
+                            ? fmtMoney(order.limit_price)
+                            : '—'}
                       </td>
-                      <td><StatusBadge status={order.status} /></td>
+                      <td>
+                        <StatusBadge status={order.status} />
+                      </td>
                       <td className="tiny faint truncate" style={{ maxWidth: 220 }} title={order.reason}>
                         {order.reason || '—'}
                       </td>
@@ -209,11 +224,10 @@ export function RunDetailBody({ detail }: { detail: RunDetail }) {
                 </tbody>
               </table>
             </div>
-          )
-        )}
+          ))}
 
-        {tab === 'positions' && (
-          detail.positions.length === 0 ? (
+        {tab === 'positions' &&
+          (detail.positions.length === 0 ? (
             <Empty title="期末无持仓" hint="运行结束时所有仓位已平掉。" />
           ) : (
             <div className="table-wrap">
@@ -250,17 +264,20 @@ export function RunDetailBody({ detail }: { detail: RunDetail }) {
                 </tbody>
               </table>
             </div>
-          )
-        )}
+          ))}
 
-        {tab === 'logs' && (
-          detail.logs.length === 0 ? (
+        {tab === 'logs' &&
+          (detail.logs.length === 0 ? (
             <Empty title="本次运行没有日志" hint="引擎只在异常或重要节点记录日志。" />
           ) : (
             <div className="table-wrap" style={{ maxHeight: 420 }}>
               <table>
                 <thead>
-                  <tr><th>时间</th><th>级别</th><th>内容</th></tr>
+                  <tr>
+                    <th>时间</th>
+                    <th>级别</th>
+                    <th>内容</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {detail.logs.map((log, index) => (
@@ -273,8 +290,7 @@ export function RunDetailBody({ detail }: { detail: RunDetail }) {
                 </tbody>
               </table>
             </div>
-          )
-        )}
+          ))}
 
         {tab === 'config' && (
           <div className="card-body">

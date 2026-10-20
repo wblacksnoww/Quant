@@ -63,9 +63,25 @@ const CONDITION_TYPES: Array<{ value: string; label: string; title: string }> = 
   { value: 'lte', label: '小于等于', title: '左 ≤ 右' },
 ]
 
-const newOperand = (): UiOperand => ({ key: 'field:close', period: 20, width: 2, fast: 12, slow: 26, signal: 9, value: 0 })
-const newEntryCondition = (): UiCondition => ({ type: 'cross_above', left: newOperand(), right: { ...newOperand(), key: 'ind:sma', period: 30 } })
-const newExitCondition = (): UiCondition => ({ type: 'cross_below', left: newOperand(), right: { ...newOperand(), key: 'ind:sma', period: 30 } })
+const newOperand = (): UiOperand => ({
+  key: 'field:close',
+  period: 20,
+  width: 2,
+  fast: 12,
+  slow: 26,
+  signal: 9,
+  value: 0,
+})
+const newEntryCondition = (): UiCondition => ({
+  type: 'cross_above',
+  left: newOperand(),
+  right: { ...newOperand(), key: 'ind:sma', period: 30 },
+})
+const newExitCondition = (): UiCondition => ({
+  type: 'cross_below',
+  left: newOperand(),
+  right: { ...newOperand(), key: 'ind:sma', period: 30 },
+})
 
 // --------------------------------------------------------------------------- //
 // 序列化 UI → spec
@@ -91,7 +107,16 @@ function toOperandSpec(op: UiOperand): OperandSpec | null {
   return null
 }
 
-function toSpec(name: string, conditions: { entry: UiCondition[]; exit: UiCondition[]; positionPct: number; stopLoss: number; takeProfit: number }): CustomSpec | null {
+function toSpec(
+  name: string,
+  conditions: {
+    entry: UiCondition[]
+    exit: UiCondition[]
+    positionPct: number
+    stopLoss: number
+    takeProfit: number
+  },
+): CustomSpec | null {
   const serialize = (list: UiCondition[]): ConditionSpec[] | null => {
     const out: ConditionSpec[] = []
     for (const cond of list) {
@@ -127,7 +152,7 @@ function operandLabel(op: OperandSpec): string {
   const meta = INDICATOR_META[op.name]
   if (!meta) return op.name
   const parts = Object.entries(op.params)
-    .map(([k, v]) => `${v}`)
+    .map(([, v]) => `${v}`)
     .join(',')
   return `${meta.label}(${parts})`
 }
@@ -243,7 +268,15 @@ function OperandEditor({ op, onChange }: { op: UiOperand; onChange: (next: UiOpe
   )
 }
 
-function ConditionRow({ cond, onChange, onRemove }: { cond: UiCondition; onChange: (next: UiCondition) => void; onRemove: () => void }) {
+function ConditionRow({
+  cond,
+  onChange,
+  onRemove,
+}: {
+  cond: UiCondition
+  onChange: (next: UiCondition) => void
+  onRemove: () => void
+}) {
   const typeDef = CONDITION_TYPES.find((t) => t.value === cond.type)
   return (
     <div className="col" style={{ gap: 6 }}>
@@ -359,7 +392,11 @@ export function StrategyBuilder({ onSaved }: { onSaved: () => void }) {
                 type="button"
                 size="sm"
                 variant="ghost"
-                onClick={() => (side === 'entry' ? setEntry([...entry, newEntryCondition()]) : setExit([...exit, newExitCondition()]))}
+                onClick={() =>
+                  side === 'entry'
+                    ? setEntry([...entry, newEntryCondition()])
+                    : setExit([...exit, newExitCondition()])
+                }
               >
                 ＋ 添加条件
               </Button>
@@ -370,13 +407,31 @@ export function StrategyBuilder({ onSaved }: { onSaved: () => void }) {
 
       <div className="form-grid-3">
         <Field label="仓位 %" hint="买入动用权益的比例">
-          <Input type="number" min={1} max={100} value={positionPct} onChange={(e) => setPositionPct(Number(e.target.value))} />
+          <Input
+            type="number"
+            min={1}
+            max={100}
+            value={positionPct}
+            onChange={(e) => setPositionPct(Number(e.target.value))}
+          />
         </Field>
         <Field label="止损 %" hint="0 = 不启用">
-          <Input type="number" min={0} max={95} value={stopLoss} onChange={(e) => setStopLoss(Number(e.target.value))} />
+          <Input
+            type="number"
+            min={0}
+            max={95}
+            value={stopLoss}
+            onChange={(e) => setStopLoss(Number(e.target.value))}
+          />
         </Field>
         <Field label="止盈 %" hint="0 = 不启用">
-          <Input type="number" min={0} max={500} value={takeProfit} onChange={(e) => setTakeProfit(Number(e.target.value))} />
+          <Input
+            type="number"
+            min={0}
+            max={500}
+            value={takeProfit}
+            onChange={(e) => setTakeProfit(Number(e.target.value))}
+          />
         </Field>
       </div>
 

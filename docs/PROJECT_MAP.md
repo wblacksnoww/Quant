@@ -20,7 +20,7 @@
 │ nginx(frontend 容器) → /api/* /ws /healthz → backend (FastAPI, quant.server.app)   │
 │                                                                                   │
 │ server/  app.py 中间件+异常映射 │ routers×11 │ schemas │ deps(鉴权) │ custom_params│
-│          backtest_manager(线程池) │ ws.EventHub(按用户定向) │ context(装配)        │
+│          backtest_manager(队列 worker) │ ws.EventHub(按用户定向) │ context(装配)        │
 │ engine/  backtest(逐日) paper(replay/live) live(实时+真实下单) session(统一时序)   │
 │          live_frames(今日活bar) base(结果/净值)                                   │
 │ strategy/ base(ParamSpec+ctx 防未来) registry(@注册) custom(v1) custom_graph(v2)   │
@@ -40,21 +40,26 @@
 └───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-进程模型：**无消息队列、无调度器**——回测 = `BacktestManager` 每任务一线程（并发上限
-`QUANT_MAX_CONCURRENT_BACKTESTS`，超限 429）；纸盘 = `PaperManager` 每会话一条后台线程（同用户可多开）；
-实盘 = `LiveManager` 每（用户, 凭证）一条后台线程（同一凭证只允许一个会话）；lifespan 统一 shutdown。
+进程模型：**数据库持久化队列 + 进程内 worker**——回测提交写入 `backtest_jobs`，
+worker 原子认领（并发上限 `QUANT_MAX_CONCURRENT_BACKTESTS`，队列上限 `QUANT_MAX_QUEUED_BACKTESTS`）；
+纸盘 = `PaperManager` 每会话一条后台线程（同用户可多开）；实盘 = `LiveManager`
+每（用户, 凭证）一条后台线程。`SessionCoordinator` 用数据库租约/命令协调多实例：
+同一会话只由一个实例持有，任意实例可下发 stop/pause/resume/switch；状态快照写入
+`session_leases` 供 `/sessions` 跨实例读取。lifespan 统一 shutdown 并释放租约。
 
 ## 2. 目录地图（180 个 tracked 文件）
 
 | 路径 | 一句话 |
 | --- | --- |
 | `backend/pyproject.toml` | 依赖 + ruff/mypy/pytest 配置 + `quant`/`quant-server` 入口（**含未使用的 alembic/orjson，见 §7**） |
-| `backend/quant/` | 85 个 .py，约 16.7k 行，上表全部内核 |
-| `backend/tests/` | 17 文件（16 个 test_*.py + conftest）/ pytest 收集 **236** 项 |
+| `backend/quant/` | 100+ 个 .py，约 18k 行，上表全部内核 |
+| `backend/tests/` | 19 文件（18 个 test_*.py + conftest）/ pytest 收集 **251** 项 |
 | `backend/alembic/` | alembic 配置 + 初始迁移（生产启动自动 upgrade，旧库自动 stamp） |
 | `.github/workflows/ci.yml` | CI：pytest + 构建前后端镜像推送 GHCR（main 分支） |
 | `backend/quant/execution/adapters/` | 实盘适配器：`base`(协议) `ccxt`(虚拟货币) `miniqmt`(A股骨架) |
 | `backend/quant/funds.py` | 场外基金流水聚合（纯函数，不进引擎） |
+| `backend/quant/services/` | 应用服务层 + 会话租约/命令协调 |
+| `backend/quant/storage/` | 仓储按聚合拆包 + RunRecorder + 回测任务队列 |
 | `backend/quant/engine/live.py` | 实盘引擎 + 按用户隔离的 LiveManager |
 | `backend/quant/data/aggregate.py` | 日线 → 周/月 K 线重采样（周对齐周五、月对齐月末最后交易日） |
 | `backend/quant/data/indices.py` | 内置指数清单 + 腾讯批量指数快照（独立 id，不进 MARKET:CODE） |

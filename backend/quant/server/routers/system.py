@@ -10,14 +10,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ...core.types import utcnow
 from ...data.base import available_providers
 from ...security.password import algorithm as password_algorithm
 from ...storage.models import User
 from ...storage.repositories import AuditRepository, UserRepository
 from ...strategy.registry import strategy_ids
 from ..context import AppContext
-from ..deps import get_current_user, get_ctx, get_db
+from ..deps import get_ctx, get_current_user, get_db
 from ..schemas import AuditOut, AuditVerifyOut, DataCacheOut, HealthOut, SystemInfo
 
 router = APIRouter(prefix="/system", tags=["系统"])

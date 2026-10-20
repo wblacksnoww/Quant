@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
-
 from conftest import login_headers
+
 from quant.data.aggregate import resample_ohlcv
 
 
@@ -80,9 +80,7 @@ def test_klines_route_contract(client, context, monkeypatch):
     assert body["bars"][0]["date"] == "2024-01-01"
     assert body["source"].endswith(":1w")
 
-    bad = client.get(
-        "/api/market/klines", params={"symbol": "CN:600519", "interval": "2d"}, headers=headers
-    )
+    bad = client.get("/api/market/klines", params={"symbol": "CN:600519", "interval": "2d"}, headers=headers)
     assert bad.status_code == 422
 
     def boom(symbol, *, interval="1d", limit=240):

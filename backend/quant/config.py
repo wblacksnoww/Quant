@@ -82,6 +82,7 @@ class Settings(BaseSettings):
 
     # -- 引擎 -------------------------------------------------------------- #
     max_concurrent_backtests: int = 2
+    max_queued_backtests: int = 200
     default_initial_cash: float = 1_000_000.0
     default_risk_free_rate: float = 0.02
     paper_poll_interval: float = 5.0
@@ -142,7 +143,9 @@ class Settings(BaseSettings):
         warnings: list[str] = []
         if self.is_production:
             if not (self.master_key or self.master_key_file):
-                warnings.append("生产环境未显式配置主密钥，将在 data/master.key 自动生成，请尽快迁移到 Docker secret")
+                warnings.append(
+                    "生产环境未显式配置主密钥，将在 data/master.key 自动生成，请尽快迁移到 Docker secret"
+                )
             if "*" in self.allowed_origins:
                 warnings.append("生产环境不建议使用通配 CORS 来源")
             if self.debug:
@@ -152,7 +155,9 @@ class Settings(BaseSettings):
         if self.database_url.startswith("sqlite") and self.is_production:
             warnings.append("生产环境建议使用 PostgreSQL；SQLite 仅适合单实例")
         if self.enable_live_trading:
-            warnings.append("实盘开关已开启（QUANT_ENABLE_LIVE_TRADING=true），请确认测试网/真实资金设置与额度上限")
+            warnings.append(
+                "实盘开关已开启（QUANT_ENABLE_LIVE_TRADING=true），请确认测试网/真实资金设置与额度上限"
+            )
         return warnings
 
 

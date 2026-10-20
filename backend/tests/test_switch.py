@@ -6,8 +6,9 @@ import time
 from datetime import datetime
 
 import pytest
-
 from conftest import login_headers
+from test_live_broker import FakeAdapter
+
 from quant.core.clock import SimClock
 from quant.core.events import EventBus
 from quant.core.portfolio import Account
@@ -17,8 +18,6 @@ from quant.execution.broker import SimBroker
 from quant.execution.matching import MatchingEngine
 from quant.strategy.base import ParamSpec, Strategy
 from quant.strategy.registry import register_strategy
-
-from test_live_broker import FakeAdapter
 
 
 @pytest.fixture()
@@ -44,7 +43,7 @@ def fake_adapter(monkeypatch, context):
         adapter.cash = 100_000.0
         return adapter
 
-    monkeypatch.setattr("quant.server.routers.live.create_adapter", _factory)
+    monkeypatch.setattr("quant.services.live_service.create_adapter", _factory)
     return _factory
 
 

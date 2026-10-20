@@ -5,14 +5,12 @@ from __future__ import annotations
 from datetime import datetime
 
 import pytest
+from conftest import login_headers
 
-from quant.core.events import EventBus
 from quant.data.providers import akshare_provider as ap
 from quant.data.providers.crypto_provider import CryptoProvider
 from quant.data.realtime import RealtimeQuote
 from quant.data.store import MarketDataService
-
-from conftest import login_headers
 
 # --------------------------------------------------------------------------- #
 # 新浪解析
@@ -32,16 +30,76 @@ class _Resp:
 
 def _cn_rows():
     return [
-        {"code": "1", "name": "A股一", "trade": "10.5", "changepercent": "3.2", "pricechange": "0.33", "settlement": "10.17", "volume": "1000", "amount": "10500", "open": "10.2", "high": "10.6", "low": "10.1"},
-        {"code": "600519", "name": "贵州茅台", "trade": "1500", "changepercent": "1.1", "pricechange": "16", "settlement": "1484", "volume": "2000", "amount": "3000000", "open": "1490", "high": "1505", "low": "1488"},
-        {"code": "300750", "name": "宁德时代", "trade": "200", "changepercent": "-2.5", "pricechange": "-5", "settlement": "205", "volume": "800", "amount": "160000", "open": "204", "high": "205", "low": "199"},
+        {
+            "code": "1",
+            "name": "A股一",
+            "trade": "10.5",
+            "changepercent": "3.2",
+            "pricechange": "0.33",
+            "settlement": "10.17",
+            "volume": "1000",
+            "amount": "10500",
+            "open": "10.2",
+            "high": "10.6",
+            "low": "10.1",
+        },
+        {
+            "code": "600519",
+            "name": "贵州茅台",
+            "trade": "1500",
+            "changepercent": "1.1",
+            "pricechange": "16",
+            "settlement": "1484",
+            "volume": "2000",
+            "amount": "3000000",
+            "open": "1490",
+            "high": "1505",
+            "low": "1488",
+        },
+        {
+            "code": "300750",
+            "name": "宁德时代",
+            "trade": "200",
+            "changepercent": "-2.5",
+            "pricechange": "-5",
+            "settlement": "205",
+            "volume": "800",
+            "amount": "160000",
+            "open": "204",
+            "high": "205",
+            "low": "199",
+        },
     ]
 
 
 def _hk_rows():
     return [
-        {"symbol": "700", "name": "腾讯控股", "lasttrade": "417.8", "changepercent": "1.5", "pricechange": "6.2", "prevclose": "411.6", "volume": "100000", "amount": "41780000", "open": "412", "high": "418", "low": "411"},
-        {"symbol": "9988", "name": "阿里巴巴", "lasttrade": "80", "changepercent": "-1.2", "pricechange": "-1", "prevclose": "81", "volume": "50000", "amount": "4000000", "open": "81", "high": "81.5", "low": "79.8"},
+        {
+            "symbol": "700",
+            "name": "腾讯控股",
+            "lasttrade": "417.8",
+            "changepercent": "1.5",
+            "pricechange": "6.2",
+            "prevclose": "411.6",
+            "volume": "100000",
+            "amount": "41780000",
+            "open": "412",
+            "high": "418",
+            "low": "411",
+        },
+        {
+            "symbol": "9988",
+            "name": "阿里巴巴",
+            "lasttrade": "80",
+            "changepercent": "-1.2",
+            "pricechange": "-1",
+            "prevclose": "81",
+            "volume": "50000",
+            "amount": "4000000",
+            "open": "81",
+            "high": "81.5",
+            "low": "79.8",
+        },
     ]
 
 
@@ -89,8 +147,24 @@ def test_us_ranking_uses_pool(monkeypatch):
     def _fake_quotes(symbols):
         ids = list(symbols)
         return {
-            ids[0]: RealtimeQuote(symbol=ids[0], name="AAPL", price=200.0, change_pct=2.0, amount=1e9, market="US", currency="USD"),
-            ids[1]: RealtimeQuote(symbol=ids[1], name="MSFT", price=400.0, change_pct=-1.0, amount=5e8, market="US", currency="USD"),
+            ids[0]: RealtimeQuote(
+                symbol=ids[0],
+                name="AAPL",
+                price=200.0,
+                change_pct=2.0,
+                amount=1e9,
+                market="US",
+                currency="USD",
+            ),
+            ids[1]: RealtimeQuote(
+                symbol=ids[1],
+                name="MSFT",
+                price=400.0,
+                change_pct=-1.0,
+                amount=5e8,
+                market="US",
+                currency="USD",
+            ),
         }
 
     monkeypatch.setattr(ap, "fetch_quotes", _fake_quotes)
@@ -145,7 +219,9 @@ class StubRankProvider:
     def ranking(self, market, *, sort="change_pct", order="desc", limit=20):
         self.calls += 1
         return [
-            RealtimeQuote(symbol=f"CN:00000{i}", name=f"票{i}", price=10.0 + i, change_pct=float(i), amount=1e6)
+            RealtimeQuote(
+                symbol=f"CN:00000{i}", name=f"票{i}", price=10.0 + i, change_pct=float(i), amount=1e6
+            )
             for i in range(1, 6)
         ]
 
@@ -225,7 +301,6 @@ def test_window_change_week_uses_last_close_before_monday():
         ("2024-01-08", 102.0),
         ("2024-01-11", 110.0),  # 周四（最后一根）
     ]
-    change = ap_module.window_change(_frame(rows), "week") if False else None
     from quant.data.ranking_windows import window_change
 
     assert window_change(_frame(rows), "week") == pytest.approx(0.10)
@@ -274,7 +349,9 @@ class WindowStubProvider:
 
     def ranking(self, market, *, sort="change_pct", order="desc", limit=20):
         return [
-            RealtimeQuote(symbol=f"CN:00000{i}", name=f"票{i}", price=10.0 + i, change_pct=float(i), amount=1e6 * i)
+            RealtimeQuote(
+                symbol=f"CN:00000{i}", name=f"票{i}", price=10.0 + i, change_pct=float(i), amount=1e6 * i
+            )
             for i in range(1, 5)
         ]
 

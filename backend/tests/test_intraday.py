@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import pandas as pd
 import pytest
-
 from conftest import login_headers
+from test_crypto_data import FakeExchange
+
 from quant.data.providers import akshare_provider as ap
 from quant.data.providers.crypto_provider import CryptoProvider
-
-from test_crypto_data import FakeExchange
 
 
 class _Resp:

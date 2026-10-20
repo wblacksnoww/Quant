@@ -108,6 +108,26 @@ class EngineAlreadyRunning(EngineError):
 
 
 # --------------------------------------------------------------------------- #
+# 应用服务
+# --------------------------------------------------------------------------- #
+
+
+class NotFoundError(QuantError):
+    code = "not_found"
+    http_status = 404
+
+
+class ConflictError(QuantError):
+    code = "conflict"
+    http_status = 409
+
+
+class InvalidRequest(QuantError):
+    code = "invalid_request"
+    http_status = 422
+
+
+# --------------------------------------------------------------------------- #
 # 安全
 # --------------------------------------------------------------------------- #
 
@@ -142,6 +162,9 @@ __all__ = [
     "AuthError",
     "BrokerError",
     "ConfigError",
+    "ConflictError",
+    "InvalidRequest",
+    "NotFoundError",
     "CryptoError",
     "DataError",
     "DataNotFound",

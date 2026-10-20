@@ -1,11 +1,11 @@
 """命令行入口。
 
-    quant serve                  启动 Web 服务
-    quant backtest ...           命令行跑一次回测（不需要浏览器）
-    quant fetch ...              预拉行情到本地缓存
-    quant keygen                 生成主密钥
-    quant doctor                 环境与安全自检
-    quant user create ...        创建用户
+quant serve                  启动 Web 服务
+quant backtest ...           命令行跑一次回测（不需要浏览器）
+quant fetch ...              预拉行情到本地缓存
+quant keygen                 生成主密钥
+quant doctor                 环境与安全自检
+quant user create ...        创建用户
 """
 
 from __future__ import annotations
@@ -67,10 +67,10 @@ def serve(args: argparse.Namespace) -> int:
 
 
 def backtest(args: argparse.Namespace) -> int:
+    from quant.config import get_settings
     from quant.data.store import MarketDataService
     from quant.engine import BacktestEngine, EngineConfig
     from quant.server.context import build_data_service
-    from quant.config import get_settings
     from quant.strategy.registry import list_strategies
 
     _setup_logging(args.verbose)
@@ -119,7 +119,9 @@ def backtest(args: argparse.Namespace) -> int:
     print(f"总费用      {metrics['total_fees']:,.2f}")
 
     if args.output:
-        Path(args.output).write_text(json.dumps(result.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        Path(args.output).write_text(
+            json.dumps(result.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         print(f"\n完整结果已写入 {args.output}")
     return 0
 
@@ -261,6 +263,25 @@ def user(args: argparse.Namespace) -> int:
     return 0
 
 
+def openapi(args) -> int:
+    """导出 OpenAPI schema，供前端生成类型。"""
+    import json
+    from pathlib import Path
+
+    from quant.config import Settings
+    from quant.server.app import create_app
+
+    schema = create_app(Settings(env="test")).openapi()
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        json.dumps(schema, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    print(f"OpenAPI schema 已写入 {out}")
+    return 0
+
+
 # --------------------------------------------------------------------------- #
 # 参数解析
 # --------------------------------------------------------------------------- #
@@ -284,7 +305,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--start")
     p.add_argument("--end")
     p.add_argument("--cash", type=float, default=1_000_000)
-    p.add_argument("--params", help="策略参数 JSON，如 '{\"fast\":10,\"slow\":30}'")
+    p.add_argument("--params", help='策略参数 JSON，如 \'{"fast":10,"slow":30}\'')
     p.add_argument("--benchmark", help="基准标的代码")
     p.add_argument("--no-risk", action="store_true")
     p.add_argument("--output", "-o", help="把完整结果写入 JSON 文件")
@@ -303,6 +324,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("doctor", help="环境与安全自检")
     p.set_defaults(func=doctor)
+
+    p = sub.add_parser("openapi", help="导出 OpenAPI schema（前端类型生成用）")
+    p.add_argument("--out", default="frontend/src/api/openapi.json")
+    p.set_defaults(func=openapi)
 
     p = sub.add_parser("user", help="用户管理")
     p.add_argument("action", choices=["create"])

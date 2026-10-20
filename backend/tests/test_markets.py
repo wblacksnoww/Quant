@@ -6,22 +6,19 @@ from datetime import date
 
 import pandas as pd
 import pytest
+from conftest import login_headers
 
 from quant.core.markets import (
-    Instrument,
     Market,
     clamp_to_limits,
     currency_symbol,
     parse_instrument,
-    price_limits,
     single_market,
     strip_us_suffix,
     try_parse,
 )
 from quant.core.types import Side
 from quant.data.base import SymbolInfo, create_provider
-
-from conftest import login_headers
 from quant.data.search import parse_smartbox, search_symbols
 from quant.data.store import DataStore
 from quant.engine.base import EngineConfig
@@ -336,9 +333,7 @@ def test_instrument_detail_endpoint(client, context, monkeypatch):
     assert body["t_plus_1"] is True
     assert body["limit_pct"] == pytest.approx(0.10)
 
-    crypto = client.get(
-        "/api/market/instrument", params={"symbol": "CRYPTO:BTC/USDT"}, headers=headers
-    )
+    crypto = client.get("/api/market/instrument", params={"symbol": "CRYPTO:BTC/USDT"}, headers=headers)
     assert crypto.status_code == 200, crypto.text
     cbody = crypto.json()
     assert cbody["market"] == "CRYPTO"

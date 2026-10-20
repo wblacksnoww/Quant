@@ -16,10 +16,10 @@ akshare 是惰性导入的：没有网络或没装 akshare 时，其它数据源
 from __future__ import annotations
 
 import logging
-import re
 import time
+from collections.abc import Iterable
 from datetime import date, timedelta
-from typing import Any, Iterable
+from typing import Any
 
 import pandas as pd
 import requests
@@ -44,20 +44,45 @@ _TENCENT_UA = (
 
 # 排行榜数据源：新浪行情中心（东财对 Python 客户端的 TLS 指纹会直接断开连接）
 _SINA_RANK_URL = (
-    "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
-    "Market_Center.getHQNodeData"
+    "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData"
 )
 _SINA_HK_RANK_URL = (
-    "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
-    "Market_Center.getHKStockData"
+    "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHKStockData"
 )
 _SINA_RANK_NODE = {"CN": "hs_a", "HK": "qbgg_hk"}
 
 # 美股没有稳定的免费全市场排行接口：用高关注度标的池 + 多源实时快照排序
 _US_RANK_POOL = (
-    "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AVGO", "BRK.B", "JPM",
-    "LLY", "V", "XOM", "UNH", "MA", "COST", "PG", "JNJ", "HD", "MRK",
-    "ABBV", "CVX", "PEP", "KO", "AMD", "NFLX", "CRM", "ADBE", "INTC", "BABA",
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "AMZN",
+    "GOOGL",
+    "META",
+    "TSLA",
+    "AVGO",
+    "BRK.B",
+    "JPM",
+    "LLY",
+    "V",
+    "XOM",
+    "UNH",
+    "MA",
+    "COST",
+    "PG",
+    "JNJ",
+    "HD",
+    "MRK",
+    "ABBV",
+    "CVX",
+    "PEP",
+    "KO",
+    "AMD",
+    "NFLX",
+    "CRM",
+    "ADBE",
+    "INTC",
+    "BABA",
 )
 
 
@@ -189,16 +214,12 @@ class AkShareProvider(DataProvider):
         return fetch_quotes(symbols)
 
     def realtime(self, symbols: Iterable[str]) -> dict[str, float]:
-        return {
-            code: quote.price for code, quote in self.snapshot(symbols).items() if quote.price > 0
-        }
+        return {code: quote.price for code, quote in self.snapshot(symbols).items() if quote.price > 0}
 
     # ------------------------------------------------------------------ #
     # 检索
     # ------------------------------------------------------------------ #
-    def search(
-        self, keyword: str = "", limit: int = 50, *, market: str | None = None
-    ) -> list[SymbolInfo]:
+    def search(self, keyword: str = "", limit: int = 50, *, market: str | None = None) -> list[SymbolInfo]:
         keyword = str(keyword or "").strip()
         wanted = str(market).strip().upper() if market else None
         if wanted in ("ALL", "全部"):
@@ -221,9 +242,7 @@ class AkShareProvider(DataProvider):
         if self._name_cache is None:
             ak = self._ak()
             raw = _retry(lambda: ak.stock_info_a_code_name(), attempts=2, what="akshare 代码表")
-            self._name_cache = {
-                str(row["code"]).zfill(6): str(row["name"]) for _, row in raw.iterrows()
-            }
+            self._name_cache = {str(row["code"]).zfill(6): str(row["name"]) for _, row in raw.iterrows()}
         out: list[SymbolInfo] = []
         for code, name in self._name_cache.items():
             if keyword and keyword not in code and keyword not in name:
@@ -292,9 +311,7 @@ def _to_float(value: Any) -> float | None:
     return result if result == result else None
 
 
-def _rank_items(
-    items: list[RealtimeQuote], *, sort: str, order: str, limit: int
-) -> list[RealtimeQuote]:
+def _rank_items(items: list[RealtimeQuote], *, sort: str, order: str, limit: int) -> list[RealtimeQuote]:
     if sort == "amount":
         key_fn = lambda q: q.amount or 0.0  # noqa: E731
     elif sort == "change":
@@ -387,9 +404,7 @@ def _us_ranking_quotes() -> list[RealtimeQuote]:
     return list(quotes.values())
 
 
-_SINA_KLINE_CN = (
-    "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_=/CN_MarketDataService.getKLineData"
-)
+_SINA_KLINE_CN = "https://quotes.sina.cn/cn/api/jsonp_v2.php/var%20_=/CN_MarketDataService.getKLineData"
 
 
 _INTRADAY_SCALE = {"1m": 1, "5m": 5, "15m": 15, "30m": 30, "60m": 60}
@@ -402,8 +417,8 @@ def _sina_kline_frame(symbol: str, scale: int, datalen: int) -> pd.DataFrame:
     inst = parse_instrument(symbol)
     if inst.market is not Market.CN:
         raise DataNotFound(f"新浪 K 线只实现了 A 股: {symbol}")
-    prefix = "sh" if inst.code.startswith(("6", "9")) else (
-        "bj" if inst.code.startswith(("4", "8")) else "sz"
+    prefix = (
+        "sh" if inst.code.startswith(("6", "9")) else ("bj" if inst.code.startswith(("4", "8")) else "sz")
     )
     try:
         resp = requests.get(

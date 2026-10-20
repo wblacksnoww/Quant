@@ -25,8 +25,13 @@ from .rules import is_valid_lot, rules_for
 
 log = logging.getLogger(__name__)
 
-_TERMINAL_STATUS = {"filled": "filled", "cancelled": "cancelled", "canceled": "cancelled",
-                    "rejected": "rejected", "expired": "expired"}
+_TERMINAL_STATUS = {
+    "filled": "filled",
+    "cancelled": "cancelled",
+    "canceled": "cancelled",
+    "rejected": "rejected",
+    "expired": "expired",
+}
 
 
 class LiveBroker(Broker):
@@ -59,9 +64,7 @@ class LiveBroker(Broker):
     def connect(self) -> None:
         self.adapter.connect()
 
-    def bind_account(
-        self, symbols: list[str], prices: dict[str, float] | None = None
-    ) -> dict[str, Any]:
+    def bind_account(self, symbols: list[str], prices: dict[str, float] | None = None) -> dict[str, Any]:
         """启动时用交易所资金/持仓初始化本地镜像。
 
         外部持仓的成本价无法从交易所获得，按 ``prices``（缺省 0）记成本，
@@ -109,8 +112,13 @@ class LiveBroker(Broker):
                 level="warning",
                 source=self.name,
             )
-        return {"ok": ok, "cash_local": self.account.cash, "cash_remote": balance.cash,
-                "cash_diff": cash_diff, "positions": position_diffs}
+        return {
+            "ok": ok,
+            "cash_local": self.account.cash,
+            "cash_remote": balance.cash,
+            "cash_diff": cash_diff,
+            "positions": position_diffs,
+        }
 
     # ------------------------------------------------------------------ #
     # 提交与撤销
@@ -154,7 +162,10 @@ class LiveBroker(Broker):
         self._emit_order(order)
         log.info(
             "实盘委托已提交 %s %s %s -> %s",
-            order.symbol, order.side.value, order.quantity, external_id,
+            order.symbol,
+            order.side.value,
+            order.quantity,
+            external_id,
         )
         return order
 
@@ -248,9 +259,7 @@ class LiveBroker(Broker):
         delta_fee = max(0.0, float(event.fee) - prev_fee)
         fees = FeeBreakdown(commission=delta_fee)
 
-        realized = self.account.realized_pnl_for(
-            order.symbol, order.side, price, delta_qty, fees.total
-        )
+        realized = self.account.realized_pnl_for(order.symbol, order.side, price, delta_qty, fees.total)
         fill = Fill(
             order_id=order.id,
             symbol=order.symbol,
@@ -344,7 +353,11 @@ class LiveBroker(Broker):
         return None
 
     def _estimate_cash(self, order: Order) -> float:
-        price = order.limit_price or self.account.last_price(order.symbol) or self._last_quotes.get(order.symbol, 0.0)
+        price = (
+            order.limit_price
+            or self.account.last_price(order.symbol)
+            or self._last_quotes.get(order.symbol, 0.0)
+        )
         if not price or price <= 0:
             price = order.limit_price or 1.0
         buffer = 1.0 if order.order_type is OrderType.LIMIT else 1.02

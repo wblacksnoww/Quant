@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import date, timedelta
+from datetime import date
 
 import numpy as np
 import pandas as pd
@@ -78,7 +78,9 @@ class SyntheticProvider(DataProvider):
         open_ = close * np.exp(-0.3 * log_returns + 0.1 * intraday * rng.standard_normal(n))
         high = np.maximum(open_, close) * (1 + np.abs(rng.standard_normal(n)) * vol * 0.5)
         low = np.minimum(open_, close) * (1 - np.abs(rng.standard_normal(n)) * vol * 0.5)
-        volume = (rng.lognormal(mean=15.0, sigma=0.5, size=n) * (1 + 3 * np.abs(log_returns) / vol)).astype(int)
+        volume = (rng.lognormal(mean=15.0, sigma=0.5, size=n) * (1 + 3 * np.abs(log_returns) / vol)).astype(
+            int
+        )
         amount = volume * close
 
         frame = pd.DataFrame(

@@ -32,6 +32,11 @@
 - **场外基金**：申购/赎回按净值确认份额，流水聚合持仓与收益，净值曲线、费率与
   补录修正；场内 ETF 走 A 股链路，搜索带 ETF 徽标。
 - **事件驱动引擎**：策略在第 t 根 K 线收到行情，订单在 t+1 撮合，从机制上杜绝未来函数。
+- **持久化回测队列**：提交先落库（`queued`），worker 原子认领执行；进程重启后
+  `queued` 任务保留、失联的 `running` 任务自动重新入队。多副本部署时不会重复执行。
+- **多实例安全**：纸盘/实盘会话用数据库租约确保同一会话只由一个实例持有；
+  stop/pause/resume/switch 通过数据库命令跨实例下发，状态快照让任意实例都能
+  返回 `/sessions`（需共享 PostgreSQL；WebSocket 事件为实例本地，状态轮询为准）。
 - **同一套交易组件**：按市场取规则与成本预设——A股整手/涨跌停/T+1/佣金/印花税/过户费；
   美股 lot=1、T+0、无涨跌停、低佣金；港股每手 100 股、T+0、双边印花；
   虚拟货币小数数量、T+0、无最低佣金。回测、纸盘与实盘完全一致。
@@ -266,6 +271,7 @@ quant-trading/
 | `QUANT_REFRESH_TOKEN_TTL` | `604800` | refresh token 秒数（轮换） |
 | `QUANT_REQUIRE_TOTP` | `false` | 是否强制所有账号启用 2FA |
 | `QUANT_MAX_CONCURRENT_BACKTESTS` | `2` | 并发回测上限 |
+| `QUANT_MAX_QUEUED_BACKTESTS` | `200` | 回测队列上限（含排队与运行中） |
 | `QUANT_ALLOWED_ORIGINS` | localhost | CORS 白名单（JSON 数组） |
 
 完整模板见 [`.env.example`](.env.example)。
@@ -302,6 +308,7 @@ POST /api/paper/pause            暂停（保留账户/持仓/策略进度）
 POST /api/paper/resume           从暂停处继续（运行中会话）
 POST /api/paper/continue         从停止处继续（历史会话，恢复账户与进度）
 POST /api/paper/stop             停止（按 run_id，结束会话）
+DELETE /api/paper/runs/{run_id}  删除历史纸盘记录
 GET  /api/paper/sessions         运行中的会话列表
 POST /api/paper/switch           运行中切换策略
 GET  /api/paper/state            实时状态
@@ -329,7 +336,7 @@ cd backend
 条件拼装策略（spec 白名单 + 用户隔离 + 引擎端到端；v1 条件与 v2 蓝图节点图）、
 虚拟货币数据源与 T+0/TIF、场外基金申赎聚合、实盘适配器与 LiveBroker 状态机、
 运行中策略切换、指数/排行榜/分钟线契约。
-后端 pytest 全套 **245 项**（`pytest --collect-only` 与 README/文档口径一致）。
+后端 pytest 全套 **251 项**（`pytest --collect-only` 与 README/文档口径一致）。
 
 ## 许可
 

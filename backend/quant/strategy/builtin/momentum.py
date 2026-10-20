@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import Mapping
+from collections.abc import Mapping
 
 from ...core.types import Bar
 from ..base import ParamSpec, Strategy

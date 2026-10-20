@@ -2,14 +2,26 @@
 
 import type { Edge, Node } from '@xyflow/react'
 import type { CustomGraphSpec } from '../../api/types'
-import { BP_DEFS, EDGE_COLORS, ENTRY_OUT_ID, EXIT_OUT_ID, defaultParams, type BpNodeData, type BpOutData, type PortKind } from './domain'
+import {
+  BP_DEFS,
+  EDGE_COLORS,
+  ENTRY_OUT_ID,
+  EXIT_OUT_ID,
+  defaultParams,
+  type BpNodeData,
+  type BpOutData,
+  type PortKind,
+} from './domain'
 
 export const ENTRY_OUT_TYPE = 'out_entry'
 export const EXIT_OUT_TYPE = 'out_exit'
 
 export function isGraphSpec(spec: unknown): spec is CustomGraphSpec {
   return (
-    typeof spec === 'object' && spec !== null && (spec as CustomGraphSpec).version === 2 && Array.isArray((spec as CustomGraphSpec).nodes)
+    typeof spec === 'object' &&
+    spec !== null &&
+    (spec as CustomGraphSpec).version === 2 &&
+    Array.isArray((spec as CustomGraphSpec).nodes)
   )
 }
 
@@ -21,15 +33,32 @@ const EXIT_OUT_POS = { x: 720, y: 250 }
 
 export function markerNodes(): Node[] {
   return [
-    { id: ENTRY_OUT_ID, type: 'out', position: ENTRY_OUT_POS, deletable: false, data: { btype: ENTRY_OUT_TYPE } as BpOutData },
-    { id: EXIT_OUT_ID, type: 'out', position: EXIT_OUT_POS, deletable: false, data: { btype: EXIT_OUT_TYPE } as BpOutData },
+    {
+      id: ENTRY_OUT_ID,
+      type: 'out',
+      position: ENTRY_OUT_POS,
+      deletable: false,
+      data: { btype: ENTRY_OUT_TYPE } as BpOutData,
+    },
+    {
+      id: EXIT_OUT_ID,
+      type: 'out',
+      position: EXIT_OUT_POS,
+      deletable: false,
+      data: { btype: EXIT_OUT_TYPE } as BpOutData,
+    },
   ]
 }
 
 function nodeParamRecord(data: BpNodeData): Record<string, number> {
   const def = BP_DEFS[data.btype]
   const base = defaultParams(def)
-  return { ...base, ...Object.fromEntries(Object.entries(data.params ?? {}).filter(([, v]) => typeof v === 'number' && Number.isFinite(v))) }
+  return {
+    ...base,
+    ...Object.fromEntries(
+      Object.entries(data.params ?? {}).filter(([, v]) => typeof v === 'number' && Number.isFinite(v)),
+    ),
+  }
 }
 
 /** 画布 → spec。结构错误在本地报（与服务端语义一致），服务端仍是权威。 */
@@ -137,7 +166,11 @@ export function compileToSpec(
     const data = outNode.data as BpOutData
     const incoming = edges.filter((e) => e.target === outNode.id && e.source)
     if (incoming.length === 0) {
-      errors.push(data.btype === ENTRY_OUT_TYPE ? '买入输出还没有连线：把布尔信号接进它' : '卖出输出还没有连线：把布尔信号接进它')
+      errors.push(
+        data.btype === ENTRY_OUT_TYPE
+          ? '买入输出还没有连线：把布尔信号接进它'
+          : '卖出输出还没有连线：把布尔信号接进它',
+      )
       continue
     }
     if (incoming.length > 1) {
@@ -146,7 +179,11 @@ export function compileToSpec(
     }
     const sourceId = incoming[0].source as string
     if (kindOf.get(sourceId) !== 'bool') {
-      errors.push(data.btype === ENTRY_OUT_TYPE ? '买入输出必须接布尔信号（比较/交叉/逻辑）' : '卖出输出必须接布尔信号（比较/交叉/逻辑）')
+      errors.push(
+        data.btype === ENTRY_OUT_TYPE
+          ? '买入输出必须接布尔信号（比较/交叉/逻辑）'
+          : '卖出输出必须接布尔信号（比较/交叉/逻辑）',
+      )
       continue
     }
     outSources[data.btype === ENTRY_OUT_TYPE ? 'entry' : 'exit'] = sourceId
@@ -198,11 +235,15 @@ export function graphToCanvas(
     const def = BP_DEFS[n.type]
     const baseParams = def ? defaultParams(def) : {}
     const params: Record<string, number> =
-      n.type === 'const' ? { value: n.value ?? baseParams['value'] ?? 0 } : { ...baseParams, ...(n.params ?? {}) }
+      n.type === 'const'
+        ? { value: n.value ?? baseParams['value'] ?? 0 }
+        : { ...baseParams, ...(n.params ?? {}) }
     return {
       id: n.id,
       type: 'bp',
-      position: n.pos ? { x: n.pos.x, y: n.pos.y } : { x: 40 + (i % 4) * 170, y: 40 + Math.floor(i / 4) * 130 },
+      position: n.pos
+        ? { x: n.pos.x, y: n.pos.y }
+        : { x: 40 + (i % 4) * 170, y: 40 + Math.floor(i / 4) * 130 },
       data: { btype: n.type, params, onParams: onParams(n.id) } as BpNodeData,
     }
   })
@@ -217,7 +258,21 @@ export function graphToCanvas(
   const markerNodesBuilt = markerNodes()
   const entrySrc = spec.outputs?.entry
   const exitSrc = spec.outputs?.exit
-  if (entrySrc) edges.push({ id: 'marker_entry', source: entrySrc, target: ENTRY_OUT_ID, targetHandle: 'in', style: { stroke: EDGE_COLORS.bool, strokeWidth: 2 } })
-  if (exitSrc) edges.push({ id: 'marker_exit', source: exitSrc, target: EXIT_OUT_ID, targetHandle: 'in', style: { stroke: EDGE_COLORS.bool, strokeWidth: 2 } })
+  if (entrySrc)
+    edges.push({
+      id: 'marker_entry',
+      source: entrySrc,
+      target: ENTRY_OUT_ID,
+      targetHandle: 'in',
+      style: { stroke: EDGE_COLORS.bool, strokeWidth: 2 },
+    })
+  if (exitSrc)
+    edges.push({
+      id: 'marker_exit',
+      source: exitSrc,
+      target: EXIT_OUT_ID,
+      targetHandle: 'in',
+      style: { stroke: EDGE_COLORS.bool, strokeWidth: 2 },
+    })
   return { nodes: [...nodes, ...markerNodesBuilt], edges }
 }

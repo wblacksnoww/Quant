@@ -13,7 +13,6 @@ import {
   Controls,
   ReactFlow,
   ReactFlowProvider,
-  addEdge,
   applyEdgeChanges,
   applyNodeChanges,
   useReactFlow,
@@ -78,7 +77,10 @@ function Editor() {
   const paramSetter = useCallback((nodeId: string, next: Record<string, number>) => {
     setNodes((ns) => ns.map((n) => (n.id === nodeId ? { ...n, data: { ...n.data, params: next } } : n)))
   }, [])
-  const setterFactory = useCallback((nodeId: string) => (next: Record<string, number>) => paramSetter(nodeId, next), [paramSetter])
+  const setterFactory = useCallback(
+    (nodeId: string) => (next: Record<string, number>) => paramSetter(nodeId, next),
+    [paramSetter],
+  )
 
   // ---- 载入（编辑已有蓝图） ------------------------------------------ //
   useEffect(() => {
@@ -109,7 +111,9 @@ function Editor() {
         setEdges(canvas.edges)
         window.setTimeout(() => flowRef.current?.fitView({ padding: 0.25 }), 50)
       })
-      .catch((err: Error) => notify('error', err instanceof ApiError ? `载入蓝图失败：${err.message}` : '载入蓝图失败'))
+      .catch((err: Error) =>
+        notify('error', err instanceof ApiError ? `载入蓝图失败：${err.message}` : '载入蓝图失败'),
+      )
     return () => {
       alive = false
     }
@@ -133,7 +137,11 @@ function Editor() {
           id,
           type: 'bp',
           position,
-          data: { btype, params: defaultParams(def), onParams: (nextParams) => paramSetter(id, nextParams) } as BpNodeData,
+          data: {
+            btype,
+            params: defaultParams(def),
+            onParams: (nextParams) => paramSetter(id, nextParams),
+          } as BpNodeData,
         }
         return [...currentNodes, next]
       })
@@ -165,7 +173,16 @@ function Editor() {
         }
         setEdges((eds) => {
           const cleaned = eds.filter((e) => e.target !== target)
-          return [...cleaned, { id: `${target}_in`, source, target, targetHandle: 'in', style: { stroke: EDGE_COLORS.bool, strokeWidth: 2 } }]
+          return [
+            ...cleaned,
+            {
+              id: `${target}_in`,
+              source,
+              target,
+              targetHandle: 'in',
+              style: { stroke: EDGE_COLORS.bool, strokeWidth: 2 },
+            },
+          ]
         })
         return
       }
@@ -219,8 +236,12 @@ function Editor() {
     (key: string) => {
       const tpl = TEMPLATES.find((t) => t.key === key)
       if (!tpl) return
-      if (nodes.some((n) => n.type === 'bp') && !window.confirm('用模板替换当前画布？未保存的修改会丢失。')) return
-      const canvas = tpl.key === 'blank' ? { nodes: [] as Node[], edges: [] as Edge[] } : graphToCanvas(tpl.spec, setterFactory)
+      if (nodes.some((n) => n.type === 'bp') && !window.confirm('用模板替换当前画布？未保存的修改会丢失。'))
+        return
+      const canvas =
+        tpl.key === 'blank'
+          ? { nodes: [] as Node[], edges: [] as Edge[] }
+          : graphToCanvas(tpl.spec, setterFactory)
       setName(tpl.spec.description && tpl.spec.description.length > 0 ? tpl.spec.description : '')
       setPositionPct(tpl.spec.position_pct ?? 0.9)
       setStopLoss(tpl.spec.stop_loss ?? 0.08)
@@ -272,7 +293,12 @@ function Editor() {
             ‹ 返回
           </Link>
           <div className="bp-name-wrap">
-            <Input value={name} onChange={(ev) => setName(ev.target.value)} placeholder="策略名称，如：双均线金叉" maxLength={32} />
+            <Input
+              value={name}
+              onChange={(ev) => setName(ev.target.value)}
+              placeholder="策略名称，如：双均线金叉"
+              maxLength={32}
+            />
           </div>
           <label className="bp-meta">
             仓位
@@ -310,11 +336,19 @@ function Editor() {
             />
             %
           </label>
-          <span className="tiny faint bp-count">{bpCount}/{MAX_CANVAS_NODES} 节点</span>
+          <span className="tiny faint bp-count">
+            {bpCount}/{MAX_CANVAS_NODES} 节点
+          </span>
         </div>
         <div className="row" style={{ gap: 6 }}>
           {TEMPLATES.map((tpl) => (
-            <Button key={tpl.key} size="sm" variant="ghost" title={tpl.hint} onClick={() => applyTemplate(tpl.key)}>
+            <Button
+              key={tpl.key}
+              size="sm"
+              variant="ghost"
+              title={tpl.hint}
+              onClick={() => applyTemplate(tpl.key)}
+            >
               {tpl.name}
             </Button>
           ))}

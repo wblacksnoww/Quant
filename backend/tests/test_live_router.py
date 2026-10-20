@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from conftest import login_headers
 from test_live_broker import FakeAdapter
 
@@ -32,7 +31,7 @@ def fake_adapter(monkeypatch, context):
         adapter.cash = 100_000.0
         return adapter
 
-    monkeypatch.setattr("quant.server.routers.live.create_adapter", _factory)
+    monkeypatch.setattr("quant.services.live_service.create_adapter", _factory)
     return _factory
 
 
@@ -79,7 +78,7 @@ def test_live_disabled_by_default(client):
         headers=headers,
     )
     assert resp.status_code == 403
-    assert "QUANT_ENABLE_LIVE_TRADING" in resp.json()["detail"]
+    assert "QUANT_ENABLE_LIVE_TRADING" in resp.json()["message"]
 
 
 def test_live_requires_owned_broker_credential(client, live_enabled, fake_adapter):
@@ -95,7 +94,7 @@ def test_live_requires_owned_broker_credential(client, live_enabled, fake_adapte
         headers=headers,
     )
     assert resp.status_code == 422
-    assert "broker" in resp.json()["detail"]
+    assert "broker" in resp.json()["message"]
 
 
 def test_live_real_money_requires_confirmation(client, live_enabled, fake_adapter):
@@ -107,7 +106,7 @@ def test_live_real_money_requires_confirmation(client, live_enabled, fake_adapte
         headers=headers,
     )
     assert resp.status_code == 422
-    assert "confirm_live" in resp.json()["detail"]
+    assert "confirm_live" in resp.json()["message"]
 
 
 def test_live_start_stop_single_session_and_audit(client, live_enabled, fake_adapter):

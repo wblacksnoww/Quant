@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from ...core.errors import DataError, DataNotFound
 from ...core.markets import Market, parse_instrument
 from ...data.providers.fund_provider import FundProvider
-from ...funds import SIDE_REDEEM, SIDE_SUBSCRIBE, compute_positions
+from ...funds import SIDE_SUBSCRIBE, compute_positions
 from ...storage.models import User
 from ...storage.repositories import FundTradeRepository
 from ..deps import audit, get_current_user, get_db

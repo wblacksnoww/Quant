@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from alembic import context
 from quant.config import get_settings
 from quant.storage.db import normalize_url
 from quant.storage.models import Base

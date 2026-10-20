@@ -22,7 +22,6 @@ from .calendar import (
     prev_trading_day,
     trading_days,
 )
-from .store import DataStore, MarketDataService
 
 # 触发内置数据源注册（副作用导入）
 from .providers import (  # noqa: F401,E402
@@ -32,6 +31,7 @@ from .providers import (  # noqa: F401,E402
     FundProvider,
     SyntheticProvider,
 )
+from .store import DataStore, MarketDataService
 
 __all__ = [
     "ALL_COLUMNS",

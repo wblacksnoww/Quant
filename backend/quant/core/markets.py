@@ -22,9 +22,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Iterable
 
 
 class Market(str, Enum):
@@ -270,8 +270,7 @@ _CRYPTO = BoardRules("crypto", "虚拟货币", 0.0, 1, t_plus_1=False, price_dig
 _FUND_OTC = BoardRules("fund_otc", "场外基金", 0.0, 1, t_plus_1=False, price_digits=4)
 
 BOARDS: dict[str, BoardRules] = {
-    b.code: b
-    for b in (_MAIN, _GEM, _STAR, _BSE, _FUND, _INDEX, _US, _HK, _CRYPTO, _FUND_OTC)
+    b.code: b for b in (_MAIN, _GEM, _STAR, _BSE, _FUND, _INDEX, _US, _HK, _CRYPTO, _FUND_OTC)
 }
 
 _ST = BoardRules("main_st", "主板ST", 0.05, 100)
@@ -360,9 +359,7 @@ def price_limits(
     return up, down
 
 
-def clamp_to_limits(
-    price: float, prev_close: float, symbol: str, *, is_st: bool = False
-) -> float:
+def clamp_to_limits(price: float, prev_close: float, symbol: str, *, is_st: bool = False) -> float:
     """把价格夹到涨跌停区间内（防止策略报出越界限价）。"""
     up, down = price_limits(prev_close, symbol, is_st=is_st)
     if up is None or down is None:

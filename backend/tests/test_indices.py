@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import pytest
-
 from conftest import login_headers
+
 from quant.data import indices as idx
 
 
@@ -60,7 +60,16 @@ def test_service_indices_keeps_last_on_failure(monkeypatch):
     def fake_fetch(ids=None):
         calls["n"] += 1
         if calls["n"] == 1:
-            return [idx.IndexQuote(id="sh000001", name="上证指数", market="CN", currency="CNY", price=3730.92, change_pct=0.39)]
+            return [
+                idx.IndexQuote(
+                    id="sh000001",
+                    name="上证指数",
+                    market="CN",
+                    currency="CNY",
+                    price=3730.92,
+                    change_pct=0.39,
+                )
+            ]
         raise idx.DataProviderUnavailable("down")
 
     monkeypatch.setattr(idx, "fetch_indices", fake_fetch)

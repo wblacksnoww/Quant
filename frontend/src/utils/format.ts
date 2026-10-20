@@ -178,27 +178,27 @@ export function normalizeInstrumentId(text: string): string | null {
 
   // 显式前缀：MARKET:CODE / MARKET.CODE / MARKET+CODE（无分隔符时要求代码 ≥2 位，
   // 避免把 "USX" 这类美股代码误拆成 US:X）
-  const prefixed = raw.match(/^([A-Z]+)([:.])?([A-Z0-9.\-]+)$/)
+  const prefixed = raw.match(/^([A-Z]+)([:.])?([A-Z0-9.-]+)$/)
   if (prefixed) {
     const [, aliasRaw, sep, code] = prefixed
     const market = MARKET_ALIASES[aliasRaw]
     if (market && (sep || code.length >= 2)) {
       if (market === 'CN' && /^\d{1,6}$/.test(code)) return `CN:${code.padStart(6, '0')}`
       if (market === 'HK' && /^\d{1,5}$/.test(code)) return `HK:${code.padStart(5, '0')}`
-      if (market === 'US' && /^[A-Z][A-Z0-9.\-]{0,11}$/.test(code)) return `US:${stripUsSuffix(code)}`
+      if (market === 'US' && /^[A-Z][A-Z0-9.-]{0,11}$/.test(code)) return `US:${stripUsSuffix(code)}`
       if (market === 'FUND' && /^\d{1,6}$/.test(code)) return `FUND:${code.padStart(6, '0')}`
     }
   }
 
   // 后缀形式：600519.SH / AAPL.US / 007005.FUND
-  const suffixed = raw.match(/^([A-Z0-9.\-]+)\.([A-Z]+)$/)
+  const suffixed = raw.match(/^([A-Z0-9.-]+)\.([A-Z]+)$/)
   if (suffixed) {
     const market = MARKET_ALIASES[suffixed[2]]
     if (market) {
       const code = suffixed[1]
       if (market === 'CN' && /^\d{1,6}$/.test(code)) return `CN:${code.padStart(6, '0')}`
       if (market === 'HK' && /^\d{1,5}$/.test(code)) return `HK:${code.padStart(5, '0')}`
-      if (market === 'US' && /^[A-Z][A-Z0-9.\-]{0,11}$/.test(code)) return `US:${stripUsSuffix(code)}`
+      if (market === 'US' && /^[A-Z][A-Z0-9.-]{0,11}$/.test(code)) return `US:${stripUsSuffix(code)}`
       if (market === 'FUND' && /^\d{1,6}$/.test(code)) return `FUND:${code.padStart(6, '0')}`
     }
   }
@@ -206,7 +206,7 @@ export function normalizeInstrumentId(text: string): string | null {
   // 启发式：6 位数字 → A 股；1~5 位 → 港股；字母 → 美股
   if (/^\d{6}$/.test(raw)) return `CN:${raw}`
   if (/^\d{1,5}$/.test(raw)) return `HK:${raw.padStart(5, '0')}`
-  if (/^[A-Z][A-Z0-9.\-]{0,11}$/.test(raw)) return `US:${stripUsSuffix(raw)}`
+  if (/^[A-Z][A-Z0-9.-]{0,11}$/.test(raw)) return `US:${stripUsSuffix(raw)}`
   return null
 }
 
@@ -219,11 +219,7 @@ function stripUsSuffix(code: string): string {
 }
 
 /** 带货币符号的价格展示（``$343.46`` / ``HK$417.80`` / 无货币信息时纯数字）。 */
-export function fmtPrice(
-  value: number | null | undefined,
-  currency?: string | null,
-  digits = 2,
-): string {
+export function fmtPrice(value: number | null | undefined, currency?: string | null, digits = 2): string {
   const text = fmtNumber(value, digits)
   const symbol = currencySymbol(currency)
   return symbol ? `${symbol}${text}` : text

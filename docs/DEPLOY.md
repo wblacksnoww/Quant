@@ -130,7 +130,8 @@ COMPOSE_FILE=docker-compose.yml:docker-compose.postgres.yml
 | `QUANT_ACCESS_TOKEN_TTL` | 900 | access 秒数 |
 | `QUANT_REQUIRE_TOTP` | false | 引导开启 2FA |
 | `QUANT_RATE_LIMIT_PER_MINUTE` | 120 | 每 IP 每分钟写请求上限 |
-| `QUANT_MAX_CONCURRENT_BACKTESTS` | 2 | 并发回测上限（吃内存，按机器调） |
+| `QUANT_MAX_CONCURRENT_BACKTESTS` | 2 | 每实例并发回测上限（吃内存，按机器调） |
+| `QUANT_MAX_QUEUED_BACKTESTS` | 200 | 回测队列上限（含排队与运行中） |
 
 完整模板见 [`.env.example`](../.env.example)。改完 `.env` 后
 `docker compose up -d` 重建受影响容器即生效。
@@ -347,3 +348,18 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compos
 - [ ] 防火墙限制 SSH 来源 IP；开启系统安全更新
 - [ ] 定期调用 `GET /api/system/audit/verify` 校验审计链
 - [ ] 实盘先用测试网密钥联调；真实资金使用无提现权限的 API Key
+
+### 11.6 多实例 / 多 worker
+
+- 回测队列与纸盘/实盘会话协调依赖**共享数据库**：多副本/多 worker 必须使用
+  PostgreSQL；SQLite 只适合单实例（文件锁无法跨主机协调）。
+- 新增的三张表由 alembic 自动创建：`backtest_jobs`（持久化回测队列）、
+  `session_leases`（会话租约 + 状态快照）、`session_commands`（跨实例控制命令）。
+- 同一个纸盘 `run_id` / 实盘凭证在任意时刻只会被一个实例持有；租约默认 8 秒过期，
+  心跳 1 秒续租。实例宕机后最多 8 秒其他实例可接管。
+- `stop/pause/resume/switch` 在非持有实例上会写入命令并立即返回，持有实例在
+  下一次心跳（≤1 秒）执行；前端 2 秒轮询会话状态。
+- WebSocket 事件是**实例本地**的（不跨副本广播）；跨实例以 `/api/paper/sessions`、
+  `/api/live/sessions` 的状态快照为准。
+- 回测 worker 每个实例独立，靠数据库条件更新原子认领任务；`QUANT_MAX_CONCURRENT_BACKTESTS`
+  是**每实例**并发上限，`QUANT_MAX_QUEUED_BACKTESTS` 是全局队列上限。

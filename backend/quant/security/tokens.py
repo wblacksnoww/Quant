@@ -16,7 +16,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
@@ -104,7 +104,7 @@ class TokenService:
         *,
         jti: str | None = None,
     ) -> str:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         payload: dict[str, Any] = {
             "sub": sub,
             "role": role,
@@ -148,8 +148,8 @@ class TokenService:
             role=str(payload.get("role", "user")),
             type=token_type,
             jti=str(payload["jti"]),
-            issued_at=datetime.fromtimestamp(payload["iat"], tz=timezone.utc),
-            expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+            issued_at=datetime.fromtimestamp(payload["iat"], tz=UTC),
+            expires_at=datetime.fromtimestamp(payload["exp"], tz=UTC),
             extra=dict(payload.get("extra") or {}),
         )
 

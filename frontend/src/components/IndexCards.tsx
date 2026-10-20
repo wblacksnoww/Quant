@@ -8,13 +8,7 @@ import { marketApi } from '../api/client'
 import type { IndexQuote } from '../api/types'
 import { Badge, Button, Modal } from './ui'
 import { IconSettings } from './icons'
-import {
-  classForSign,
-  fmtNumber,
-  fmtSignedPct,
-  marketLabel,
-  marketTone,
-} from '../utils/format'
+import { classForSign, fmtNumber, fmtSignedPct, marketLabel, marketTone } from '../utils/format'
 import { notify } from '../store/toast'
 
 const STORAGE_KEY = 'quant.index_cards'

@@ -158,10 +158,7 @@ export function FundsPage() {
   )
 
   const totals = portfolio?.totals ?? {}
-  const holdings = useMemo(
-    () => (portfolio?.holdings ?? []).filter((item) => item.shares > 0),
-    [portfolio],
-  )
+  const holdings = useMemo(() => (portfolio?.holdings ?? []).filter((item) => item.shares > 0), [portfolio])
 
   if (loading) return <Loading text="正在加载基金持仓…" />
 
@@ -246,7 +243,10 @@ export function FundsPage() {
                   />
                 </Field>
               )}
-              <Field label="费率" hint={side === 'subscribe' ? '申购费率，如 0.0015 = 0.15%' : '赎回费率，如 0.005 = 0.5%'}>
+              <Field
+                label="费率"
+                hint={side === 'subscribe' ? '申购费率，如 0.0015 = 0.15%' : '赎回费率，如 0.005 = 0.5%'}
+              >
                 <input
                   className="input mono"
                   type="number"
@@ -314,12 +314,7 @@ export function FundsPage() {
             {suggestions.length > 0 && (
               <div className="suggest-list">
                 {suggestions.map((item) => (
-                  <button
-                    key={item.symbol}
-                    type="button"
-                    className="suggest-item"
-                    onClick={() => pick(item)}
-                  >
+                  <button key={item.symbol} type="button" className="suggest-item" onClick={() => pick(item)}>
                     <span className="mono strong">{item.code ?? item.symbol}</span>
                     <span>{item.name || '—'}</span>
                     <span className="tiny faint" style={{ marginLeft: 'auto' }}>

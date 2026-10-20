@@ -14,7 +14,7 @@ import asyncio
 import logging
 import threading
 from collections import deque
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -82,7 +82,7 @@ class EventHub:
         event = {
             "type": event_type,
             "source": source,
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "ts": datetime.now(UTC).isoformat(),
             "payload": payload,
         }
         with self._lock:
@@ -117,36 +117,17 @@ class EventHub:
         while True:
             try:
                 event = await asyncio.wait_for(queue.get(), timeout=timeout)
-            except asyncio.TimeoutError:
-                yield {"type": "ping", "ts": datetime.now(timezone.utc).isoformat(), "payload": {}}
+            except TimeoutError:
+                yield {"type": "ping", "ts": datetime.now(UTC).isoformat(), "payload": {}}
                 continue
             yield event
 
 
-def bus_bridge(
-    bus,
-    hub: EventHub,
-    source: str = "",
-    run_id: str = "",
-    user_id: int | None = None,
-) -> list:
-    """把 :class:`~quant.core.events.EventBus` 的所有事件转发到 WebSocket。
+def bus_bridge(*args, **kwargs):
+    """兼容包装：实现见 :mod:`quant.services.event_bridge`。"""
+    from ..services.event_bridge import bus_bridge as _bridge
 
-    ``user_id`` 非空时事件只发给该用户的连接。
-    返回取消订阅的闭包列表。
-    """
-    from ..core.events import EventType
-
-    unwire = []
-    for event_type in EventType:
-        def handler(event, _t=event_type):
-            payload = dict(event.payload)
-            if run_id:
-                payload["run_id"] = run_id
-            hub.publish(f"run.{event.type.value}", payload, event.source or source, user_id=user_id)
-
-        unwire.append(bus.subscribe(event_type, handler))
-    return unwire
+    return _bridge(*args, **kwargs)
 
 
 __all__ = ["EventHub", "bus_bridge"]
