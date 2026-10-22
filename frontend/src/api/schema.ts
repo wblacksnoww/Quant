@@ -809,6 +809,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/news/fetch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 立即抓取一次新闻源 */
+        post: operations["fetch_news_api_news_fetch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/news/items": {
         parameters: {
             query?: never;
@@ -839,6 +856,23 @@ export interface paths {
         post?: never;
         /** 删除新闻 */
         delete: operations["delete_news_api_news_items__news_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/news/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 自动抓取状态 */
+        get: operations["fetch_status_api_news_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1960,6 +1994,27 @@ export interface components {
             symbol: string;
             /** Window */
             window: string;
+        };
+        /** NewsFetchStatusOut */
+        NewsFetchStatusOut: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Feeds */
+            feeds?: string[];
+            /**
+             * Interval Seconds
+             * @default 120
+             */
+            interval_seconds: number;
+            /** Last Result */
+            last_result?: {
+                [key: string]: unknown;
+            } | null;
+            /** Last Run At */
+            last_run_at?: string | null;
         };
         /** NewsItemIn */
         NewsItemIn: {
@@ -4278,6 +4333,26 @@ export interface operations {
             };
         };
     };
+    fetch_news_api_news_fetch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+        };
+    };
     list_news_api_news_items_get: {
         parameters: {
             query?: {
@@ -4370,6 +4445,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    fetch_status_api_news_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewsFetchStatusOut"];
                 };
             };
         };

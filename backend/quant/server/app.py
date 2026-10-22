@@ -142,6 +142,8 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
         app.state.ctx.hub.bind(asyncio.get_running_loop())
         if app.state.ctx.coordinator is not None:
             app.state.ctx.coordinator.start()
+        if app.state.ctx.news_ingestion is not None:
+            app.state.ctx.news_ingestion.start()
         log.info(
             "服务已启动 env=%s version=%s provider=%s",
             settings.env,
@@ -157,6 +159,11 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
                     app.state.ctx.coordinator.stop()
             except Exception:  # noqa: BLE001
                 log.exception("停止会话协调器失败")
+            try:
+                if app.state.ctx.news_ingestion is not None:
+                    app.state.ctx.news_ingestion.stop()
+            except Exception:  # noqa: BLE001
+                log.exception("停止新闻抓取失败")
             try:
                 app.state.ctx.paper.stop_all(timeout=5)
             except Exception:  # noqa: BLE001

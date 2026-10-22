@@ -695,3 +695,11 @@ class NewsFactorOut(BaseModel):
     confidence: float = 0.0
     event_count: int = 0
     items: list[NewsItemOut] = Field(default_factory=list)
+
+
+class NewsFetchStatusOut(BaseModel):
+    enabled: bool = False
+    interval_seconds: float = 120.0
+    feeds: list[str] = Field(default_factory=list)
+    last_run_at: str | None = None
+    last_result: dict[str, Any] | None = None

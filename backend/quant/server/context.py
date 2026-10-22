@@ -44,6 +44,7 @@ class AppContext:
     warnings: list[str] = field(default_factory=list)
     backtests: Any = None  # BacktestManager，延迟注入以避免循环导入
     coordinator: Any = None  # SessionCoordinator，多实例会话租约/命令
+    news_ingestion: Any = None  # NewsIngestionService，自动新闻抓取
     instance_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -166,6 +167,9 @@ def build_context(settings: Settings | None = None) -> AppContext:
         live=ctx.live,
         instance_id=ctx.instance_id,
     )
+    from ..news.ingest import NewsIngestionService
+
+    ctx.news_ingestion = NewsIngestionService(ctx)
 
     # 上次进程异常退出残留的 running 记录：活跃租约不标记，避免误伤其他实例
     try:

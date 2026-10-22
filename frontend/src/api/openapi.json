@@ -1712,6 +1712,52 @@
         "title": "NewsFactorOut",
         "type": "object"
       },
+      "NewsFetchStatusOut": {
+        "properties": {
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "feeds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Feeds",
+            "type": "array"
+          },
+          "interval_seconds": {
+            "default": 120.0,
+            "title": "Interval Seconds",
+            "type": "number"
+          },
+          "last_result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Result"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          }
+        },
+        "title": "NewsFetchStatusOut",
+        "type": "object"
+      },
       "NewsItemIn": {
         "properties": {
           "confidence": {
@@ -5838,6 +5884,27 @@
         ]
       }
     },
+    "/api/news/fetch": {
+      "post": {
+        "operationId": "fetch_news_api_news_fetch_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "立即抓取一次新闻源",
+        "tags": [
+          "新闻政策"
+        ]
+      }
+    },
     "/api/news/items": {
       "get": {
         "operationId": "list_news_api_news_items_get",
@@ -5979,6 +6046,27 @@
           }
         },
         "summary": "删除新闻",
+        "tags": [
+          "新闻政策"
+        ]
+      }
+    },
+    "/api/news/status": {
+      "get": {
+        "operationId": "fetch_status_api_news_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewsFetchStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "自动抓取状态",
         "tags": [
           "新闻政策"
         ]

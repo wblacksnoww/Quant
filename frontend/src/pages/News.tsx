@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { ApiError, newsApi } from '../api/client'
-import type { NewsFactor, NewsItem } from '../api/types'
+import type { NewsFactor, NewsFetchStatus, NewsItem } from '../api/types'
 import { notify } from '../store/toast'
+import { useAuth } from '../store/auth'
 import { Badge, Banner, Button, Card, Empty, Field, Loading, Stat } from '../components/ui'
 import { IconRefresh, IconTrash } from '../components/icons'
 import { fmtDateTime, fmtPct, fmtSignedPct } from '../utils/format'
@@ -31,6 +32,9 @@ export function NewsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [fetching, setFetching] = useState(false)
+  const [fetchStatus, setFetchStatus] = useState<NewsFetchStatus | null>(null)
+  const isAdmin = useAuth((state) => state.user?.role === 'admin')
 
   const [title, setTitle] = useState('')
   const [summary, setSummary] = useState('')
@@ -63,6 +67,33 @@ export function NewsPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    void newsApi
+      .status()
+      .then(setFetchStatus)
+      .catch(() => setFetchStatus(null))
+  }, [])
+
+  const triggerFetch = async () => {
+    setFetching(true)
+    try {
+      const before = fetchStatus?.last_run_at
+      await newsApi.fetch()
+      for (let i = 0; i < 10; i += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2000))
+        const next = await newsApi.status()
+        setFetchStatus(next)
+        if (next.last_run_at && next.last_run_at !== before) break
+      }
+      await load()
+      notify('success', '新闻抓取已完成')
+    } catch (err) {
+      notify('error', err instanceof ApiError ? err.message : '抓取失败')
+    } finally {
+      setFetching(false)
+    }
+  }
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -119,9 +150,14 @@ export function NewsPage() {
         title="新闻/政策因子"
         description="Point-in-Time 聚合：策略只能看到 effective_at 之前的数据；无新闻时返回中性值"
         actions={
-          <Button size="sm" variant="ghost" onClick={() => void load()}>
-            <IconRefresh />
-          </Button>
+          <div className="row" style={{ gap: 6 }}>
+            <Button size="sm" loading={fetching} onClick={() => void triggerFetch()}>
+              立即抓取
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => void load()}>
+              <IconRefresh />
+            </Button>
+          </div>
         }
       >
         <div className="row wrap" style={{ gap: 10, alignItems: 'flex-end' }}>
@@ -143,6 +179,18 @@ export function NewsPage() {
         </div>
 
         {error && <Banner kind="danger">{error}</Banner>}
+        <Banner kind={fetchStatus?.enabled ? 'info' : 'warn'}>
+          {fetchStatus?.enabled
+            ? `自动抓取已开启：每 ${Math.round(fetchStatus.interval_seconds)} 秒；上次 ${
+                fetchStatus.last_run_at ? fmtDateTime(fetchStatus.last_run_at) : '尚未运行'
+              }`
+            : '自动抓取未开启（QUANT_NEWS_AUTO_FETCH=false），仍可手动抓取'}
+          {fetchStatus?.last_result
+            ? ` · 新增 ${(fetchStatus.last_result as { inserted?: number }).inserted ?? 0} 条 / 跳过 ${
+                (fetchStatus.last_result as { skipped?: number }).skipped ?? 0
+              } 条`
+            : ''}
+        </Banner>
         {loading && !factor ? (
           <Loading text="正在计算新闻因子…" />
         ) : (
@@ -319,9 +367,11 @@ export function NewsPage() {
                     <td className="right num">{fmtPct(item.confidence)}</td>
                     <td className="tiny faint">{item.source}</td>
                     <td className="right">
-                      <Button size="sm" variant="ghost" onClick={() => void remove(item.id)}>
-                        <IconTrash />
-                      </Button>
+                      {(item.created_by != null || isAdmin) && (
+                        <Button size="sm" variant="ghost" onClick={() => void remove(item.id)}>
+                          <IconTrash />
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))}

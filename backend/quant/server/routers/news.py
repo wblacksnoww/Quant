@@ -12,7 +12,7 @@ from ...services import news_service
 from ...storage.models import User
 from ..context import AppContext
 from ..deps import audit, get_ctx, get_current_user, get_db
-from ..schemas import Message, NewsFactorOut, NewsItemIn, NewsItemOut
+from ..schemas import Message, NewsFactorOut, NewsFetchStatusOut, NewsItemIn, NewsItemOut
 
 router = APIRouter(prefix="/news", tags=["新闻政策"])
 
@@ -69,6 +69,36 @@ def get_factor(
             half_life_hours=half_life_hours,
         )
     )
+
+
+@router.post("/fetch", response_model=Message, summary="立即抓取一次新闻源")
+def fetch_news(
+    ctx: AppContext = Depends(get_ctx),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_db),
+):
+    started = bool(ctx.news_ingestion and ctx.news_ingestion.trigger())
+    audit(
+        session,
+        request=None,
+        actor=user.username,
+        action="news.fetch",
+        target="manual",
+        detail={"started": started},
+    )
+    return Message(
+        message="已开始抓取新闻" if started else "抓取任务正在运行",
+        detail={"started": started},
+    )
+
+
+@router.get("/status", response_model=NewsFetchStatusOut, summary="自动抓取状态")
+def fetch_status(
+    ctx: AppContext = Depends(get_ctx),
+    _: User = Depends(get_current_user),
+):
+    status = ctx.news_ingestion.status() if ctx.news_ingestion else {}
+    return NewsFetchStatusOut(**status)
 
 
 @router.delete("/items/{news_id}", response_model=Message, summary="删除新闻")

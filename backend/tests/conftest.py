@@ -34,6 +34,7 @@ def settings(tmp_path, monkeypatch) -> Settings:
         allowed_origins=["*"],
         rate_limit_per_minute=10_000,
         max_concurrent_backtests=2,
+        news_auto_fetch=False,
     )
 
 

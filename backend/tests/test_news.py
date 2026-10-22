@@ -179,3 +179,77 @@ def test_news_api_ingest_and_factor(client):
         headers=headers,
     )
     assert duplicate.status_code >= 400
+
+
+def test_parse_rss_and_auto_ingestion_dedupe(context, monkeypatch):
+    from datetime import datetime, timedelta
+
+    from quant.news.classifier import classify
+    from quant.news.factors import compute_factor
+    from quant.news.ingest import NewsIngestionService, RawNews, parse_rss
+
+    xml = """<?xml version="1.0"?>
+    <rss version="2.0"><channel>
+      <item><title>比特币 ETF 获批</title><link>https://example.com/a</link>
+      <guid>a1</guid><pubDate>Wed, 21 Oct 2026 10:00:00 GMT</pubDate>
+      <description>监管批准比特币现货 ETF</description></item>
+    </channel></rss>"""
+    parsed = parse_rss(xml)
+    assert parsed[0].title == "比特币 ETF 获批"
+    assert parsed[0].url == "https://example.com/a"
+    assert parsed[0].published_at.year == 2026
+
+    scored = classify("比特币 ETF 获批，监管批准", force=True)
+    assert scored["sentiment"] > 0
+    assert "CRYPTO:BTC/USDT" in scored["symbols"]
+
+    now = datetime.utcnow()
+    fake = [
+        RawNews(
+            external_id="auto-1",
+            title="比特币 ETF 获批",
+            summary="监管批准比特币现货 ETF",
+            url="https://example.com/a",
+            published_at=now - timedelta(hours=1),
+        )
+    ]
+    monkeypatch.setattr("quant.news.ingest.fetch_feed", lambda *args, **kwargs: fake)
+    context.settings.news_feeds = [
+        {
+            "name": "fake-crypto",
+            "kind": "rss",
+            "url": "https://example.invalid/rss",
+            "market": "CRYPTO",
+            "force": True,
+        }
+    ]
+    service = NewsIngestionService(context)
+    first = service.run_once()
+    assert first["inserted"] == 1
+    second = service.run_once()
+    assert second["inserted"] == 0
+    assert second["skipped"] >= 1
+
+    # 自动抓取的 effective_at 是抓取时刻：抓取之前的 as_of 看不到，之后能看到
+    with context.db.session() as session:
+        from quant.storage.repositories.news import NewsRepository
+
+        rows = NewsRepository(session).list(symbol="CRYPTO:BTC/USDT", limit=10)
+        assert len(rows) == 1
+        item = rows[0].to_dict()
+    before = compute_factor([item], symbol="CRYPTO:BTC/USDT", as_of=now - timedelta(days=1), window="1d")
+    after = compute_factor([item], symbol="CRYPTO:BTC/USDT", as_of=datetime.utcnow(), window="1d")
+    assert before.event_count == 0
+    assert after.event_count == 1
+    assert after.sentiment > 0
+
+
+def test_news_status_api(client):
+    from conftest import login_headers
+
+    headers = login_headers(client)
+    resp = client.get("/api/news/status", headers=headers)
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["enabled"] is False  # 测试环境关闭自动抓取，避免联网
+    assert isinstance(payload["feeds"], list)

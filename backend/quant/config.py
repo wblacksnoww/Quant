@@ -15,7 +15,7 @@ from __future__ import annotations
 import secrets
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -95,10 +95,33 @@ class Settings(BaseSettings):
     enable_live_trading: bool = False
     live_poll_interval: float = 5.0
 
+    # -- 新闻/政策自动抓取 -------------------------------------------------- #
+    news_auto_fetch: bool = True
+    news_fetch_interval: float = 120.0
+    news_proxy: str = ""
+    # JSON 数组；留空使用 quant.news.feeds.DEFAULT_FEEDS
+    news_feeds: list[dict[str, Any]] = Field(default_factory=list)
+
     # -- 前端 -------------------------------------------------------------- #
     frontend_dist: str = "frontend/dist"
 
     # ------------------------------------------------------------------ #
+    @field_validator("news_feeds", mode="before")
+    @classmethod
+    def _parse_feeds(cls, value):
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return []
+            import json
+
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                return []
+            return parsed if isinstance(parsed, list) else []
+        return value
+
     @field_validator("allowed_origins", "fallback_providers", "default_symbols", mode="before")
     @classmethod
     def _split_csv(cls, value):

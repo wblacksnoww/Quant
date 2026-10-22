@@ -18,7 +18,7 @@ class NewsRepository:
 
     @staticmethod
     def raw_hash(*, title: str, published_at: datetime, source: str = "manual") -> str:
-        raw = f"{source}|{title.strip()}|{published_at.isoformat()}"
+        raw = f"{title.strip()}|{published_at.isoformat()}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     def create(

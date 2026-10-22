@@ -29,6 +29,7 @@ import type {
   MarketInfo,
   Message,
   NewsFactor,
+  NewsFetchStatus,
   NewsItem,
   NewsItemInput,
   PaperStartRequest,
@@ -424,4 +425,6 @@ export const newsApi = {
   factor: (symbol: string, window = '1h', asOf?: string) =>
     request<NewsFactor>('/news/factors', { query: { symbol, window, as_of: asOf } }),
   remove: (id: number) => request<Message>(`/news/items/${id}`, { method: 'DELETE' }),
+  fetch: () => request<Message>('/news/fetch', { method: 'POST' }),
+  status: () => request<NewsFetchStatus>('/news/status'),
 }

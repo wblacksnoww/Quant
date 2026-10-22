@@ -46,6 +46,9 @@
   **同一券商凭证同时只允许一个会话**（避免两套策略争抢同一笔真实资金），
   不同凭证（不同资金账户）可以并行。
 - **模拟盘双模式**：`replay` 按倍速回放历史行情；`live` 盘中轮询快照（数据源不支持时回退最新收盘价并告警）。**同一账号可同时运行多个会话**（每个会话独立虚拟资金，默认上限 5 个）；支持**暂停/继续**，暂停保留账户、持仓与策略进度，「停止」后也能在历史会话里点「继续」从停止处接着跑（恢复现金、持仓与回放进度，沿用同一运行 ID）；历史会话可查看完整详情（指标、权益曲线、成交/委托/持仓/日志/配置）。
+- **新闻/政策自动抓取**：默认抓取华尔街见闻（区块链/宏观，国内直连）与
+  Cointelegraph/CoinDesk（RSS，走代理）；规则型分类器输出情绪、政策风险、事件类型，
+  按 `effective_at` 做 Point-in-Time 聚合。也支持手工录入历史新闻用于回测补录。
 - **新闻/政策因子**：录入新闻/政策条目（标题、情绪、政策风险、置信度、生效时间），
   后端按 Point-in-Time 聚合成 `sentiment` / `policy_risk` / `confidence` 因子；回测只使用
   当时可见的新闻，策略通过 `StrategyContext.news_factor()` 读取，不在 bar 内调外部 API。
@@ -279,6 +282,10 @@ quant-trading/
 | `QUANT_REQUIRE_TOTP` | `false` | 是否强制所有账号启用 2FA |
 | `QUANT_MAX_CONCURRENT_BACKTESTS` | `2` | 并发回测上限 |
 | `QUANT_MAX_QUEUED_BACKTESTS` | `200` | 回测队列上限（含排队与运行中） |
+| `QUANT_NEWS_AUTO_FETCH` | `true` | 新闻/政策自动抓取总开关 |
+| `QUANT_NEWS_FETCH_INTERVAL` | `120` | 自动抓取间隔（秒） |
+| `QUANT_NEWS_PROXY` | — | RSS 代理，留空复用 `QUANT_CRYPTO_PROXY` |
+| `QUANT_NEWS_FEEDS` | 内置源 | 自定义源 JSON 数组 |
 | `QUANT_ALLOWED_ORIGINS` | localhost | CORS 白名单（JSON 数组） |
 
 完整模板见 [`.env.example`](.env.example)。
@@ -311,6 +318,8 @@ GET  /api/market/ranking         排行榜（今日/本周/本月 × 涨幅/成�
 GET  /api/news/items             新闻/政策条目（可按标的过滤）
 POST /api/news/items             录入新闻/政策（情绪、政策风险、生效时间）
 GET  /api/news/factors           Point-in-Time 新闻因子（情绪/政策风险/置信度）
+POST /api/news/fetch             立即抓取一次新闻源
+GET  /api/news/status            自动抓取状态与上次结果
 DELETE /api/news/items/{id}      删除新闻条目
 GET  /api/market/quote           实时快照（多源聚合，含名称/涨跌/量额/market/currency）
 GET  /api/market/search          标的检索（代码/名称，可带 market=CN|US|HK）
@@ -347,7 +356,7 @@ cd backend
 条件拼装策略（spec 白名单 + 用户隔离 + 引擎端到端；v1 条件与 v2 蓝图节点图）、
 虚拟货币数据源与 T+0/TIF、场外基金申赎聚合、实盘适配器与 LiveBroker 状态机、
 运行中策略切换、指数/排行榜/分钟线契约。
-后端 pytest 全套 **256 项**（`pytest --collect-only` 与 README/文档口径一致）。
+后端 pytest 全套 **258 项**（`pytest --collect-only` 与 README/文档口径一致）。
 
 ## 许可
 

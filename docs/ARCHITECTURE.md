@@ -473,7 +473,10 @@ src/
 
 ## 新闻/政策因子与统一退出
 
-- `quant/news/`：`NewsProvider`（当前为手工录入）→ `news_items` → `compute_factor`
+- `quant/news/ingest.py`：自动抓取（RSS/Atom + 华尔街见闻 JSON）→ 去重 → 规则分类 →
+  `news_items`；后台线程默认每 120 秒抓一次，`POST /api/news/fetch` 可手动触发。
+- `quant/news/classifier.py`：关键词规则输出情绪/政策风险/事件类型；英文关键词按词边界匹配。
+- `quant/news/`：抓取/手工录入 → `news_items` → `compute_factor`
   → `NewsFactor`（PIT 聚合）；`NewsFactorProvider` 由引擎创建，按当前 bar 时间计算，
   实盘每 60 秒刷新一次。
 - `StrategyContext.news_factor(symbol, window)` 是策略唯一入口；没有新闻时返回中性因子，

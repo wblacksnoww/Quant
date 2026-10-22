@@ -680,3 +680,5 @@ export interface WsEvent<T = Record<string, unknown>> {
 export type NewsItem = Schemas['NewsItemOut']
 export type NewsItemInput = Schemas['NewsItemIn']
 export type NewsFactor = Schemas['NewsFactorOut']
+
+export type NewsFetchStatus = Schemas['NewsFetchStatusOut']
