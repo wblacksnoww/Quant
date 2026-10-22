@@ -295,6 +295,14 @@ class NewsIngestionService:
             if not classified["relevant"]:
                 skipped += 1
                 continue
+            if (
+                str(feed.get("market") or "").upper() == "CRYPTO"
+                and not feed.get("force")
+                and not classified["crypto_related"]
+                and not classified["policy_related"]
+            ):
+                skipped += 1
+                continue
             if not classified["symbols"] and not classified["market"] and not feed.get("force"):
                 skipped += 1
                 continue

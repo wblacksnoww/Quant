@@ -216,6 +216,8 @@ def classify(
     confidence = min(0.95, 0.35 + 0.1 * hits) if relevant else 0.2
     return {
         "relevant": relevant,
+        "crypto_related": bool(crypto_hits),
+        "policy_related": bool(policy_hits),
         "symbols": symbols,
         "market": market,
         "event_type": event_type,

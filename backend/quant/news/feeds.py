@@ -8,7 +8,7 @@ DEFAULT_FEEDS: list[dict] = [
         "kind": "wallstreetcn",
         "url": "https://api-one.wallstcn.com/apiv1/content/lives?channel=blockchain-channel&limit=50",
         "market": "CRYPTO",
-        "force": True,
+        "force": False,
     },
     {
         "name": "华尔街见闻-宏观",
