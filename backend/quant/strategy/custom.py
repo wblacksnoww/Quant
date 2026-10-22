@@ -453,15 +453,16 @@ class CustomRuleStrategy(Strategy):
     def _attach_news(self, frame: pd.DataFrame, symbol: str) -> pd.DataFrame:
         """把新闻因子按每根 bar 的时点展开成列（PIT），供字段条件直接使用。"""
         out = frame.copy()
+        as_ofs = [pd.Timestamp(ts).to_pydatetime() for ts in out["date"]]
+        # 实时模式的“今日 bar”日期是 00:00，必须用当前时刻判断新闻可见性；
+        # 回测时 ctx.now 就是当前 bar 的时间，结果一致。
+        if as_ofs:
+            as_ofs[-1] = self.ctx.now
         for field in self._news_fields:
             metric, window = NEWS_FIELDS[field]
             values = []
-            for ts in out["date"]:
-                factor = self.ctx.news_factor_at(
-                    symbol,
-                    as_of=pd.Timestamp(ts).to_pydatetime(),
-                    window=window,
-                )
+            for as_of in as_ofs:
+                factor = self.ctx.news_factor_at(symbol, as_of=as_of, window=window)
                 values.append(getattr(factor, metric))
             out[field] = values
         return out
