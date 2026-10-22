@@ -210,11 +210,16 @@ class StrategyContext:
     def symbols(self) -> list[str]:
         return list(self._frames)
 
-    def news_factor(self, symbol: str, window: str = "1h") -> NewsFactor:
+    def news_factor(self, symbol: str, window: str = "1h", half_life_hours: float = 24.0) -> NewsFactor:
         """当前 bar 时点可见的新闻/政策因子（PIT，无新闻返回中性值）。"""
         if self._news is None:
             return NewsFactor.neutral(symbol, self.now, window)
-        return self._news.factor(symbol, as_of=self.now, window=window)
+        return self._news.factor(
+            symbol,
+            as_of=self.now,
+            window=window,
+            half_life_hours=half_life_hours,
+        )
 
     # -- 账户 -------------------------------------------------------------- #
     @property
@@ -379,8 +384,8 @@ class Strategy(ABC):
     def log(self, message: str, level: str = "info") -> None:
         self.ctx.log(message, level)
 
-    def news(self, symbol: str, window: str = "1h") -> NewsFactor:
-        return self.ctx.news_factor(symbol, window)
+    def news(self, symbol: str, window: str = "1h", half_life_hours: float = 24.0) -> NewsFactor:
+        return self.ctx.news_factor(symbol, window, half_life_hours)
 
     def has_open_order(self, symbol: str | None = None) -> bool:
         """是否已有在途委托（避免同一根 bar 重复下单）。"""
@@ -453,11 +458,12 @@ class Strategy(ABC):
             return None
         if decision.action == "close":
             return self.close(symbol, reason=decision.reason)
-        return self.sell(
-            symbol,
-            percent=min(1.0, max(0.0, decision.fraction)),
-            reason=decision.reason,
-        )
+        pos = self.position(symbol)
+        ratio = min(1.0, max(0.0, decision.fraction))
+        qty = round_down_lot(pos.available * ratio, symbol)
+        if qty <= 0:
+            return None
+        return self.sell(symbol, quantity=qty, reason=decision.reason)
 
     @staticmethod
     def _tag(tag: str, reason: ExitReason | str | None) -> str:

@@ -4,7 +4,7 @@ import { useState } from 'react'
 import type { RunDetail } from '../api/types'
 import { EquityChart, MonthlyReturnChart } from './Charts'
 import { Card, Empty, Stat, StatusBadge, Tabs } from './ui'
-import { cx, fmtDateTime, fmtMoney, fmtNumber, fmtPct, fmtSignedPct } from '../utils/format'
+import { cx, fmtDateTime, fmtMoney, fmtNumber, fmtPct, fmtSignedPct, reasonLabel } from '../utils/format'
 
 type ResultTab = 'trades' | 'orders' | 'positions' | 'logs' | 'config'
 
@@ -147,6 +147,7 @@ export function RunDetailBody({ detail }: { detail: RunDetail }) {
                     <th className="right">金额</th>
                     <th className="right">费用</th>
                     <th className="right">已实现盈亏</th>
+                    <th>原因</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -171,6 +172,7 @@ export function RunDetailBody({ detail }: { detail: RunDetail }) {
                       >
                         {trade.realized_pnl ? fmtMoney(trade.realized_pnl) : '—'}
                       </td>
+                      <td className="tiny">{reasonLabel(trade.tag)}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -63,7 +63,11 @@ class NewsDualMaStrategy(Strategy):
         if self.has_open_order(bar.symbol):
             return
 
-        news = self.news(bar.symbol, str(self.params["news_window"]))
+        news = self.news(
+            bar.symbol,
+            str(self.params["news_window"]),
+            float(self.params["news_half_life"]),
+        )
 
         # --- 多个退出规则：止损 / 止盈 / 政策 / 情绪 / 死叉 --------------- #
         decisions: list[ExitDecision] = []

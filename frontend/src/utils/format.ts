@@ -224,3 +224,22 @@ export function fmtPrice(value: number | null | undefined, currency?: string | n
   const symbol = currencySymbol(currency)
   return symbol ? `${symbol}${text}` : text
 }
+
+const EXIT_REASON_LABELS: Record<string, string> = {
+  stop_loss: '止损',
+  take_profit: '止盈',
+  trailing_stop: '移动止损',
+  signal: '信号退出',
+  policy_risk: '政策风险',
+  news_risk: '新闻风险',
+  time_exit: '时间退出',
+  risk_limit: '风控',
+  rebalance: '调仓',
+  manual: '手动',
+}
+
+/** 订单/成交 tag 的中文展示（未知 tag 原样返回）。 */
+export function reasonLabel(value: string | null | undefined): string {
+  if (!value) return '—'
+  return EXIT_REASON_LABELS[value] ?? value
+}

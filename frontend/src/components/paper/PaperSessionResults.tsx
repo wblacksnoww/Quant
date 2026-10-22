@@ -3,7 +3,7 @@
 import type { PaperState } from '../../api/types'
 import { EquityChart } from '../Charts'
 import { Card, Empty, Stat, StatusBadge } from '../ui'
-import { cx, fmtDateTime, fmtMoney, fmtSignedPct } from '../../utils/format'
+import { cx, fmtDateTime, fmtMoney, fmtSignedPct, reasonLabel } from '../../utils/format'
 
 export function PaperSessionResults({ state }: { state: PaperState }) {
   return (
@@ -125,6 +125,7 @@ export function PaperSessionResults({ state }: { state: PaperState }) {
                   <th className="right">金额</th>
                   <th className="right">费用</th>
                   <th className="right">已实现盈亏</th>
+                  <th>原因</th>
                 </tr>
               </thead>
               <tbody>
@@ -147,6 +148,7 @@ export function PaperSessionResults({ state }: { state: PaperState }) {
                     >
                       {fill.realized_pnl ? fmtMoney(fill.realized_pnl) : '—'}
                     </td>
+                    <td className="tiny">{reasonLabel(fill.tag)}</td>
                   </tr>
                 ))}
               </tbody>
