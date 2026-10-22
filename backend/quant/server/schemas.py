@@ -267,8 +267,51 @@ class CustomStrategyOut(BaseModel):
     category: str
     spec: dict[str, Any]
     enabled: bool
+    version: int = 1
+    source_strategy_id: int | None = None
+    source_version: int | None = None
+    forked_at: str | None = None
+    update_available: bool = False
     created_at: str | None = None
     updated_at: str | None = None
+
+
+class SharedStrategyOut(BaseModel):
+    share_id: int
+    share_type: str
+    strategy_id: int
+    name: str
+    description: str
+    category: str
+    spec: dict[str, Any] | None = None
+    version: int
+    owner_username: str
+    updated_at: str | None = None
+    fork_id: int | None = None
+    fork_version: int | None = None
+    update_available: bool = False
+
+
+class StrategyShareIn(BaseModel):
+    scope: Literal["public", "user"] = "public"
+    target_username: str | None = Field(default=None, max_length=64)
+
+
+class StrategyShareOut(BaseModel):
+    id: int
+    scope: str
+    target_username: str | None = None
+    created_at: str | None = None
+
+
+class AdminStrategyOut(CustomStrategyOut):
+    owner_username: str = ""
+    share_count: int = 0
+    fork_count: int = 0
+
+
+class AdminStrategyPatch(BaseModel):
+    enabled: bool
 
 
 # --------------------------------------------------------------------------- #

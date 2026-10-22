@@ -263,8 +263,42 @@ export interface CustomStrategy {
   category: string
   spec: CustomSpec | CustomGraphSpec | null
   enabled: boolean
+  version: number
+  source_strategy_id?: number | null
+  source_version?: number | null
+  forked_at?: string | null
+  update_available?: boolean
   created_at?: string | null
   updated_at?: string | null
+}
+
+export interface SharedStrategy {
+  share_id: number
+  share_type: 'public' | 'user' | string
+  strategy_id: number
+  name: string
+  description: string
+  category: string
+  spec: CustomSpec | CustomGraphSpec | null
+  version: number
+  owner_username: string
+  updated_at?: string | null
+  fork_id?: number | null
+  fork_version?: number | null
+  update_available: boolean
+}
+
+export interface StrategyShare {
+  id: number
+  scope: 'public' | 'user' | string
+  target_username?: string | null
+  created_at?: string | null
+}
+
+export interface AdminStrategy extends CustomStrategy {
+  owner_username: string
+  share_count: number
+  fork_count: number
 }
 
 // --------------------------------------------------------------------------- //

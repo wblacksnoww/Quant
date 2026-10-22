@@ -487,3 +487,12 @@ src/
   记录退出原因，便于审计与归因。
 - 回测 PIT 规则：只使用 `effective_at <= bar_time` 的条目；手工录入时“生效时间”
   默认等于发布时间，历史补录必须显式填写，否则会被视为当前才可见。
+
+
+## 拼装策略共享与版本
+
+- `user_strategies` 增加 `version` / `source_strategy_id` / `source_version`；
+  `strategy_versions` 保存每次修改的不可变快照，`strategy_shares` 记录完全共享或点对点共享。
+- 共享库只展示源策略仍然启用、且当前用户可见（public 或 target=本人）的策略；
+  源策略更新不会自动改副本，副本列表显示 `update_available`，用户手动调用 sync。
+- fork 是独立副本：源策略删除/撤销共享后，副本仍可继续使用；管理员可管理全部策略。

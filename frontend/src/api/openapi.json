@@ -1,6 +1,143 @@
 {
   "components": {
     "schemas": {
+      "AdminStrategyOut": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "fork_count": {
+            "default": 0,
+            "title": "Fork Count",
+            "type": "integer"
+          },
+          "forked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forked At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_username": {
+            "default": "",
+            "title": "Owner Username",
+            "type": "string"
+          },
+          "share_count": {
+            "default": 0,
+            "title": "Share Count",
+            "type": "integer"
+          },
+          "source_strategy_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Strategy Id"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
+          },
+          "spec": {
+            "additionalProperties": true,
+            "title": "Spec",
+            "type": "object"
+          },
+          "update_available": {
+            "default": false,
+            "title": "Update Available",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "integer"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "name",
+          "description",
+          "category",
+          "spec",
+          "enabled"
+        ],
+        "title": "AdminStrategyOut",
+        "type": "object"
+      },
+      "AdminStrategyPatch": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "AdminStrategyPatch",
+        "type": "object"
+      },
       "AuditOut": {
         "properties": {
           "action": {
@@ -535,6 +672,17 @@
             "title": "Enabled",
             "type": "boolean"
           },
+          "forked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forked At"
+          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -543,10 +691,37 @@
             "title": "Name",
             "type": "string"
           },
+          "source_strategy_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Strategy Id"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
+          },
           "spec": {
             "additionalProperties": true,
             "title": "Spec",
             "type": "object"
+          },
+          "update_available": {
+            "default": false,
+            "title": "Update Available",
+            "type": "boolean"
           },
           "updated_at": {
             "anyOf": [
@@ -561,6 +736,11 @@
           },
           "user_id": {
             "title": "User Id",
+            "type": "integer"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
             "type": "integer"
           }
         },
@@ -3083,6 +3263,104 @@
         "title": "SessionOut",
         "type": "object"
       },
+      "SharedStrategyOut": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "fork_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fork Id"
+          },
+          "fork_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fork Version"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner_username": {
+            "title": "Owner Username",
+            "type": "string"
+          },
+          "share_id": {
+            "title": "Share Id",
+            "type": "integer"
+          },
+          "share_type": {
+            "title": "Share Type",
+            "type": "string"
+          },
+          "spec": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spec"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "update_available": {
+            "default": false,
+            "title": "Update Available",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "share_id",
+          "share_type",
+          "strategy_id",
+          "name",
+          "description",
+          "category",
+          "version",
+          "owner_username"
+        ],
+        "title": "SharedStrategyOut",
+        "type": "object"
+      },
       "StrategyOut": {
         "properties": {
           "category": {
@@ -3117,6 +3395,73 @@
           "params"
         ],
         "title": "StrategyOut",
+        "type": "object"
+      },
+      "StrategyShareIn": {
+        "properties": {
+          "scope": {
+            "default": "public",
+            "enum": [
+              "public",
+              "user"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "target_username": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Username"
+          }
+        },
+        "title": "StrategyShareIn",
+        "type": "object"
+      },
+      "StrategyShareOut": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "target_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Username"
+          }
+        },
+        "required": [
+          "id",
+          "scope"
+        ],
+        "title": "StrategyShareOut",
         "type": "object"
       },
       "SwitchStrategyRequest": {
@@ -3680,6 +4025,123 @@
           }
         },
         "summary": "更新反馈状态",
+        "tags": [
+          "管理"
+        ]
+      }
+    },
+    "/api/admin/strategies": {
+      "get": {
+        "operationId": "list_strategies_api_admin_strategies_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminStrategyOut"
+                  },
+                  "title": "Response List Strategies Api Admin Strategies Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "全部拼装策略",
+        "tags": [
+          "管理"
+        ]
+      }
+    },
+    "/api/admin/strategies/{strategy_id}": {
+      "delete": {
+        "operationId": "delete_strategy_api_admin_strategies__strategy_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "删除任意拼装策略",
+        "tags": [
+          "管理"
+        ]
+      },
+      "patch": {
+        "operationId": "update_strategy_api_admin_strategies__strategy_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminStrategyPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminStrategyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "启用/停用任意拼装策略",
         "tags": [
           "管理"
         ]
@@ -7224,6 +7686,262 @@
           }
         },
         "summary": "更新拼装策略",
+        "tags": [
+          "策略"
+        ]
+      }
+    },
+    "/api/strategies/custom/{strategy_pk}/shares": {
+      "get": {
+        "operationId": "list_shares_api_strategies_custom__strategy_pk__shares_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_pk",
+            "required": true,
+            "schema": {
+              "title": "Strategy Pk",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StrategyShareOut"
+                  },
+                  "title": "Response List Shares Api Strategies Custom  Strategy Pk  Shares Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "查看策略共享记录",
+        "tags": [
+          "策略"
+        ]
+      },
+      "post": {
+        "operationId": "share_custom_api_strategies_custom__strategy_pk__shares_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_pk",
+            "required": true,
+            "schema": {
+              "title": "Strategy Pk",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StrategyShareIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyShareOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "共享策略（完全/点对点）",
+        "tags": [
+          "策略"
+        ]
+      }
+    },
+    "/api/strategies/custom/{strategy_pk}/shares/{share_id}": {
+      "delete": {
+        "operationId": "revoke_share_api_strategies_custom__strategy_pk__shares__share_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_pk",
+            "required": true,
+            "schema": {
+              "title": "Strategy Pk",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "share_id",
+            "required": true,
+            "schema": {
+              "title": "Share Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "撤销共享",
+        "tags": [
+          "策略"
+        ]
+      }
+    },
+    "/api/strategies/custom/{strategy_pk}/sync": {
+      "post": {
+        "operationId": "sync_custom_api_strategies_custom__strategy_pk__sync_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_pk",
+            "required": true,
+            "schema": {
+              "title": "Strategy Pk",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomStrategyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "同步共享策略到最新版本",
+        "tags": [
+          "策略"
+        ]
+      }
+    },
+    "/api/strategies/shared": {
+      "get": {
+        "operationId": "list_shared_api_strategies_shared_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SharedStrategyOut"
+                  },
+                  "title": "Response List Shared Api Strategies Shared Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "共享给我的策略",
+        "tags": [
+          "策略"
+        ]
+      }
+    },
+    "/api/strategies/shared/{strategy_id}/fork": {
+      "post": {
+        "operationId": "fork_shared_api_strategies_shared__strategy_id__fork_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomStrategyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "加入共享策略到我的策略库",
         "tags": [
           "策略"
         ]

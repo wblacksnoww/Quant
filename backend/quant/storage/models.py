@@ -327,6 +327,13 @@ class UserCustomStrategy(Base):
     category: Mapped[str] = mapped_column(String(32), default="trend", nullable=False)
     spec: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    # 从共享策略复制而来的快照；源策略删除后置空，副本仍可独立使用
+    source_strategy_id: Mapped[int | None] = mapped_column(
+        ForeignKey("user_strategies.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    source_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    forked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False
@@ -343,9 +350,49 @@ class UserCustomStrategy(Base):
             "category": self.category,
             "spec": self.spec if with_spec else None,
             "enabled": self.enabled,
+            "version": self.version,
+            "source_strategy_id": self.source_strategy_id,
+            "source_version": self.source_version,
+            "forked_at": self.forked_at.isoformat() if self.forked_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
+
+
+class StrategyVersion(Base):
+    """拼装策略的不可变版本快照（创建/修改时写入）。"""
+
+    __tablename__ = "strategy_versions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    strategy_id: Mapped[int] = mapped_column(
+        ForeignKey("user_strategies.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    description: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    category: Mapped[str] = mapped_column(String(32), default="trend", nullable=False)
+    spec: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
+
+    __table_args__ = (UniqueConstraint("strategy_id", "version", name="uq_strategy_version"),)
+
+
+class StrategyShare(Base):
+    """共享关系：target_user_id 为空表示完全共享，否则是点对点共享。"""
+
+    __tablename__ = "strategy_shares"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    strategy_id: Mapped[int] = mapped_column(
+        ForeignKey("user_strategies.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    target_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
 
 
 __all__ = [
@@ -357,6 +404,8 @@ __all__ = [
     "RefreshToken",
     "Run",
     "User",
+    "StrategyShare",
+    "StrategyVersion",
     "UserCustomStrategy",
     "utcnow_naive",
 ]

@@ -12,6 +12,7 @@ from .funds import FundTradeRepository
 from .news import NewsRepository
 from .runs import RunRepository
 from .strategies import UserStrategyRepository
+from .strategy_shares import StrategyShareRepository
 from .tokens import TokenRepository
 from .users import UserRepository
 from .watchlist import WatchlistRepository
@@ -27,6 +28,7 @@ __all__ = [
     "TokenRepository",
     "UserRepository",
     "WatchlistRepository",
+    "StrategyShareRepository",
     "UserStrategyRepository",
     "bootstrap",
 ]

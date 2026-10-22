@@ -5,9 +5,11 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ApiError, strategyApi } from '../api/client'
 import type { CustomGraphSpec, CustomSpec, CustomStrategy, Strategy, StrategyParam } from '../api/types'
 import { Badge, Button, Card, Empty, Input, Loading } from '../components/ui'
+import { AdminStrategiesCard, SharedStrategiesCard, ShareStrategyModal } from '../components/StrategySharing'
 import { StrategyBuilder, conditionLabel } from '../components/StrategyBuilder'
 import { IconFlask, IconSearch, IconTrash } from '../components/icons'
 import { notify } from '../store/toast'
+import { useAuth } from '../store/auth'
 import { cx } from '../utils/format'
 
 function paramRange(param: StrategyParam): string {
@@ -40,6 +42,8 @@ export function StrategiesPage() {
   const [custom, setCustom] = useState<CustomStrategy[]>([])
   const [customLoading, setCustomLoading] = useState(true)
   const [customError, setCustomError] = useState('')
+  const [shareTarget, setShareTarget] = useState<CustomStrategy | null>(null)
+  const isAdmin = useAuth((state) => state.user?.role === 'admin')
 
   const loadCustom = () => {
     setCustomLoading(true)
@@ -65,6 +69,16 @@ export function StrategiesPage() {
       loadCustom()
     } catch (err) {
       notify('error', err instanceof Error ? err.message : '删除失败')
+    }
+  }
+
+  const syncCustom = async (item: CustomStrategy) => {
+    try {
+      const updated = await strategyApi.syncCustom(item.id)
+      notify('success', `「${updated.name}」已同步到 v${updated.source_version ?? updated.version}`)
+      loadCustom()
+    } catch (err) {
+      notify('error', err instanceof Error ? err.message : '同步失败')
     }
   }
 
@@ -260,11 +274,17 @@ export function StrategiesPage() {
                     <tr key={item.id}>
                       <td>
                         <div className="strong">{item.name}</div>
-                        <div className="row tiny faint" style={{ gap: 4 }}>
+                        <div className="row tiny faint" style={{ gap: 4, flexWrap: 'wrap' }}>
                           {item.enabled ? (
                             <Badge tone="success">启用</Badge>
                           ) : (
                             <Badge tone="warn">已停用</Badge>
+                          )}
+                          <Badge tone="neutral">v{item.version ?? 1}</Badge>
+                          {item.source_strategy_id && (
+                            <Badge tone={item.update_available ? 'warn' : 'neutral'}>
+                              {item.update_available ? '副本 · 有更新' : '共享副本'}
+                            </Badge>
                           )}
                           {isGraph && <Badge tone="accent">蓝图 · {nodeCount} 节点</Badge>}
                         </div>
@@ -311,6 +331,14 @@ export function StrategiesPage() {
                               编辑蓝图
                             </Button>
                           )}
+                          {item.update_available && (
+                            <Button size="sm" variant="primary" onClick={() => void syncCustom(item)}>
+                              同步更新
+                            </Button>
+                          )}
+                          <Button size="sm" variant="ghost" onClick={() => setShareTarget(item)}>
+                            共享
+                          </Button>
                           <Button size="sm" variant="ghost" onClick={() => void toggleCustom(item)}>
                             {item.enabled ? '停用' : '启用'}
                           </Button>
@@ -327,6 +355,17 @@ export function StrategiesPage() {
           </div>
         )}
       </Card>
+
+      <SharedStrategiesCard onChanged={loadCustom} />
+
+      {isAdmin && <AdminStrategiesCard />}
+
+      <ShareStrategyModal
+        open={shareTarget !== null}
+        strategy={shareTarget}
+        onClose={() => setShareTarget(null)}
+        onChanged={loadCustom}
+      />
     </div>
   )
 }

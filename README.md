@@ -62,6 +62,9 @@
   另有「条件拼装策略」：网页下拉框拼买卖规则（spec v1）或 **蓝图编辑器**拖节点连线
   （spec v2 节点数据流图，React Flow 画布 + 三模板），免代码创建、存库、直接回测/纸盘；
   新闻情绪、政策风险、置信度、事件数也可作为字段直接拼进条件和蓝图节点。
+- **策略共享与版本**：拼装策略默认私有；所有者可**完全共享**到公共库或**点对点**共享给指定用户。
+  接收方可将共享策略加入自己的策略库（fork），源策略更新后显示「有更新」，可选择手动同步，
+  不更新则保留旧版本；管理员可查看、停用、删除所有用户的拼装策略。
 - **多用户与注册审核**：`admin` / `user` 角色；管理员创建账号、调整角色、停用与重置密码。
   登录页支持自助注册：图形验证码 + 管理员审核（pending → approved/rejected），审核通过前不能登录。
 - **意见反馈**：登录用户可提交建议/问题，列表与处理状态仅管理员可见；反馈写入审计。
@@ -353,6 +356,10 @@ GET  /api/funds/holdings         场外基金持仓与收益
 GET  /api/risk/rules             风控规则目录
 GET  /api/strategies/custom      我的拼装策略（免代码策略 CRUD，仅本人可见）
 POST /api/strategies/custom      创建拼装策略（spec 白名单校验）
+GET  /api/strategies/shared      共享给我的策略（完全共享 + 点对点）
+POST /api/strategies/shared/{id}/fork  加入共享策略到我的策略库
+POST /api/strategies/custom/{id}/sync  同步共享副本到最新版本
+POST /api/strategies/custom/{id}/shares 完全/点对点共享
 GET  /api/admin/users            用户管理（仅管理员）
 PATCH /api/admin/users/{id}/approval  审核注册（通过/拒绝）
 GET  /api/admin/feedback         用户反馈列表（仅管理员）
@@ -372,7 +379,7 @@ cd backend
 条件拼装策略（spec 白名单 + 用户隔离 + 引擎端到端；v1 条件与 v2 蓝图节点图）、
 虚拟货币数据源与 T+0/TIF、场外基金申赎聚合、实盘适配器与 LiveBroker 状态机、
 运行中策略切换、指数/排行榜/分钟线契约。
-后端 pytest 全套 **266 项**（`pytest --collect-only` 与 README/文档口径一致）。
+后端 pytest 全套 **269 项**（`pytest --collect-only` 与 README/文档口径一致）。
 
 ## 许可
 

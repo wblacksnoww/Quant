@@ -15,6 +15,7 @@ import type {
   BarsResponse,
   Credential,
   AnyStrategySpec,
+  AdminStrategy,
   CustomStrategy,
   DataCacheItem,
   FundNav,
@@ -44,6 +45,8 @@ import type {
   RunAccepted,
   RunDetail,
   RunSummary,
+  SharedStrategy,
+  StrategyShare,
   SessionInfo,
   Strategy,
   SymbolInfo,
@@ -307,6 +310,14 @@ export const strategyApi = {
   updateCustom: (id: number, body: { name?: string; spec?: AnyStrategySpec; enabled?: boolean }) =>
     request<CustomStrategy>(`/strategies/custom/${id}`, { method: 'PATCH', body }),
   removeCustom: (id: number) => request<Message>(`/strategies/custom/${id}`, { method: 'DELETE' }),
+  shared: () => request<SharedStrategy[]>('/strategies/shared'),
+  forkShared: (id: number) => request<CustomStrategy>(`/strategies/shared/${id}/fork`, { method: 'POST' }),
+  syncCustom: (id: number) => request<CustomStrategy>(`/strategies/custom/${id}/sync`, { method: 'POST' }),
+  shares: (id: number) => request<StrategyShare[]>(`/strategies/custom/${id}/shares`),
+  shareCustom: (id: number, body: { scope: 'public' | 'user'; target_username?: string }) =>
+    request<StrategyShare>(`/strategies/custom/${id}/shares`, { method: 'POST', body }),
+  revokeShare: (id: number, shareId: number) =>
+    request<Message>(`/strategies/custom/${id}/shares/${shareId}`, { method: 'DELETE' }),
 }
 
 export const backtestApi = {
@@ -412,6 +423,10 @@ export const adminApi = {
     request<Feedback[]>('/admin/feedback', { query: { status, limit } }),
   updateFeedback: (id: number, status: 'new' | 'read' | 'resolved') =>
     request<Feedback>(`/admin/feedback/${id}`, { method: 'PATCH', body: { status } }),
+  strategies: () => request<AdminStrategy[]>('/admin/strategies'),
+  updateStrategy: (id: number, enabled: boolean) =>
+    request<AdminStrategy>(`/admin/strategies/${id}`, { method: 'PATCH', body: { enabled } }),
+  deleteStrategy: (id: number) => request<Message>(`/admin/strategies/${id}`, { method: 'DELETE' }),
 }
 
 export const feedbackApi = {

@@ -38,6 +38,41 @@ export interface paths {
         patch: operations["update_feedback_api_admin_feedback__feedback_id__patch"];
         trace?: never;
     };
+    "/api/admin/strategies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 全部拼装策略 */
+        get: operations["list_strategies_api_admin_strategies_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/strategies/{strategy_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** 删除任意拼装策略 */
+        delete: operations["delete_strategy_api_admin_strategies__strategy_id__delete"];
+        options?: never;
+        head?: never;
+        /** 启用/停用任意拼装策略 */
+        patch: operations["update_strategy_api_admin_strategies__strategy_id__patch"];
+        trace?: never;
+    };
     "/api/admin/users": {
         parameters: {
             query?: never;
@@ -1237,6 +1272,92 @@ export interface paths {
         patch: operations["update_custom_api_strategies_custom__strategy_pk__patch"];
         trace?: never;
     };
+    "/api/strategies/custom/{strategy_pk}/shares": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查看策略共享记录 */
+        get: operations["list_shares_api_strategies_custom__strategy_pk__shares_get"];
+        put?: never;
+        /** 共享策略（完全/点对点） */
+        post: operations["share_custom_api_strategies_custom__strategy_pk__shares_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/strategies/custom/{strategy_pk}/shares/{share_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** 撤销共享 */
+        delete: operations["revoke_share_api_strategies_custom__strategy_pk__shares__share_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/strategies/custom/{strategy_pk}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 同步共享策略到最新版本 */
+        post: operations["sync_custom_api_strategies_custom__strategy_pk__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/strategies/shared": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 共享给我的策略 */
+        get: operations["list_shared_api_strategies_shared_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/strategies/shared/{strategy_id}/fork": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 加入共享策略到我的策略库 */
+        post: operations["fork_shared_api_strategies_shared__strategy_id__fork_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/strategies/{strategy_id}": {
         parameters: {
             query?: never;
@@ -1378,6 +1499,65 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AdminStrategyOut */
+        AdminStrategyOut: {
+            /** Category */
+            category: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Description */
+            description: string;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Fork Count
+             * @default 0
+             */
+            fork_count: number;
+            /** Forked At */
+            forked_at?: string | null;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Owner Username
+             * @default
+             */
+            owner_username: string;
+            /**
+             * Share Count
+             * @default 0
+             */
+            share_count: number;
+            /** Source Strategy Id */
+            source_strategy_id?: number | null;
+            /** Source Version */
+            source_version?: number | null;
+            /** Spec */
+            spec: {
+                [key: string]: unknown;
+            };
+            /**
+             * Update Available
+             * @default false
+             */
+            update_available: boolean;
+            /** Updated At */
+            updated_at?: string | null;
+            /** User Id */
+            user_id: number;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+        };
+        /** AdminStrategyPatch */
+        AdminStrategyPatch: {
+            /** Enabled */
+            enabled: boolean;
+        };
         /** AuditOut */
         AuditOut: {
             /** Action */
@@ -1610,18 +1790,34 @@ export interface components {
             description: string;
             /** Enabled */
             enabled: boolean;
+            /** Forked At */
+            forked_at?: string | null;
             /** Id */
             id: number;
             /** Name */
             name: string;
+            /** Source Strategy Id */
+            source_strategy_id?: number | null;
+            /** Source Version */
+            source_version?: number | null;
             /** Spec */
             spec: {
                 [key: string]: unknown;
             };
+            /**
+             * Update Available
+             * @default false
+             */
+            update_available: boolean;
             /** Updated At */
             updated_at?: string | null;
             /** User Id */
             user_id: number;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
         };
         /** CustomStrategyPatch */
         CustomStrategyPatch: {
@@ -2728,6 +2924,40 @@ export interface components {
             /** User Agent */
             user_agent: string;
         };
+        /** SharedStrategyOut */
+        SharedStrategyOut: {
+            /** Category */
+            category: string;
+            /** Description */
+            description: string;
+            /** Fork Id */
+            fork_id?: number | null;
+            /** Fork Version */
+            fork_version?: number | null;
+            /** Name */
+            name: string;
+            /** Owner Username */
+            owner_username: string;
+            /** Share Id */
+            share_id: number;
+            /** Share Type */
+            share_type: string;
+            /** Spec */
+            spec?: {
+                [key: string]: unknown;
+            } | null;
+            /** Strategy Id */
+            strategy_id: number;
+            /**
+             * Update Available
+             * @default false
+             */
+            update_available: boolean;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Version */
+            version: number;
+        };
         /** StrategyOut */
         StrategyOut: {
             /** Category */
@@ -2740,6 +2970,28 @@ export interface components {
             name: string;
             /** Params */
             params: components["schemas"]["ParamOut"][];
+        };
+        /** StrategyShareIn */
+        StrategyShareIn: {
+            /**
+             * Scope
+             * @default public
+             * @enum {string}
+             */
+            scope: "public" | "user";
+            /** Target Username */
+            target_username?: string | null;
+        };
+        /** StrategyShareOut */
+        StrategyShareOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Id */
+            id: number;
+            /** Scope */
+            scope: string;
+            /** Target Username */
+            target_username?: string | null;
         };
         /**
          * SwitchStrategyRequest
@@ -3000,6 +3252,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeedbackOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_strategies_api_admin_strategies_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminStrategyOut"][];
+                };
+            };
+        };
+    };
+    delete_strategy_api_admin_strategies__strategy_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                strategy_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_strategy_api_admin_strategies__strategy_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                strategy_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminStrategyPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminStrategyOut"];
                 };
             };
             /** @description Validation Error */
@@ -5336,6 +5674,186 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomStrategyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_shares_api_strategies_custom__strategy_pk__shares_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                strategy_pk: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyShareOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    share_custom_api_strategies_custom__strategy_pk__shares_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                strategy_pk: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StrategyShareIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyShareOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_share_api_strategies_custom__strategy_pk__shares__share_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                strategy_pk: number;
+                share_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_custom_api_strategies_custom__strategy_pk__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                strategy_pk: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomStrategyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_shared_api_strategies_shared_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedStrategyOut"][];
+                };
+            };
+        };
+    };
+    fork_shared_api_strategies_shared__strategy_id__fork_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                strategy_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

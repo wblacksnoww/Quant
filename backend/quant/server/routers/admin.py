@@ -12,10 +12,19 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ...security.password import WeakPassword, hash_password, validate_strength
+from ...services import strategy_share_service
 from ...storage.models import User
 from ...storage.repositories import TokenRepository, UserRepository
-from ..deps import audit, get_db, require_admin
-from ..schemas import FeedbackOut, FeedbackStatusUpdate, Message, UserApprovalRequest, UserOut
+from ..deps import audit, get_ctx, get_db, require_admin
+from ..schemas import (
+    AdminStrategyOut,
+    AdminStrategyPatch,
+    FeedbackOut,
+    FeedbackStatusUpdate,
+    Message,
+    UserApprovalRequest,
+    UserOut,
+)
 
 router = APIRouter(prefix="/admin", tags=["管理"])
 log = logging.getLogger(__name__)
@@ -130,6 +139,58 @@ def approve_user(
         detail={"username": user.username},
     )
     return UserOut(**user.to_dict())
+
+
+@router.get("/strategies", response_model=list[AdminStrategyOut], summary="全部拼装策略")
+def list_strategies(
+    _: User = Depends(require_admin),
+    ctx=Depends(get_ctx),
+):
+    return [AdminStrategyOut(**item) for item in strategy_share_service.admin_list(ctx)]
+
+
+@router.patch("/strategies/{strategy_id}", response_model=AdminStrategyOut, summary="启用/停用任意拼装策略")
+def update_strategy(
+    strategy_id: int,
+    body: AdminStrategyPatch,
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_db),
+    ctx=Depends(get_ctx),
+):
+    item = strategy_share_service.admin_update(ctx, strategy_id=strategy_id, enabled=body.enabled)
+    audit(
+        session,
+        request=None,
+        actor=admin.username,
+        action="admin.strategy.update",
+        target=f"custom:{strategy_id}",
+        detail={"enabled": body.enabled},
+    )
+    # admin_update 返回普通 to_dict，补管理员字段
+    full = next(
+        (row for row in strategy_share_service.admin_list(ctx) if row["id"] == strategy_id),
+        item,
+    )
+    return AdminStrategyOut(**full)
+
+
+@router.delete("/strategies/{strategy_id}", response_model=Message, summary="删除任意拼装策略")
+def delete_strategy(
+    strategy_id: int,
+    admin: User = Depends(require_admin),
+    session: Session = Depends(get_db),
+    ctx=Depends(get_ctx),
+):
+    name = strategy_share_service.admin_delete(ctx, strategy_id=strategy_id)
+    audit(
+        session,
+        request=None,
+        actor=admin.username,
+        action="admin.strategy.delete",
+        target=f"custom:{strategy_id}",
+        detail={"name": name},
+    )
+    return Message(message=f"已删除策略 {name}")
 
 
 @router.get("/feedback", response_model=list[FeedbackOut], summary="用户反馈列表")
