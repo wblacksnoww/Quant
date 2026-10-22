@@ -349,7 +349,19 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compos
 - [ ] 定期调用 `GET /api/system/audit/verify` 校验审计链
 - [ ] 实盘先用测试网密钥联调；真实资金使用无提现权限的 API Key
 
-### 11.6 数据持久化与更新
+### 11.6 PWA 安装
+
+前端已内置 PWA（`manifest.webmanifest` + `sw.js`）：
+
+- 必须通过 HTTPS 访问（Caddy 或宿主机 nginx + 证书）；
+- 安卓 Chrome：地址栏菜单 →「安装应用/添加到主屏幕」，或页面顶部「安装应用」；
+- 桌面 Chrome/Edge：地址栏安装图标，或顶部「安装应用」；
+- iOS Safari：分享 →「添加到主屏幕」（不会出现自定义安装按钮）；
+- service worker 只缓存应用外壳和静态资源，`/api`、`/ws` 始终走网络；
+- 更新前端镜像后，入口 HTML 为 no-cache，service worker 会取新版本；如果仍看到旧页面，
+  在浏览器开发者工具里注销 service worker 或清理站点数据。
+
+### 11.7 数据持久化与更新
 
 - 数据在 Docker **命名卷**里，不在容器层：
   - `quant-trading-data`：`/app/data`（SQLite `quant.db`、行情缓存、上传文件）
@@ -360,7 +372,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compos
 - 更新前可执行 `./scripts/backup.sh` 备份；SQLite 备份文件在 `data/backups/`。
 - 从 SQLite 切到 PostgreSQL 不会自动搬迁历史数据；需要自行导出/导入（或继续用 SQLite）。
 
-### 11.7 多实例 / 多 worker
+### 11.8 多实例 / 多 worker
 
 - 回测队列与纸盘/实盘会话协调依赖**共享数据库**：多副本/多 worker 必须使用
   PostgreSQL；SQLite 只适合单实例（文件锁无法跨主机协调）。

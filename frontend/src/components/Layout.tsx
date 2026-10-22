@@ -1,5 +1,6 @@
 /** 应用外壳：侧边导航 + 顶栏 + 内容区。 */
 
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../store/auth'
@@ -15,6 +16,11 @@ import {
   IconShield,
   IconWifi,
 } from './icons'
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
+}
 
 const PAGES: Record<string, { title: string; sub: string }> = {
   '/': { title: '总览', sub: '账户、运行与系统状态一屏掌握' },
@@ -65,6 +71,27 @@ export function Layout({ children, wsConnected }: { children: ReactNode; wsConne
   const location = useLocation()
   const meta = pageMeta(location.pathname)
   const initial = (user?.username ?? '?').slice(0, 1).toUpperCase()
+  const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null)
+
+  useEffect(() => {
+    const onPrompt = (event: Event) => {
+      event.preventDefault()
+      setInstallEvent(event as BeforeInstallPromptEvent)
+    }
+    const onInstalled = () => setInstallEvent(null)
+    window.addEventListener('beforeinstallprompt', onPrompt)
+    window.addEventListener('appinstalled', onInstalled)
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onPrompt)
+      window.removeEventListener('appinstalled', onInstalled)
+    }
+  }, [])
+
+  const installApp = async () => {
+    if (!installEvent) return
+    await installEvent.prompt()
+    setInstallEvent(null)
+  }
 
   return (
     <div className="app">
@@ -125,6 +152,11 @@ export function Layout({ children, wsConnected }: { children: ReactNode; wsConne
             <div className="page-sub">{meta.sub}</div>
           </div>
           <div className="topbar-right">
+            {installEvent && (
+              <button type="button" className="btn btn-sm btn-primary" onClick={() => void installApp()}>
+                安装应用
+              </button>
+            )}
             <span className={`badge ${wsConnected ? 'badge-success' : 'badge-neutral'}`} title="实时事件连接">
               <IconWifi style={{ width: 12, height: 12 }} />
               {wsConnected ? '实时' : '离线'}

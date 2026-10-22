@@ -67,6 +67,9 @@
 - **完整指标**：总/年化收益、波动率、夏普、索提诺、最大回撤与持续期、卡玛、胜率、盈亏比、费用、换手、暴露、月度收益、基准超额。
 - **Web 终端**：React + TypeScript + Vite + ECharts，覆盖行情、策略、回测、模拟盘、风控与安全设置。
 - **安全默认值**：Argon2id 密码、JWT 轮换、TOTP 两步验证、AES-256-GCM 字段加密、SHA-256 审计哈希链、登录锁定与限流。
+- **可安装 PWA**：内置 `manifest.webmanifest` + service worker，安卓 Chrome/桌面
+  Chrome/Edge 可安装到主屏幕/桌面；只缓存应用外壳，不缓存 API/WebSocket；HTTPS 部署后
+  浏览器菜单或顶部「安装应用」即可。开发模式不注册 service worker，避免热更新被缓存。
 - **可部署**：多阶段 Docker 构建、Nginx 同源反代、Caddy 自动 HTTPS、SQLite/PostgreSQL、
   健康检查与非 root 运行；依赖锁定（pip/npm lock）+ alembic 迁移，CI 构建镜像、
   服务器一条命令更新（见 docs/DEPLOY.md §11）。
