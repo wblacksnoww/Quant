@@ -33,8 +33,15 @@ class UserRepository:
         *,
         role: str = "user",
         is_active: bool = True,
+        approval_status: str = "approved",
     ) -> User:
-        user = User(username=username.strip(), password_hash=password_hash, role=role, is_active=is_active)
+        user = User(
+            username=username.strip(),
+            password_hash=password_hash,
+            role=role,
+            is_active=is_active,
+            approval_status=approval_status,
+        )
         self.session.add(user)
         self.session.flush()
         return user

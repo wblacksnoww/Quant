@@ -53,7 +53,7 @@ worker 原子认领（并发上限 `QUANT_MAX_CONCURRENT_BACKTESTS`，队列上�
 | --- | --- |
 | `backend/pyproject.toml` | 依赖 + ruff/mypy/pytest 配置 + `quant`/`quant-server` 入口（**含未使用的 alembic/orjson，见 §7**） |
 | `backend/quant/` | 100+ 个 .py，约 18k 行，上表全部内核 |
-| `backend/tests/` | 19 文件（18 个 test_*.py + conftest）/ pytest 收集 **262** 项 |
+| `backend/tests/` | 19 文件（18 个 test_*.py + conftest）/ pytest 收集 **266** 项 |
 | `backend/alembic/` | alembic 配置 + 初始迁移（生产启动自动 upgrade，旧库自动 stamp） |
 | `.github/workflows/ci.yml` | CI：pytest + 构建前后端镜像推送 GHCR（main 分支） |
 | `backend/quant/execution/adapters/` | 实盘适配器：`base`(协议) `ccxt`(虚拟货币) `miniqmt`(A股骨架) |

@@ -25,6 +25,8 @@ import type {
   InstrumentInfo,
   LiveAdapter,
   LiveStartRequest,
+  CaptchaChallenge,
+  Feedback,
   LiveState,
   MarketInfo,
   Message,
@@ -35,6 +37,7 @@ import type {
   PaperStartRequest,
   PaperState,
   QuotesResponse,
+  RegisterRequest,
   Ranking,
   RiskPresets,
   RiskRule,
@@ -237,6 +240,9 @@ export const authApi = {
       auth: false,
       body: { username, password, totp_code: totpCode || null },
     }),
+  captcha: () => request<CaptchaChallenge>('/auth/captcha', { auth: false }),
+  register: (body: RegisterRequest) =>
+    request<Message>('/auth/register', { method: 'POST', auth: false, body }),
   me: () => request<User>('/auth/me'),
   logout: () =>
     request<Message>('/auth/logout', {
@@ -400,6 +406,17 @@ export const adminApi = {
       method: 'POST',
       body: { new_password: newPassword },
     }),
+  approveUser: (id: number, action: 'approve' | 'reject') =>
+    request<User>(`/admin/users/${id}/approval`, { method: 'PATCH', body: { action } }),
+  feedback: (status?: string, limit = 200) =>
+    request<Feedback[]>('/admin/feedback', { query: { status, limit } }),
+  updateFeedback: (id: number, status: 'new' | 'read' | 'resolved') =>
+    request<Feedback>(`/admin/feedback/${id}`, { method: 'PATCH', body: { status } }),
+}
+
+export const feedbackApi = {
+  create: (body: { category: 'suggestion' | 'bug' | 'other'; content: string }) =>
+    request<Message>('/feedback', { method: 'POST', body }),
 }
 
 export const credentialApi = {

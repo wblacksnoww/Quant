@@ -7,6 +7,7 @@ from ..recorder import RunRecorder
 from .audit import AuditRepository
 from .bootstrap import bootstrap
 from .credentials import CredentialRepository
+from .feedback import FeedbackRepository
 from .funds import FundTradeRepository
 from .news import NewsRepository
 from .runs import RunRepository
@@ -18,6 +19,7 @@ from .watchlist import WatchlistRepository
 __all__ = [
     "AuditRepository",
     "CredentialRepository",
+    "FeedbackRepository",
     "FundTradeRepository",
     "NewsRepository",
     "RunRecorder",

@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+    "/api/admin/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 用户反馈列表 */
+        get: operations["list_feedback_api_admin_feedback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/feedback/{feedback_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 更新反馈状态 */
+        patch: operations["update_feedback_api_admin_feedback__feedback_id__patch"];
+        trace?: never;
+    };
     "/api/admin/users": {
         parameters: {
             query?: never;
@@ -39,6 +73,23 @@ export interface paths {
         patch: operations["update_user_api_admin_users__user_id__patch"];
         trace?: never;
     };
+    "/api/admin/users/{user_id}/approval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 审核注册申请 */
+        patch: operations["approve_user_api_admin_users__user_id__approval_patch"];
+        trace?: never;
+    };
     "/api/admin/users/{user_id}/reset-password": {
         parameters: {
             query?: never;
@@ -50,6 +101,23 @@ export interface paths {
         put?: never;
         /** 重置密码 */
         post: operations["reset_password_api_admin_users__user_id__reset_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/captcha": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取注册用图形验证码 */
+        get: operations["captcha_api_auth_captcha_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -135,6 +203,23 @@ export interface paths {
         put?: never;
         /** 刷新令牌（一次性轮换） */
         post: operations["refresh_api_auth_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 注册账号（需管理员审核） */
+        post: operations["register_api_auth_register_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -326,6 +411,23 @@ export interface paths {
         put?: never;
         /** 解密查看（仅管理员，写审计） */
         post: operations["reveal_credential_api_credentials__credential_id__reveal_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 提交意见/建议 */
+        post: operations["create_feedback_api_feedback_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1398,6 +1500,18 @@ export interface components {
             /** Symbol */
             symbol: string;
         };
+        /** CaptchaOut */
+        CaptchaOut: {
+            /**
+             * Expires In
+             * @default 300
+             */
+            expires_in: number;
+            /** Image */
+            image: string;
+            /** Token */
+            token: string;
+        };
         /** ChangePasswordRequest */
         ChangePasswordRequest: {
             /** New Password */
@@ -1544,6 +1658,53 @@ export interface components {
             start: string | null;
             /** Symbol */
             symbol: string;
+        };
+        /** FeedbackIn */
+        FeedbackIn: {
+            /**
+             * Category
+             * @default suggestion
+             * @enum {string}
+             */
+            category: "suggestion" | "bug" | "other";
+            /** Content */
+            content: string;
+        };
+        /** FeedbackOut */
+        FeedbackOut: {
+            /**
+             * Category
+             * @default suggestion
+             */
+            category: string;
+            /** Content */
+            content: string;
+            /** Created At */
+            created_at?: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Status
+             * @default new
+             */
+            status: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /** User Id */
+            user_id?: number | null;
+            /**
+             * Username
+             * @default
+             */
+            username: string;
+        };
+        /** FeedbackStatusUpdate */
+        FeedbackStatusUpdate: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "new" | "read" | "resolved";
         };
         /** FundHoldingOut */
         FundHoldingOut: {
@@ -2391,6 +2552,17 @@ export interface components {
             /** Refresh Token */
             refresh_token: string;
         };
+        /** RegisterRequest */
+        RegisterRequest: {
+            /** Captcha Answer */
+            captcha_answer: string;
+            /** Captcha Token */
+            captcha_token: string;
+            /** Password */
+            password: string;
+            /** Username */
+            username: string;
+        };
         /** ResetPasswordRequest */
         ResetPasswordRequest: {
             /** New Password */
@@ -2698,6 +2870,14 @@ export interface components {
             /** Secret */
             secret: string;
         };
+        /** UserApprovalRequest */
+        UserApprovalRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "approve" | "reject";
+        };
         /** UserCreateRequest */
         UserCreateRequest: {
             /** Password */
@@ -2712,6 +2892,11 @@ export interface components {
         };
         /** UserOut */
         UserOut: {
+            /**
+             * Approval Status
+             * @default approved
+             */
+            approval_status: string;
             /** Created At */
             created_at?: string | null;
             /** Id */
@@ -2761,6 +2946,73 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_feedback_api_admin_feedback_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_feedback_api_admin_feedback__feedback_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feedback_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackStatusUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FeedbackOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_users_api_admin_users_get: {
         parameters: {
             query?: never;
@@ -2849,6 +3101,41 @@ export interface operations {
             };
         };
     };
+    approve_user_api_admin_users__user_id__approval_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserApprovalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reset_password_api_admin_users__user_id__reset_password_post: {
         parameters: {
             query?: never;
@@ -2880,6 +3167,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    captcha_api_auth_captcha_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptchaOut"];
                 };
             };
         };
@@ -3023,6 +3330,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TokenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_api_auth_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
                 };
             };
             /** @description Validation Error */
@@ -3472,6 +3812,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_feedback_api_feedback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
                 };
             };
             /** @description Validation Error */

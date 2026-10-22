@@ -10,6 +10,7 @@ import {
   IconFlask,
   IconLayers,
   IconLogout,
+  IconMessage,
   IconNews,
   IconPlay,
   IconSettings,
@@ -26,6 +27,7 @@ const PAGES: Record<string, { title: string; sub: string }> = {
   '/': { title: '总览', sub: '账户、运行与系统状态一屏掌握' },
   '/market': { title: '行情研究', sub: 'A 股日线与本地数据缓存' },
   '/news': { title: '新闻政策', sub: '新闻/政策因子：情绪、风险与 Point-in-Time 回测' },
+  '/feedback': { title: '意见反馈', sub: '提建议、报问题；反馈列表仅管理员可见' },
   '/market/': { title: '标的详情', sub: 'K 线、交易规则与一键启动模拟/实盘' },
   '/strategies': { title: '策略库', sub: '内置策略与参数说明' },
   '/strategies/blueprint': { title: '蓝图编辑器', sub: '节点数据流图，编译为 spec v2' },
@@ -52,7 +54,13 @@ const NAV = [
       { to: '/risk', label: '风控', icon: IconShield },
     ],
   },
-  { section: '系统', items: [{ to: '/settings', label: '设置', icon: IconSettings }] },
+  {
+    section: '系统',
+    items: [
+      { to: '/feedback', label: '反馈', icon: IconMessage },
+      { to: '/settings', label: '设置', icon: IconSettings },
+    ],
+  },
 ]
 
 /** 精确匹配优先；否则取最长前缀（如 /market/CN:600519 → /market/ 的详情页标题）。 */

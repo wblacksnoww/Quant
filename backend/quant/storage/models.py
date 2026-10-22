@@ -76,6 +76,10 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(16), default="user", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # approved / pending / rejected；注册用户默认 pending，管理员创建默认 approved
+    approval_status: Mapped[str] = mapped_column(
+        String(16), default="approved", server_default="approved", nullable=False
+    )
 
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     totp_secret: Mapped[str | None] = mapped_column(String(512), nullable=True)  # AES-GCM 密文
@@ -104,6 +108,7 @@ class User(Base):
             "username": self.username,
             "role": self.role,
             "is_active": self.is_active,
+            "approval_status": self.approval_status,
             "totp_enabled": self.totp_enabled,
             "last_login_at": self.last_login_at.isoformat() if self.last_login_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -482,3 +487,32 @@ class WatchlistItem(Base):
         UniqueConstraint("user_id", "symbol", name="uq_watchlist_user_symbol"),
         Index("ix_watchlist_user_order", "user_id", "sort_order"),
     )
+
+
+class Feedback(Base):
+    """用户意见/建议；列表仅管理员可见。"""
+
+    __tablename__ = "feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    username: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    category: Mapped[str] = mapped_column(String(24), default="suggestion", nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="new", index=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "username": self.username,
+            "category": self.category,
+            "content": self.content,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }

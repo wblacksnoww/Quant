@@ -18,6 +18,7 @@ export interface User {
   username: string
   role: 'admin' | 'user' | string
   is_active: boolean
+  approval_status?: 'approved' | 'pending' | 'rejected' | string
   totp_enabled: boolean
   last_login_at?: string | null
   created_at?: string | null
@@ -682,3 +683,27 @@ export type NewsItemInput = Schemas['NewsItemIn']
 export type NewsFactor = Schemas['NewsFactorOut']
 
 export type NewsFetchStatus = Schemas['NewsFetchStatusOut']
+
+export interface CaptchaChallenge {
+  token: string
+  image: string
+  expires_in: number
+}
+
+export interface RegisterRequest {
+  username: string
+  password: string
+  captcha_token: string
+  captcha_answer: string
+}
+
+export interface Feedback {
+  id: number
+  user_id?: number | null
+  username: string
+  category: 'suggestion' | 'bug' | 'other' | string
+  content: string
+  status: 'new' | 'read' | 'resolved' | string
+  created_at?: string | null
+  updated_at?: string | null
+}

@@ -334,6 +334,20 @@ export function SettingsPage() {
     }
   }
 
+  const reviewUser = async (target: User, action: 'approve' | 'reject') => {
+    setUserBusy(true)
+    try {
+      await adminApi.approveUser(target.id, action)
+      notify('success', action === 'approve' ? `${target.username} 已通过审核` : `${target.username} 已拒绝`)
+      await loadUsers()
+      await loadAudit()
+    } catch (err) {
+      notify('error', errorText(err, '审核失败'))
+    } finally {
+      setUserBusy(false)
+    }
+  }
+
   const submitResetPassword = async () => {
     if (!resetTarget) return
     if (resetPassword.length < 10) {
@@ -637,6 +651,7 @@ export function SettingsPage() {
                     <th>用户名</th>
                     <th>角色</th>
                     <th>状态</th>
+                    <th>审核</th>
                     <th>2FA</th>
                     <th>最后登录</th>
                     <th className="right">操作</th>
@@ -660,6 +675,23 @@ export function SettingsPage() {
                           </Badge>
                         </td>
                         <td>
+                          <Badge
+                            tone={
+                              item.approval_status === 'pending'
+                                ? 'warn'
+                                : item.approval_status === 'rejected'
+                                  ? 'danger'
+                                  : 'success'
+                            }
+                          >
+                            {item.approval_status === 'pending'
+                              ? '待审核'
+                              : item.approval_status === 'rejected'
+                                ? '已拒绝'
+                                : '已通过'}
+                          </Badge>
+                        </td>
+                        <td>
                           <Badge tone={item.totp_enabled ? 'success' : 'warn'}>
                             {item.totp_enabled ? '已启用' : '未启用'}
                           </Badge>
@@ -667,29 +699,53 @@ export function SettingsPage() {
                         <td className="tiny faint">{fmtDateTime(item.last_login_at)}</td>
                         <td className="right">
                           <div className="row" style={{ justifyContent: 'flex-end', gap: 4 }}>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={self || userBusy}
-                              title={self ? '不能修改自己的角色' : '切换角色'}
-                              onClick={() =>
-                                void updateUser(item, { role: item.role === 'admin' ? 'user' : 'admin' })
-                              }
-                            >
-                              {item.role === 'admin' ? '降为用户' : '设为管理员'}
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setResetTarget(item)}>
-                              重置密码
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant={item.is_active ? 'danger' : 'ghost'}
-                              disabled={self || userBusy}
-                              title={self ? '不能停用自己' : undefined}
-                              onClick={() => void updateUser(item, { is_active: !item.is_active })}
-                            >
-                              {item.is_active ? '停用' : '启用'}
-                            </Button>
+                            {(item.approval_status === 'pending' || item.approval_status === 'rejected') && (
+                              <Button
+                                size="sm"
+                                variant="primary"
+                                disabled={userBusy}
+                                onClick={() => void reviewUser(item, 'approve')}
+                              >
+                                通过
+                              </Button>
+                            )}
+                            {item.approval_status === 'pending' && (
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                disabled={userBusy}
+                                onClick={() => void reviewUser(item, 'reject')}
+                              >
+                                拒绝
+                              </Button>
+                            )}
+                            {item.approval_status !== 'pending' && item.approval_status !== 'rejected' && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  disabled={self || userBusy}
+                                  title={self ? '不能修改自己的角色' : '切换角色'}
+                                  onClick={() =>
+                                    void updateUser(item, { role: item.role === 'admin' ? 'user' : 'admin' })
+                                  }
+                                >
+                                  {item.role === 'admin' ? '降为用户' : '设为管理员'}
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => setResetTarget(item)}>
+                                  重置密码
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant={item.is_active ? 'danger' : 'ghost'}
+                                  disabled={self || userBusy}
+                                  title={self ? '不能停用自己' : undefined}
+                                  onClick={() => void updateUser(item, { is_active: !item.is_active })}
+                                >
+                                  {item.is_active ? '停用' : '启用'}
+                                </Button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>

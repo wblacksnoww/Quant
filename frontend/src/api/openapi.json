@@ -305,6 +305,29 @@
         "title": "BarsResponse",
         "type": "object"
       },
+      "CaptchaOut": {
+        "properties": {
+          "expires_in": {
+            "default": 300,
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "image": {
+            "title": "Image",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "image"
+        ],
+        "title": "CaptchaOut",
+        "type": "object"
+      },
       "ChangePasswordRequest": {
         "properties": {
           "new_password": {
@@ -662,6 +685,115 @@
           "size_kb"
         ],
         "title": "DataCacheOut",
+        "type": "object"
+      },
+      "FeedbackIn": {
+        "properties": {
+          "category": {
+            "default": "suggestion",
+            "enum": [
+              "suggestion",
+              "bug",
+              "other"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "content": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "FeedbackIn",
+        "type": "object"
+      },
+      "FeedbackOut": {
+        "properties": {
+          "category": {
+            "default": "suggestion",
+            "title": "Category",
+            "type": "string"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "status": {
+            "default": "new",
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "username": {
+            "default": "",
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "content"
+        ],
+        "title": "FeedbackOut",
+        "type": "object"
+      },
+      "FeedbackStatusUpdate": {
+        "properties": {
+          "status": {
+            "enum": [
+              "new",
+              "read",
+              "resolved"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "FeedbackStatusUpdate",
         "type": "object"
       },
       "FundHoldingOut": {
@@ -2520,6 +2652,42 @@
         "title": "RefreshRequest",
         "type": "object"
       },
+      "RegisterRequest": {
+        "properties": {
+          "captcha_answer": {
+            "maxLength": 8,
+            "minLength": 1,
+            "title": "Captcha Answer",
+            "type": "string"
+          },
+          "captcha_token": {
+            "maxLength": 4096,
+            "minLength": 10,
+            "title": "Captcha Token",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 10,
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password",
+          "captcha_token",
+          "captcha_answer"
+        ],
+        "title": "RegisterRequest",
+        "type": "object"
+      },
       "ResetPasswordRequest": {
         "properties": {
           "new_password": {
@@ -3205,6 +3373,23 @@
         "title": "TotpSetupResponse",
         "type": "object"
       },
+      "UserApprovalRequest": {
+        "properties": {
+          "action": {
+            "enum": [
+              "approve",
+              "reject"
+            ],
+            "title": "Action",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "UserApprovalRequest",
+        "type": "object"
+      },
       "UserCreateRequest": {
         "properties": {
           "password": {
@@ -3235,6 +3420,11 @@
       },
       "UserOut": {
         "properties": {
+          "approval_status": {
+            "default": "approved",
+            "title": "Approval Status",
+            "type": "string"
+          },
           "created_at": {
             "anyOf": [
               {
@@ -3380,6 +3570,121 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/admin/feedback": {
+      "get": {
+        "operationId": "list_feedback_api_admin_feedback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FeedbackOut"
+                  },
+                  "title": "Response List Feedback Api Admin Feedback Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "用户反馈列表",
+        "tags": [
+          "管理"
+        ]
+      }
+    },
+    "/api/admin/feedback/{feedback_id}": {
+      "patch": {
+        "operationId": "update_feedback_api_admin_feedback__feedback_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "feedback_id",
+            "required": true,
+            "schema": {
+              "title": "Feedback Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackStatusUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "更新反馈状态",
+        "tags": [
+          "管理"
+        ]
+      }
+    },
     "/api/admin/users": {
       "get": {
         "operationId": "list_users_api_admin_users_get",
@@ -3496,6 +3801,58 @@
         ]
       }
     },
+    "/api/admin/users/{user_id}/approval": {
+      "patch": {
+        "operationId": "approve_user_api_admin_users__user_id__approval_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "审核注册申请",
+        "tags": [
+          "管理"
+        ]
+      }
+    },
     "/api/admin/users/{user_id}/reset-password": {
       "post": {
         "operationId": "reset_password_api_admin_users__user_id__reset_password_post",
@@ -3545,6 +3902,27 @@
         "summary": "重置密码",
         "tags": [
           "管理"
+        ]
+      }
+    },
+    "/api/auth/captcha": {
+      "get": {
+        "operationId": "captcha_api_auth_captcha_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptchaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "获取注册用图形验证码",
+        "tags": [
+          "认证"
         ]
       }
     },
@@ -3728,6 +4106,47 @@
           }
         },
         "summary": "刷新令牌（一次性轮换）",
+        "tags": [
+          "认证"
+        ]
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "operationId": "register_api_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "注册账号（需管理员审核）",
         "tags": [
           "认证"
         ]
@@ -4335,6 +4754,47 @@
         "summary": "解密查看（仅管理员，写审计）",
         "tags": [
           "凭据"
+        ]
+      }
+    },
+    "/api/feedback": {
+      "post": {
+        "operationId": "create_feedback_api_feedback_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "提交意见/建议",
+        "tags": [
+          "反馈"
         ]
       }
     },

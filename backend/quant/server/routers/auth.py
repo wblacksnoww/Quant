@@ -18,17 +18,20 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
-from ...core.errors import AuthError, PermissionDenied
+from ...core.errors import AuthError, ConflictError, InvalidRequest, PermissionDenied
 from ...security.password import WeakPassword, hash_password, needs_rehash, validate_strength, verify_password
+from ...services import captcha_service
 from ...storage.models import RefreshToken, User
 from ...storage.repositories import TokenRepository, UserRepository
 from ..context import AppContext
 from ..deps import audit, client_ip, get_ctx, get_current_user, get_db
 from ..schemas import (
+    CaptchaOut,
     ChangePasswordRequest,
     LoginRequest,
     Message,
     RefreshRequest,
+    RegisterRequest,
     SessionOut,
     TokenResponse,
     TotpDisableRequest,
@@ -59,6 +62,51 @@ def _fail(session: Session, message: str, status: int = 401) -> None:
 # --------------------------------------------------------------------------- #
 
 
+@router.get("/captcha", response_model=CaptchaOut, summary="获取注册用图形验证码")
+def captcha(ctx: AppContext = Depends(get_ctx)) -> CaptchaOut:
+    challenge = captcha_service.issue(ctx.master.raw, ttl=captcha_service.TTL_SECONDS)
+    return CaptchaOut(token=challenge.token, image=challenge.image, expires_in=captcha_service.TTL_SECONDS)
+
+
+@router.post("/register", response_model=Message, status_code=201, summary="注册账号（需管理员审核）")
+def register(
+    body: RegisterRequest,
+    request: Request,
+    ctx: AppContext = Depends(get_ctx),
+    session: Session = Depends(get_db),
+):
+    if not captcha_service.verify(ctx.master.raw, body.captcha_token, body.captcha_answer):
+        raise InvalidRequest("人机验证失败或已过期，请刷新验证码重试")
+
+    try:
+        validate_strength(body.password)
+    except WeakPassword as exc:
+        raise InvalidRequest(f"密码强度不足：{exc}") from exc
+
+    users = UserRepository(session)
+    username = body.username.strip()
+    if users.get_by_username(username):
+        raise ConflictError("用户名已存在")
+
+    user = users.create(
+        username,
+        hash_password(body.password),
+        role="user",
+        is_active=False,
+        approval_status="pending",
+    )
+    session.flush()
+    audit(
+        session,
+        request,
+        actor=username,
+        action="auth.register",
+        target=f"user:{user.id}",
+        detail={"status": "pending"},
+    )
+    return Message(message="注册申请已提交，等待管理员审核")
+
+
 @router.post("/login", response_model=TokenResponse, summary="账号密码登录（可带 TOTP）")
 def login(
     body: LoginRequest,
@@ -80,6 +128,28 @@ def login(
             detail={"reason": "user_not_found"},
         )
         _fail(session, "用户名或密码错误")
+
+    if user.approval_status == "pending":
+        audit(
+            session,
+            request,
+            actor=user.username,
+            action="auth.login.failed",
+            detail={"reason": "pending_approval"},
+        )
+        session.commit()
+        raise PermissionDenied("账号正在等待管理员审核，请稍后再试")
+
+    if user.approval_status == "rejected":
+        audit(
+            session,
+            request,
+            actor=user.username,
+            action="auth.login.failed",
+            detail={"reason": "rejected"},
+        )
+        session.commit()
+        raise PermissionDenied("注册申请未通过审核，请联系管理员")
 
     if not user.is_active:
         audit(

@@ -62,7 +62,10 @@
   另有「条件拼装策略」：网页下拉框拼买卖规则（spec v1）或 **蓝图编辑器**拖节点连线
   （spec v2 节点数据流图，React Flow 画布 + 三模板），免代码创建、存库、直接回测/纸盘；
   新闻情绪、政策风险、置信度、事件数也可作为字段直接拼进条件和蓝图节点。
-- **多用户**：`admin` / `user` 角色；管理页创建账号、调整角色、停用与重置密码；回测、纸盘会话与加密凭据按用户隔离（WebSocket 事件也按用户投递），管理员可查看全部记录。
+- **多用户与注册审核**：`admin` / `user` 角色；管理员创建账号、调整角色、停用与重置密码。
+  登录页支持自助注册：图形验证码 + 管理员审核（pending → approved/rejected），审核通过前不能登录。
+- **意见反馈**：登录用户可提交建议/问题，列表与处理状态仅管理员可见；反馈写入审计。
+- **数据隔离**：回测、纸盘会话、自选与加密凭据按用户隔离（WebSocket 事件也按用户投递），管理员可查看全部记录。
 - **风控前置**：单票仓位、单笔金额、持仓数、日内亏损、最大回撤、下单频率、黑名单、整手校验，拒绝原因落库。
 - **完整指标**：总/年化收益、波动率、夏普、索提诺、最大回撤与持续期、卡玛、胜率、盈亏比、费用、换手、暴露、月度收益、基准超额。
 - **Web 终端**：React + TypeScript + Vite + ECharts，覆盖行情、策略、回测、模拟盘、风控与安全设置。
@@ -314,6 +317,9 @@ quant-trading/
 
 ```
 POST /api/auth/login             登录（可带 TOTP）
+GET  /api/auth/captcha           注册图形验证码
+POST /api/auth/register          自助注册（待管理员审核）
+POST /api/feedback               提交意见/建议（仅管理员可查看列表）
 POST /api/backtests              提交回测（异步，202；symbols 用 MARKET:CODE，混市场 422）
 GET  /api/backtests/{id}         结果：指标、权益曲线、成交、委托
 GET  /api/market/markets         市场元信息（CN/US/HK：名称、币种、货币符号）
@@ -348,6 +354,8 @@ GET  /api/risk/rules             风控规则目录
 GET  /api/strategies/custom      我的拼装策略（免代码策略 CRUD，仅本人可见）
 POST /api/strategies/custom      创建拼装策略（spec 白名单校验）
 GET  /api/admin/users            用户管理（仅管理员）
+PATCH /api/admin/users/{id}/approval  审核注册（通过/拒绝）
+GET  /api/admin/feedback         用户反馈列表（仅管理员）
 GET  /api/system/info            系统与加密信息
 WS   /ws?token=<access_token>    进度、成交、状态事件
 ```
@@ -364,7 +372,7 @@ cd backend
 条件拼装策略（spec 白名单 + 用户隔离 + 引擎端到端；v1 条件与 v2 蓝图节点图）、
 虚拟货币数据源与 T+0/TIF、场外基金申赎聚合、实盘适配器与 LiveBroker 状态机、
 运行中策略切换、指数/排行榜/分钟线契约。
-后端 pytest 全套 **262 项**（`pytest --collect-only` 与 README/文档口径一致）。
+后端 pytest 全套 **266 项**（`pytest --collect-only` 与 README/文档口径一致）。
 
 ## 许可
 

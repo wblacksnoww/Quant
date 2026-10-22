@@ -57,6 +57,7 @@ class UserOut(BaseModel):
     username: str
     role: str
     is_active: bool
+    approval_status: str = "approved"
     totp_enabled: bool
     last_login_at: str | None = None
     created_at: str | None = None
@@ -707,3 +708,40 @@ class NewsFetchStatusOut(BaseModel):
 
 class WatchlistUpdate(BaseModel):
     symbols: list[str] = Field(default_factory=list, max_length=30)
+
+
+class CaptchaOut(BaseModel):
+    token: str
+    image: str
+    expires_in: int = 300
+
+
+class RegisterRequest(BaseModel):
+    username: str = Field(min_length=2, max_length=64)
+    password: str = Field(min_length=10, max_length=128)
+    captcha_token: str = Field(min_length=10, max_length=4096)
+    captcha_answer: str = Field(min_length=1, max_length=8)
+
+
+class FeedbackIn(BaseModel):
+    category: Literal["suggestion", "bug", "other"] = "suggestion"
+    content: str = Field(min_length=1, max_length=2000)
+
+
+class FeedbackOut(BaseModel):
+    id: int
+    user_id: int | None = None
+    username: str = ""
+    category: str = "suggestion"
+    content: str
+    status: str = "new"
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class FeedbackStatusUpdate(BaseModel):
+    status: Literal["new", "read", "resolved"]
+
+
+class UserApprovalRequest(BaseModel):
+    action: Literal["approve", "reject"]

@@ -7,6 +7,7 @@ import { useWebSocket } from './hooks/useWebSocket'
 import { BacktestPage } from './pages/Backtest'
 import { BlueprintPage } from './pages/Blueprint'
 import { DashboardPage } from './pages/Dashboard'
+import { FeedbackPage } from './pages/Feedback'
 import { FundsPage } from './pages/Funds'
 import { InstrumentPage } from './pages/Instrument'
 import { LivePage } from './pages/Live'
@@ -66,6 +67,7 @@ export default function App() {
           <Route path="/market" element={<MarketPage />} />
           <Route path="/market/:code" element={<InstrumentPage />} />
           <Route path="/news" element={<NewsPage />} />
+          <Route path="/feedback" element={<FeedbackPage />} />
           <Route path="/strategies" element={<StrategiesPage />} />
           <Route path="/strategies/blueprint" element={<BlueprintPage />} />
           <Route path="/backtest" element={<BacktestPage />} />
