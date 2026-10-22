@@ -42,6 +42,7 @@ import {
 } from '../utils/format'
 import { cleanParams, defaultsFor, riskRulesFor } from '../utils/strategy'
 import { segmentToSymbol } from '../utils/symbolPath'
+import { useWatchlist } from '../store/watchlist'
 import { notify } from '../store/toast'
 
 type RangeKey = 'today' | 'week' | 'month' | '1y' | '3y' | '5y'
@@ -107,26 +108,12 @@ const INTERVAL_LABELS: Record<KlineInterval, string> = {
   '1M': '月线',
 }
 
-const WATCH_KEY = 'quant.watchlist'
-
-function addToWatchlist(symbol: string): boolean {
-  try {
-    const raw = localStorage.getItem(WATCH_KEY)
-    const parsed: unknown = raw ? JSON.parse(raw) : []
-    const list = Array.isArray(parsed) ? parsed.map(String) : []
-    if (list.includes(symbol)) return false
-    list.push(symbol)
-    localStorage.setItem(WATCH_KEY, JSON.stringify(list))
-    return true
-  } catch {
-    return false
-  }
-}
-
 export function InstrumentPage() {
   const { code = '' } = useParams()
   const symbol = useMemo(() => segmentToSymbol(code), [code])
   const navigate = useNavigate()
+  const addWatchItem = useWatchlist((state) => state.add)
+  const loadWatchlist = useWatchlist((state) => state.load)
 
   const [info, setInfo] = useState<InstrumentInfo | null>(null)
   const [bars, setBars] = useState<BarsResponse | null>(null)
@@ -156,6 +143,10 @@ export function InstrumentPage() {
   const [confirmLive, setConfirmLive] = useState(false)
   const [starting, setStarting] = useState(false)
   const [runningNote, setRunningNote] = useState('')
+
+  useEffect(() => {
+    void loadWatchlist()
+  }, [loadWatchlist])
 
   const strategy = useMemo(() => strategies.find((item) => item.id === strategyId), [strategies, strategyId])
   const brokerCredentials = useMemo(() => credentials.filter((item) => item.kind === 'broker'), [credentials])
@@ -417,8 +408,8 @@ export function InstrumentPage() {
     }
   }
 
-  const addWatch = () => {
-    if (addToWatchlist(symbol)) notify('success', `${symbol} 已加入自选`)
+  const addWatch = async () => {
+    if (await addWatchItem(symbol)) notify('success', `${symbol} 已加入自选`)
     else notify('info', '该标的已在自选中')
   }
 
@@ -450,7 +441,7 @@ export function InstrumentPage() {
           {info && <Badge tone="neutral">{info.board}</Badge>}
         </div>
         <div className="row" style={{ gap: 6 }}>
-          <Button size="sm" onClick={addWatch}>
+          <Button size="sm" onClick={() => void addWatch()}>
             加入自选
           </Button>
           <Button size="sm" variant="ghost" loading={barsLoading} onClick={() => loadChart(true)}>

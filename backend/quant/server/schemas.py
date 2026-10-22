@@ -703,3 +703,7 @@ class NewsFetchStatusOut(BaseModel):
     feeds: list[str] = Field(default_factory=list)
     last_run_at: str | None = None
     last_result: dict[str, Any] | None = None
+
+
+class WatchlistUpdate(BaseModel):
+    symbols: list[str] = Field(default_factory=list, max_length=30)

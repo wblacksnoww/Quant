@@ -428,3 +428,8 @@ export const newsApi = {
   fetch: () => request<Message>('/news/fetch', { method: 'POST' }),
   status: () => request<NewsFetchStatus>('/news/status'),
 }
+
+export const watchlistApi = {
+  list: () => request<string[]>('/watchlist'),
+  replace: (symbols: string[]) => request<string[]>('/watchlist', { method: 'PUT', body: { symbols } }),
+}

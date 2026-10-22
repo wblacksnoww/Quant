@@ -13,6 +13,7 @@ from .runs import RunRepository
 from .strategies import UserStrategyRepository
 from .tokens import TokenRepository
 from .users import UserRepository
+from .watchlist import WatchlistRepository
 
 __all__ = [
     "AuditRepository",
@@ -23,6 +24,7 @@ __all__ = [
     "RunRepository",
     "TokenRepository",
     "UserRepository",
+    "WatchlistRepository",
     "UserStrategyRepository",
     "bootstrap",
 ]

@@ -41,6 +41,7 @@ from .routers import (
     risk,
     strategies,
     system,
+    watchlist,
 )
 from .schemas import ErrorBody
 from .ws import EventHub
@@ -267,6 +268,7 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
         funds,
         credentials,
         system,
+        watchlist,
         admin,
     ):
         app.include_router(module.router, prefix=prefix)

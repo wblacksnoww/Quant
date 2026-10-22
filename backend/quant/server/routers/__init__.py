@@ -13,6 +13,7 @@ from . import (
     risk,
     strategies,
     system,
+    watchlist,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "risk",
     "strategies",
     "system",
+    "watchlist",
 ]

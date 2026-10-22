@@ -3356,6 +3356,20 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "WatchlistUpdate": {
+        "properties": {
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Symbols",
+            "type": "array"
+          }
+        },
+        "title": "WatchlistUpdate",
+        "type": "object"
       }
     }
   },
@@ -7016,6 +7030,74 @@
         "summary": "系统与安全信息",
         "tags": [
           "系统"
+        ]
+      }
+    },
+    "/api/watchlist": {
+      "get": {
+        "operationId": "list_watchlist_api_watchlist_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response List Watchlist Api Watchlist Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "我的自选",
+        "tags": [
+          "自选"
+        ]
+      },
+      "put": {
+        "operationId": "replace_watchlist_api_watchlist_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchlistUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response Replace Watchlist Api Watchlist Put",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "覆盖保存自选（最多 30 个）",
+        "tags": [
+          "自选"
         ]
       }
     }

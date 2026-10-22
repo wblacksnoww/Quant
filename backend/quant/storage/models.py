@@ -28,6 +28,7 @@ from sqlalchemy import (
     String,
     Text,
     TypeDecorator,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -462,3 +463,22 @@ class NewsItem(Base):
             "created_by": self.created_by,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+
+class WatchlistItem(Base):
+    """账号级自选：同一用户同一标的一条，sort_order 保持手动顺序。"""
+
+    __tablename__ = "watchlist_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    symbol: Mapped[str] = mapped_column(String(40), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "symbol", name="uq_watchlist_user_symbol"),
+        Index("ix_watchlist_user_order", "user_id", "sort_order"),
+    )

@@ -23,6 +23,8 @@
   可编辑显示哪些、调整顺序（配置存浏览器），5 秒刷新。
 - **可拖拽卡片布局**：行情页与仪表盘都是卡片网格，点「编辑布局」可拖动排序、
   切换宽/窄、隐藏卡片，布局存浏览器；刷新页面不会丢失。
+- **账号级自选**：自选保存在服务端 `watchlist_items`，同一账号跨浏览器/设备同步；
+  旧版浏览器 localStorage 自选首次登录会自动迁移。
 - **实时行情**：自选表可选 1 秒刷新（后端快照 TTL 可配 `QUANT_QUOTE_TTL`），
   轮询为静默更新（不闪 loading）；标的详情页现价 3 秒刷新，虚拟货币直接取交易所实时价。
 - **K 线周期递进**：详情页支持今日（5 分钟）/本周（30 分钟）/本月/1-5 年，
@@ -332,6 +334,8 @@ DELETE /api/paper/runs/{run_id}  删除历史纸盘记录
 GET  /api/paper/sessions         运行中的会话列表
 POST /api/paper/switch           运行中切换策略
 GET  /api/paper/state            实时状态
+GET  /api/watchlist              我的自选（账号级）
+PUT  /api/watchlist              覆盖保存自选（最多 30 个）
 POST /api/live/start             启动实盘（测试网默认，三重闸门）
 POST /api/live/pause             暂停实盘（保留持仓，可继续）
 POST /api/live/resume            继续实盘
@@ -356,7 +360,7 @@ cd backend
 条件拼装策略（spec 白名单 + 用户隔离 + 引擎端到端；v1 条件与 v2 蓝图节点图）、
 虚拟货币数据源与 T+0/TIF、场外基金申赎聚合、实盘适配器与 LiveBroker 状态机、
 运行中策略切换、指数/排行榜/分钟线契约。
-后端 pytest 全套 **258 项**（`pytest --collect-only` 与 README/文档口径一致）。
+后端 pytest 全套 **260 项**（`pytest --collect-only` 与 README/文档口径一致）。
 
 ## 许可
 

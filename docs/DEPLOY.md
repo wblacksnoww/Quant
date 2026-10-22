@@ -349,7 +349,18 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compos
 - [ ] 定期调用 `GET /api/system/audit/verify` 校验审计链
 - [ ] 实盘先用测试网密钥联调；真实资金使用无提现权限的 API Key
 
-### 11.6 多实例 / 多 worker
+### 11.6 数据持久化与更新
+
+- 数据在 Docker **命名卷**里，不在容器层：
+  - `quant-trading-data`：`/app/data`（SQLite `quant.db`、行情缓存、上传文件）
+  - `quant-trading-pg`：PostgreSQL 数据目录
+- `./scripts/quick-deploy.sh` 只拉取/重建容器，**不会删除命名卷**；后端启动时
+  alembic 只执行增量迁移（加表/加列），不会清空业务数据。
+- 不要运行 `docker compose down -v`、`docker volume prune`（`-v` 会删除数据卷）。
+- 更新前可执行 `./scripts/backup.sh` 备份；SQLite 备份文件在 `data/backups/`。
+- 从 SQLite 切到 PostgreSQL 不会自动搬迁历史数据；需要自行导出/导入（或继续用 SQLite）。
+
+### 11.7 多实例 / 多 worker
 
 - 回测队列与纸盘/实盘会话协调依赖**共享数据库**：多副本/多 worker 必须使用
   PostgreSQL；SQLite 只适合单实例（文件锁无法跨主机协调）。

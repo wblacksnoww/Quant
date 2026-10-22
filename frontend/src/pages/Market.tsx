@@ -25,6 +25,7 @@ import {
 } from '../utils/format'
 import { notify } from '../store/toast'
 import { symbolToSegment } from '../utils/symbolPath'
+import { useWatchlist } from '../store/watchlist'
 
 const QUOTES_CACHE_KEY = 'quant.quotes_cache'
 
@@ -47,25 +48,7 @@ function loadQuotesCache(): Record<string, QuoteItem> {
   return {}
 }
 
-const WATCH_KEY = 'quant.watchlist'
 const QUOTE_INTERVAL_KEY = 'quant.quote_interval'
-const DEFAULT_WATCH = ['CN:600519', 'CN:000001', 'CN:300059']
-
-function loadWatchlist(): string[] {
-  try {
-    const raw = localStorage.getItem(WATCH_KEY)
-    if (raw) {
-      const parsed: unknown = JSON.parse(raw)
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        // 旧数据是裸 6 位代码，迁移成规范 id
-        return parsed.map((item) => normalizeInstrumentId(String(item)) ?? String(item))
-      }
-    }
-  } catch {
-    // 本地数据损坏时退回默认自选
-  }
-  return DEFAULT_WATCH
-}
 
 type QuoteRow = {
   id: string
@@ -86,7 +69,9 @@ export function MarketPage() {
   const [error, setError] = useState('')
 
   // ---- 实时自选 ----
-  const [watchlist, setWatchlist] = useState<string[]>(loadWatchlist)
+  const watchlist = useWatchlist((state) => state.items)
+  const setWatchlistItems = useWatchlist((state) => state.setItems)
+  const loadWatchlist = useWatchlist((state) => state.load)
   const [quotes, setQuotes] = useState<Record<string, QuoteItem>>(loadQuotesCache)
   const [quoteNote, setQuoteNote] = useState('')
   const [quoteAt, setQuoteAt] = useState('')
@@ -136,6 +121,10 @@ export function MarketPage() {
     },
     [years, loadCache],
   )
+
+  useEffect(() => {
+    void loadWatchlist()
+  }, [loadWatchlist])
 
   // ---- 实时自选：拉取 / 自动刷新 ----
   const loadQuotes = useCallback(
@@ -209,8 +198,7 @@ export function MarketPage() {
   }, [searchText, searchMarket, watchlist])
 
   const updateWatchlist = (next: string[]) => {
-    setWatchlist(next)
-    localStorage.setItem(WATCH_KEY, JSON.stringify(next))
+    void setWatchlistItems(next)
   }
 
   const addSymbol = (code: string) => {
