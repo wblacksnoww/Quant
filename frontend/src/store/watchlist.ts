@@ -74,7 +74,8 @@ export const useWatchlist = create<WatchlistState>((set, get) => ({
     const cached = readJsonArray(cacheKey(user.id))
     const legacy = cached.length === 0 ? readLegacy() : []
     const initial = cached.length > 0 ? cached : legacy
-    if (initial.length > 0) set({ items: initial })
+    // 切换账号时先清掉上一个账号的自选，避免短暂串号
+    set({ items: initial })
 
     loadPromiseUser = user.id
     loadPromise = (async () => {

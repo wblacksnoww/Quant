@@ -72,6 +72,7 @@ export function MarketPage() {
   const watchlist = useWatchlist((state) => state.items)
   const setWatchlistItems = useWatchlist((state) => state.setItems)
   const loadWatchlist = useWatchlist((state) => state.load)
+  const addWatchItem = useWatchlist((state) => state.add)
   const [quotes, setQuotes] = useState<Record<string, QuoteItem>>(loadQuotesCache)
   const [quoteNote, setQuoteNote] = useState('')
   const [quoteAt, setQuoteAt] = useState('')
@@ -204,13 +205,11 @@ export function MarketPage() {
   const addSymbol = (code: string) => {
     const normalized = normalizeInstrumentId(code) ?? code.trim()
     if (!normalized) return
-    if (watchlist.includes(normalized)) {
-      notify('info', `${normalized} 已在自选中`)
-    } else if (watchlist.length >= 30) {
-      notify('warning', '自选最多 30 个，请先移除部分标的')
-    } else {
-      updateWatchlist([...watchlist, normalized])
-    }
+    void (async () => {
+      const added = await addWatchItem(normalized)
+      if (added) notify('success', `${normalized} 已加入自选`)
+      else notify('info', `${normalized} 已在自选中`)
+    })()
     setSearchText('')
     setSuggestions([])
   }
