@@ -15,7 +15,7 @@ import json
 import logging
 import os
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parents[1]
@@ -97,9 +97,23 @@ def backtest(args: argparse.Namespace) -> int:
         benchmark=args.benchmark,
         risk=[] if args.no_risk else None,
     )
-    engine = BacktestEngine(config, data)
+    from quant.news.provider import NewsFactorProvider
+    from quant.storage.db import Database
+
+    news_db = Database(settings.database_url)
+    news_db.create_all()
+    news = NewsFactorProvider(
+        news_db,
+        config.symbols,
+        start=datetime.combine(start, datetime.min.time()),
+        end=datetime.combine(end, datetime.max.time()),
+    )
+    engine = BacktestEngine(config, data, news=news)
     engine.on_progress(lambda p, m: print(f"\r[{p * 100:5.1f}%] {m[:60]:<60}", end="", flush=True))
-    result = engine.run()
+    try:
+        result = engine.run()
+    finally:
+        news_db.dispose()
     print()
 
     if result.status == "failed":
