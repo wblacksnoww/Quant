@@ -112,6 +112,12 @@ const DATA_DEFS: [string, string, string][] = [
   ['low', '最低价', '当日最低价'],
   ['close', '收盘价', '当日收盘价（最常用）'],
   ['volume', '成交量', '当日成交量（股）'],
+  ['news_sentiment', '新闻情绪 1h', '1 小时窗口的加权新闻情绪（-1~1）'],
+  ['news_policy_risk', '政策风险 1h', '1 小时窗口的政策风险（0~1）'],
+  ['news_confidence', '新闻置信度 1h', '1 小时窗口的最高新闻置信度'],
+  ['news_event_count', '新闻事件数 1h', '1 小时窗口内命中的新闻条数'],
+  ['news_sentiment_1d', '新闻情绪 1d', '1 天窗口的加权新闻情绪（-1~1）'],
+  ['news_policy_risk_1d', '政策风险 1d', '1 天窗口的政策风险（0~1）'],
 ]
 
 function buildDefs(): Record<string, BpDef> {

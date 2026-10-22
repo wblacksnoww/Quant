@@ -40,6 +40,7 @@ import pandas as pd
 from ..core.types import Bar
 from . import indicators as ta
 from .base import ParamSpec, Strategy
+from .custom_fields import ALL_FIELDS, NEWS_FIELDS
 from .custom_graph import (
     GRAPH_VERSION,
     MAX_GRAPH_SPEC_BYTES,
@@ -67,13 +68,13 @@ SPEC_VERSION = 1
 MAX_CONDITIONS = 6
 MAX_SPEC_BYTES = 8192
 
-_FIELDS = ("close", "open", "high", "low", "volume", "amount")
+_FIELDS = ALL_FIELDS
 _COMPARE_OPS = ("gt", "gte", "lt", "lte")
 _CROSS_OPS = ("cross_above", "cross_below")
 
 # 指标白名单：name -> (函数描述, 参数规则)
 # 参数规则: "int"/"float" 表示必填数值参数；带默认值的写 (type, default)
-_FIELDS = ("close", "open", "high", "low", "volume", "amount")
+_FIELDS = ALL_FIELDS
 
 
 # --------------------------------------------------------------------------- #
@@ -422,6 +423,8 @@ class CustomRuleStrategy(Strategy):
         except (ValueError, json.JSONDecodeError) as exc:
             raise ValueError(f"拼装策略 spec 无效：{exc}") from exc
         self._is_graph = isinstance(self.spec, GraphSpec)
+        self._news_fields = self._news_fields_used()
+        self._uses_news = bool(self._news_fields)
         if self._is_graph:
             self._min_rows = graph_lookback(self.spec)
             self.log(
@@ -437,12 +440,40 @@ class CustomRuleStrategy(Strategy):
                 f"止盈 {self.spec.take_profit:.0%}"
             )
 
+    def _news_fields_used(self) -> set[str]:
+        if self._is_graph:
+            return {node.type for node in self.spec.nodes if node.type in NEWS_FIELDS}
+        return {
+            operand.field
+            for cond in self.spec.entry + self.spec.exit
+            for operand in (cond.left, cond.right)
+            if operand.field in NEWS_FIELDS
+        }
+
+    def _attach_news(self, frame: pd.DataFrame, symbol: str) -> pd.DataFrame:
+        """把新闻因子按每根 bar 的时点展开成列（PIT），供字段条件直接使用。"""
+        out = frame.copy()
+        for field in self._news_fields:
+            metric, window = NEWS_FIELDS[field]
+            values = []
+            for ts in out["date"]:
+                factor = self.ctx.news_factor_at(
+                    symbol,
+                    as_of=pd.Timestamp(ts).to_pydatetime(),
+                    window=window,
+                )
+                values.append(getattr(factor, metric))
+            out[field] = values
+        return out
+
     def on_bars(self, bars: Mapping[str, Bar]) -> None:
         for bar in bars.values():
             self._on_symbol(bar)
 
     def _on_symbol(self, bar: Bar) -> None:
         frame = self.history(bar.symbol, self._min_rows)
+        if self._uses_news:
+            frame = self._attach_news(frame, bar.symbol)
         if len(frame) < self._min_rows:
             return  # 指标数据不足，跳过
         if self.has_open_order(bar.symbol):

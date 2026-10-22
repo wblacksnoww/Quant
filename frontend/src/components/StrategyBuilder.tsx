@@ -39,6 +39,15 @@ const FIELD_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'amount', label: '成交额' },
 ]
 
+const NEWS_FIELD_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'news_sentiment', label: '新闻情绪（1h）' },
+  { value: 'news_policy_risk', label: '政策风险（1h）' },
+  { value: 'news_confidence', label: '新闻置信度（1h）' },
+  { value: 'news_event_count', label: '新闻事件数（1h）' },
+  { value: 'news_sentiment_1d', label: '新闻情绪（1d）' },
+  { value: 'news_policy_risk_1d', label: '政策风险（1d）' },
+]
+
 const INDICATOR_META: Record<string, { label: string; params: string[] }> = {
   sma: { label: 'SMA 均线', params: ['period'] },
   ema: { label: 'EMA 均线', params: ['period'] },
@@ -148,7 +157,12 @@ function toSpec(
 
 function operandLabel(op: OperandSpec): string {
   if (op.kind === 'const') return String(op.value)
-  if (op.kind === 'field') return FIELD_OPTIONS.find((f) => f.value === op.field)?.label ?? op.field
+  if (op.kind === 'field')
+    return (
+      FIELD_OPTIONS.find((f) => f.value === op.field)?.label ??
+      NEWS_FIELD_OPTIONS.find((f) => f.value === op.field)?.label ??
+      op.field
+    )
   const meta = INDICATOR_META[op.name]
   if (!meta) return op.name
   const parts = Object.entries(op.params)
@@ -186,6 +200,13 @@ function OperandEditor({ op, onChange }: { op: UiOperand; onChange: (next: UiOpe
             </option>
           ))}
         </optgroup>
+        <optgroup label="新闻 / 政策">
+          {NEWS_FIELD_OPTIONS.map((field) => (
+            <option key={field.value} value={`field:${field.value}`}>
+              {field.label}
+            </option>
+          ))}
+        </optgroup>
         <optgroup label="指标">
           {Object.entries(INDICATOR_META).map(([key, item]) => (
             <option key={key} value={`ind:${key}`}>
@@ -198,7 +219,9 @@ function OperandEditor({ op, onChange }: { op: UiOperand; onChange: (next: UiOpe
         </optgroup>
       </select>
       {isField && (
-        <span className="tiny faint">{FIELD_OPTIONS.find((f) => `field:${f.value}` === op.key)?.label}</span>
+        <span className="tiny faint">
+          {[...FIELD_OPTIONS, ...NEWS_FIELD_OPTIONS].find((f) => `field:${f.value}` === op.key)?.label}
+        </span>
       )}
       {meta && meta.params.includes('period') && (
         <input

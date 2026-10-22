@@ -35,6 +35,7 @@ from typing import Any
 import pandas as pd
 
 from . import indicators as ta
+from .custom_fields import ALL_FIELDS
 
 # 指标白名单唯一来源：v1 条件与 v2 蓝图共用（参数边界随之同源）
 from .indicators import (
@@ -57,7 +58,7 @@ _ID_RE = re.compile(r"^[a-z0-9_]{1,24}$")
 # 节点类型 ------------------------------------------------------------------- #
 
 # 数据源（无输入，输出序列）
-_SOURCES = ("open", "high", "low", "close", "volume")
+_SOURCES = ALL_FIELDS
 # 指标（单输入 price，输出序列；参数白名单与 v1 一致）
 _MACD_TUP = ("macd_dif", "macd_dea", "macd_hist")
 

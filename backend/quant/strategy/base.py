@@ -210,11 +210,27 @@ class StrategyContext:
     def symbols(self) -> list[str]:
         return list(self._frames)
 
+    def news_factor_at(
+        self,
+        symbol: str,
+        *,
+        as_of: datetime,
+        window: str = "1h",
+        half_life_hours: float = 24.0,
+    ) -> NewsFactor:
+        """指定时点可见的新闻/政策因子（PIT，无新闻返回中性值）。"""
+        if self._news is None:
+            return NewsFactor.neutral(symbol, as_of, window)
+        return self._news.factor(
+            symbol,
+            as_of=as_of,
+            window=window,
+            half_life_hours=half_life_hours,
+        )
+
     def news_factor(self, symbol: str, window: str = "1h", half_life_hours: float = 24.0) -> NewsFactor:
         """当前 bar 时点可见的新闻/政策因子（PIT，无新闻返回中性值）。"""
-        if self._news is None:
-            return NewsFactor.neutral(symbol, self.now, window)
-        return self._news.factor(
+        return self.news_factor_at(
             symbol,
             as_of=self.now,
             window=window,

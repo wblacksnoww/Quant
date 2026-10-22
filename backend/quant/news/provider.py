@@ -28,6 +28,7 @@ class NewsFactorProvider:
         self.start = start
         self.end = end
         self._items: list[dict] = []
+        self._factor_cache: dict[tuple, NewsFactor] = {}
         self._lock = threading.RLock()
         self.refresh()
 
@@ -43,6 +44,7 @@ class NewsFactorProvider:
                 items = [row.to_dict() for row in rows]
             with self._lock:
                 self._items = items
+                self._factor_cache.clear()
         except Exception:  # noqa: BLE001 - 新闻不可用不应阻断交易
             log.warning("加载新闻因子失败，策略按中性因子运行", exc_info=True)
 
@@ -58,13 +60,23 @@ class NewsFactorProvider:
             items = list(self._items)
         if not items:
             return NewsFactor.neutral(symbol, as_of, window)
-        return compute_factor(
+        key = (symbol, str(as_of), window, round(half_life_hours, 3))
+        with self._lock:
+            hit = self._factor_cache.get(key)
+            if hit is not None:
+                return hit
+        factor = compute_factor(
             items,
             symbol=symbol,
             as_of=as_of,
             window=window,
             half_life_hours=half_life_hours,
         )
+        with self._lock:
+            if len(self._factor_cache) > 20000:
+                self._factor_cache.clear()
+            self._factor_cache[key] = factor
+        return factor
 
 
 __all__ = ["NewsFactorProvider"]

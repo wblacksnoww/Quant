@@ -253,3 +253,83 @@ def test_news_status_api(client):
     payload = resp.json()
     assert payload["enabled"] is False  # 测试环境关闭自动抓取，避免联网
     assert isinstance(payload["feeds"], list)
+
+
+def test_custom_strategy_can_use_news_fields(context):
+    spec = {
+        "version": 1,
+        "description": "新闻情绪过滤",
+        "category": "trend",
+        "entry": [
+            {
+                "type": "gt",
+                "left": {"kind": "field", "field": "news_sentiment"},
+                "right": {"kind": "const", "value": 0.5},
+            }
+        ],
+        "exit": [
+            {
+                "type": "lt",
+                "left": {"kind": "field", "field": "news_sentiment"},
+                "right": {"kind": "const", "value": -0.5},
+            }
+        ],
+        "position_pct": 0.5,
+        "stop_loss": 0.0,
+        "take_profit": 0.0,
+    }
+    cfg = EngineConfig(
+        strategy_id="custom_rule",
+        symbols=["CN:600519"],
+        start=date(2023, 1, 1),
+        end=date(2024, 6, 30),
+        initial_cash=1_000_000,
+        params={"spec": spec},
+        run_id="run_custom_news_pos",
+    )
+    positive = NewsFactor(
+        symbol="CN:600519",
+        as_of=datetime(2023, 1, 3),
+        window="1h",
+        sentiment=0.8,
+        policy_risk=0.0,
+        confidence=1.0,
+        event_count=2,
+    )
+    result = BacktestEngine(cfg, context.data, news=FakeNews(positive)).run()
+    assert result.status == "finished"
+    assert result.trades, "新闻情绪为正时应产生买入成交"
+
+    negative = NewsFactor(
+        symbol="CN:600519",
+        as_of=datetime(2023, 1, 3),
+        window="1h",
+        sentiment=-0.8,
+        policy_risk=0.2,
+        confidence=1.0,
+        event_count=2,
+    )
+    cfg.run_id = "run_custom_news_neg"
+    blocked = BacktestEngine(cfg, context.data, news=FakeNews(negative)).run()
+    assert blocked.status == "finished"
+    assert not blocked.trades, "新闻情绪为负时不应入场"
+
+
+def test_graph_spec_accepts_news_data_node():
+    from quant.strategy.custom_graph import parse_graph_spec
+
+    spec = {
+        "version": 2,
+        "nodes": [
+            {"id": "n1", "type": "news_sentiment", "pos": {"x": 0, "y": 0}},
+            {"id": "n2", "type": "const", "value": 0.5, "pos": {"x": 0, "y": 100}},
+            {"id": "n3", "type": "gt", "pos": {"x": 200, "y": 0}},
+        ],
+        "edges": [
+            {"from": "n1", "to": "n3", "to_port": "left"},
+            {"from": "n2", "to": "n3", "to_port": "right"},
+        ],
+        "outputs": {"entry": "n3", "exit": "n3"},
+    }
+    parsed = parse_graph_spec(spec)
+    assert any(node.type == "news_sentiment" for node in parsed.nodes)
