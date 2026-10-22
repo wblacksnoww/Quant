@@ -8,6 +8,7 @@ from .audit import AuditRepository
 from .bootstrap import bootstrap
 from .credentials import CredentialRepository
 from .funds import FundTradeRepository
+from .news import NewsRepository
 from .runs import RunRepository
 from .strategies import UserStrategyRepository
 from .tokens import TokenRepository
@@ -17,6 +18,7 @@ __all__ = [
     "AuditRepository",
     "CredentialRepository",
     "FundTradeRepository",
+    "NewsRepository",
     "RunRecorder",
     "RunRepository",
     "TokenRepository",

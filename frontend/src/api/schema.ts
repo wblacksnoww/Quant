@@ -792,6 +792,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/news/factors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 新闻/政策量化因子（PIT） */
+        get: operations["get_factor_api_news_factors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/news/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 新闻/政策列表 */
+        get: operations["list_news_api_news_items_get"];
+        put?: never;
+        /** 录入新闻/政策 */
+        post: operations["create_news_api_news_items_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/news/items/{news_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** 删除新闻 */
+        delete: operations["delete_news_api_news_items__news_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/paper/continue": {
         parameters: {
             query?: never;
@@ -1877,6 +1929,144 @@ export interface components {
             };
             /** Message */
             message: string;
+        };
+        /** NewsFactorOut */
+        NewsFactorOut: {
+            /** As Of */
+            as_of: string;
+            /**
+             * Confidence
+             * @default 0
+             */
+            confidence: number;
+            /**
+             * Event Count
+             * @default 0
+             */
+            event_count: number;
+            /** Items */
+            items?: components["schemas"]["NewsItemOut"][];
+            /**
+             * Policy Risk
+             * @default 0
+             */
+            policy_risk: number;
+            /**
+             * Sentiment
+             * @default 0
+             */
+            sentiment: number;
+            /** Symbol */
+            symbol: string;
+            /** Window */
+            window: string;
+        };
+        /** NewsItemIn */
+        NewsItemIn: {
+            /**
+             * Confidence
+             * @default 0.5
+             */
+            confidence: number;
+            /** Effective At */
+            effective_at?: string | null;
+            /**
+             * Event Type
+             * @default other
+             */
+            event_type: string;
+            /**
+             * Market
+             * @default
+             */
+            market: string;
+            /**
+             * Policy Risk
+             * @default 0
+             */
+            policy_risk: number;
+            /** Published At */
+            published_at?: string | null;
+            /**
+             * Sentiment
+             * @default 0
+             */
+            sentiment: number;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Symbols */
+            symbols?: string[];
+            /** Title */
+            title: string;
+            /**
+             * Url
+             * @default
+             */
+            url: string;
+        };
+        /** NewsItemOut */
+        NewsItemOut: {
+            /**
+             * Confidence
+             * @default 0
+             */
+            confidence: number;
+            /** Created At */
+            created_at?: string | null;
+            /** Created By */
+            created_by?: number | null;
+            /** Effective At */
+            effective_at?: string | null;
+            /**
+             * Event Type
+             * @default other
+             */
+            event_type: string;
+            /** External Id */
+            external_id?: string | null;
+            /** Id */
+            id: number;
+            /** Ingested At */
+            ingested_at?: string | null;
+            /**
+             * Market
+             * @default
+             */
+            market: string;
+            /**
+             * Policy Risk
+             * @default 0
+             */
+            policy_risk: number;
+            /** Published At */
+            published_at?: string | null;
+            /**
+             * Sentiment
+             * @default 0
+             */
+            sentiment: number;
+            /**
+             * Source
+             * @default manual
+             */
+            source: string;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Symbols */
+            symbols?: string[];
+            /** Title */
+            title: string;
+            /**
+             * Url
+             * @default
+             */
+            url: string;
         };
         /** PaperStartRequest */
         PaperStartRequest: {
@@ -4049,6 +4239,137 @@ export interface operations {
                 };
                 content: {
                     "application/json": string[];
+                };
+            };
+        };
+    };
+    get_factor_api_news_factors_get: {
+        parameters: {
+            query: {
+                symbol: string;
+                window?: "15m" | "1h" | "4h" | "1d";
+                /** @description 不传则用当前时间 */
+                as_of?: string | null;
+                half_life_hours?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewsFactorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_news_api_news_items_get: {
+        parameters: {
+            query?: {
+                symbol?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewsItemOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_news_api_news_items_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewsItemIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewsItemOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_news_api_news_items__news_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                news_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

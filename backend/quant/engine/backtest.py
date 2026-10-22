@@ -46,10 +46,12 @@ class BacktestEngine(BaseEngine):
         *,
         recorder: Any = None,
         bus: EventBus | None = None,
+        news: Any = None,
     ) -> None:
         super().__init__(config)
         self.data = data
         self.recorder = recorder
+        self.news = news
         self.bus = bus or EventBus(f"backtest:{config.run_id}")
         self.engine_bus = self.bus
         self._recorder_events = EventRecorder(self.bus, limit=2000)
@@ -187,6 +189,7 @@ class BacktestEngine(BaseEngine):
             frames=frames,
             strategy_name=cfg.strategy_id,
             recorder=self.recorder,
+            news=self.news,
         )
 
         # 把订单/成交也转给记录器（若提供）

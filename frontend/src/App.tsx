@@ -12,6 +12,7 @@ import { InstrumentPage } from './pages/Instrument'
 import { LivePage } from './pages/Live'
 import { Login } from './pages/Login'
 import { MarketPage } from './pages/Market'
+import { NewsPage } from './pages/News'
 import { PaperPage } from './pages/Paper'
 import { RiskPage } from './pages/Risk'
 import { SettingsPage } from './pages/Settings'
@@ -64,6 +65,7 @@ export default function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/market" element={<MarketPage />} />
           <Route path="/market/:code" element={<InstrumentPage />} />
+          <Route path="/news" element={<NewsPage />} />
           <Route path="/strategies" element={<StrategiesPage />} />
           <Route path="/strategies/blueprint" element={<BlueprintPage />} />
           <Route path="/backtest" element={<BacktestPage />} />

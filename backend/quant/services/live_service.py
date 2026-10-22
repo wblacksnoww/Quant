@@ -6,13 +6,14 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from ..core.errors import ConflictError, InvalidRequest, NotFoundError, PermissionDenied
 from ..core.events import EventBus
 from ..engine.live import LiveEngine, LiveOptions
 from ..execution.adapters import create_adapter
+from ..news.provider import NewsFactorProvider
 from ..storage.recorder import RunRecorder
 from ..storage.repositories.credentials import CredentialRepository
 from .backtest_service import build_engine_config
@@ -126,6 +127,12 @@ def start(ctx: Any, *, user_id: int, body: Any) -> dict[str, Any]:
 
     bus = EventBus(f"live:{config.run_id}")
     unwire = bus_bridge(bus, ctx.hub, source="live", run_id=config.run_id, user_id=user_id)
+    news = NewsFactorProvider(
+        ctx.db,
+        config.symbols,
+        start=datetime.combine(config.start, time.min),
+        end=None,
+    )
     engine = LiveEngine(
         config,
         ctx.data,
@@ -137,6 +144,7 @@ def start(ctx: Any, *, user_id: int, body: Any) -> dict[str, Any]:
         bus=bus,
         recorder=recorder,
         credential_id=body.credential_id,
+        news=news,
     )
     _wire_cleanup(engine, unwire)
     try:

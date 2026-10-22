@@ -1662,6 +1662,274 @@
         "title": "Message",
         "type": "object"
       },
+      "NewsFactorOut": {
+        "properties": {
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "confidence": {
+            "default": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "event_count": {
+            "default": 0,
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NewsItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "policy_risk": {
+            "default": 0.0,
+            "title": "Policy Risk",
+            "type": "number"
+          },
+          "sentiment": {
+            "default": 0.0,
+            "title": "Sentiment",
+            "type": "number"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          },
+          "window": {
+            "title": "Window",
+            "type": "string"
+          }
+        },
+        "required": [
+          "symbol",
+          "as_of",
+          "window"
+        ],
+        "title": "NewsFactorOut",
+        "type": "object"
+      },
+      "NewsItemIn": {
+        "properties": {
+          "confidence": {
+            "default": 0.5,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "effective_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective At"
+          },
+          "event_type": {
+            "default": "other",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "market": {
+            "default": "",
+            "title": "Market",
+            "type": "string"
+          },
+          "policy_risk": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Policy Risk",
+            "type": "number"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "sentiment": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": -1.0,
+            "title": "Sentiment",
+            "type": "number"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Symbols",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "default": "",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "NewsItemIn",
+        "type": "object"
+      },
+      "NewsItemOut": {
+        "properties": {
+          "confidence": {
+            "default": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "effective_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective At"
+          },
+          "event_type": {
+            "default": "other",
+            "title": "Event Type",
+            "type": "string"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "ingested_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingested At"
+          },
+          "market": {
+            "default": "",
+            "title": "Market",
+            "type": "string"
+          },
+          "policy_risk": {
+            "default": 0.0,
+            "title": "Policy Risk",
+            "type": "number"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "sentiment": {
+            "default": 0.0,
+            "title": "Sentiment",
+            "type": "number"
+          },
+          "source": {
+            "default": "manual",
+            "title": "Source",
+            "type": "string"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Symbols",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "default": "",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "NewsItemOut",
+        "type": "object"
+      },
       "PaperStartRequest": {
         "properties": {
           "benchmark": {
@@ -5476,6 +5744,243 @@
         "summary": "已缓存标的",
         "tags": [
           "行情"
+        ]
+      }
+    },
+    "/api/news/factors": {
+      "get": {
+        "operationId": "get_factor_api_news_factors_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "Symbol",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "default": "1h",
+              "enum": [
+                "15m",
+                "1h",
+                "4h",
+                "1d"
+              ],
+              "title": "Window",
+              "type": "string"
+            }
+          },
+          {
+            "description": "不传则用当前时间",
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "不传则用当前时间",
+              "title": "As Of"
+            }
+          },
+          {
+            "in": "query",
+            "name": "half_life_hours",
+            "required": false,
+            "schema": {
+              "default": 24.0,
+              "maximum": 720.0,
+              "minimum": 0.1,
+              "title": "Half Life Hours",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewsFactorOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "新闻/政策量化因子（PIT）",
+        "tags": [
+          "新闻政策"
+        ]
+      }
+    },
+    "/api/news/items": {
+      "get": {
+        "operationId": "list_news_api_news_items_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Symbol"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/NewsItemOut"
+                  },
+                  "title": "Response List News Api News Items Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "新闻/政策列表",
+        "tags": [
+          "新闻政策"
+        ]
+      },
+      "post": {
+        "operationId": "create_news_api_news_items_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewsItemIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewsItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "录入新闻/政策",
+        "tags": [
+          "新闻政策"
+        ]
+      }
+    },
+    "/api/news/items/{news_id}": {
+      "delete": {
+        "operationId": "delete_news_api_news_items__news_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "news_id",
+            "required": true,
+            "schema": {
+              "title": "News Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "删除新闻",
+        "tags": [
+          "新闻政策"
         ]
       }
     },

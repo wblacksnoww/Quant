@@ -28,6 +28,9 @@ import type {
   LiveState,
   MarketInfo,
   Message,
+  NewsFactor,
+  NewsItem,
+  NewsItemInput,
   PaperStartRequest,
   PaperState,
   QuotesResponse,
@@ -413,4 +416,12 @@ export const credentialApi = {
       method: 'POST',
     }),
   remove: (id: number) => request<Message>(`/credentials/${id}`, { method: 'DELETE' }),
+}
+
+export const newsApi = {
+  items: (symbol?: string, limit = 100) => request<NewsItem[]>('/news/items', { query: { symbol, limit } }),
+  create: (body: NewsItemInput) => request<NewsItem>('/news/items', { method: 'POST', body }),
+  factor: (symbol: string, window = '1h', asOf?: string) =>
+    request<NewsFactor>('/news/factors', { query: { symbol, window, as_of: asOf } }),
+  remove: (id: number) => request<Message>(`/news/items/${id}`, { method: 'DELETE' }),
 }

@@ -1,0 +1,181 @@
+"""新闻/政策因子、ExitPolicy 与新闻策略。"""
+
+from __future__ import annotations
+
+from datetime import date, datetime, timedelta
+
+from quant.engine import BacktestEngine, EngineConfig
+from quant.news.factors import NewsFactor, compute_factor
+from quant.strategy.exits import ExitDecision, ExitReason, pick_exit
+
+
+class FakeNews:
+    def __init__(self, factor: NewsFactor) -> None:
+        self._factor = factor
+
+    def factor(self, symbol: str, *, as_of, window: str = "1h", half_life_hours: float = 24.0):
+        return self._factor
+
+
+def _config(strategy: str, run_id: str, **params) -> EngineConfig:
+    return EngineConfig(
+        strategy_id=strategy,
+        symbols=["CN:600519"],
+        start=date(2023, 1, 1),
+        end=date(2024, 6, 30),
+        initial_cash=1_000_000,
+        params=params,
+        run_id=run_id,
+    )
+
+
+def test_news_factor_is_point_in_time_and_windowed():
+    now = datetime(2026, 10, 21, 0, 0)
+    items = [
+        {
+            "symbols": ["CRYPTO:BTC/USDT"],
+            "effective_at": (now - timedelta(minutes=10)).isoformat(),
+            "sentiment": 0.8,
+            "policy_risk": 0.2,
+            "confidence": 0.9,
+        },
+        {
+            "symbols": ["CRYPTO:BTC/USDT"],
+            "effective_at": (now - timedelta(hours=3)).isoformat(),
+            "sentiment": -0.9,
+            "policy_risk": 1.0,
+            "confidence": 0.9,
+        },
+        {
+            "symbols": ["CRYPTO:BTC/USDT"],
+            "effective_at": (now + timedelta(minutes=10)).isoformat(),
+            "sentiment": -1.0,
+            "policy_risk": 1.0,
+            "confidence": 1.0,
+        },
+    ]
+    factor = compute_factor(items, symbol="CRYPTO:BTC/USDT", as_of=now, window="1h")
+    assert factor.event_count == 1
+    assert factor.sentiment == 0.8
+    assert abs(factor.policy_risk - 0.18) < 1e-9
+    assert factor.confidence == 0.9
+
+
+def test_exit_policy_picks_single_highest_priority_action():
+    decisions = [
+        ExitDecision("reduce", ExitReason.SIGNAL, fraction=0.5, priority=50),
+        ExitDecision("close", ExitReason.STOP_LOSS, priority=100),
+        ExitDecision("close", ExitReason.TAKE_PROFIT, priority=80),
+    ]
+    picked = pick_exit(decisions)
+    assert picked is not None
+    assert picked.reason == ExitReason.STOP_LOSS
+    assert pick_exit([ExitDecision("hold", ExitReason.SIGNAL)]) is None
+
+
+def test_news_strategy_requires_news_for_entry(context):
+    neutral = NewsFactor.neutral("CN:600519", datetime(2023, 1, 3))
+    blocked = BacktestEngine(
+        _config(
+            "news_dual_ma",
+            "run_news_block",
+            fast=5,
+            slow=20,
+            require_news=True,
+            min_confidence=0.5,
+        ),
+        context.data,
+        news=FakeNews(neutral),
+    ).run()
+    assert blocked.status == "finished"
+    assert blocked.metrics.trade_count == 0
+
+    positive = NewsFactor(
+        symbol="CN:600519",
+        as_of=datetime(2023, 1, 3),
+        window="1d",
+        sentiment=0.5,
+        policy_risk=0.0,
+        confidence=1.0,
+        event_count=1,
+    )
+    allowed = BacktestEngine(
+        _config(
+            "news_dual_ma",
+            "run_news_allow",
+            fast=5,
+            slow=20,
+            require_news=True,
+            min_confidence=0.5,
+            min_sentiment=0.0,
+            max_policy_risk=0.5,
+        ),
+        context.data,
+        news=FakeNews(positive),
+    ).run()
+    assert allowed.status == "finished"
+    assert allowed.metrics.trade_count >= 1
+
+
+def test_news_dual_ma_without_provider_matches_dual_ma(context):
+    builtin = BacktestEngine(_config("dual_ma", "run_plain", fast=5, slow=20), context.data).run()
+    news = BacktestEngine(_config("news_dual_ma", "run_news_plain", fast=5, slow=20), context.data).run()
+    assert [t["dt"] for t in builtin.trades if t["side"] == "buy"] == [
+        t["dt"] for t in news.trades if t["side"] == "buy"
+    ]
+
+
+def test_news_api_ingest_and_factor(client):
+    from conftest import login_headers
+
+    headers = login_headers(client)
+    resp = client.post(
+        "/api/news/items",
+        json={
+            "title": "监管发布加密资产风险提示",
+            "summary": "政策风险上升",
+            "symbols": ["CRYPTO:BTC/USDT"],
+            "event_type": "policy",
+            "sentiment": -0.7,
+            "policy_risk": 0.85,
+            "confidence": 0.9,
+            "published_at": "2026-10-20T12:00:00Z",
+            "effective_at": "2026-10-20T12:00:00Z",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+    item = resp.json()
+    assert item["symbols"] == ["CRYPTO:BTC/USDT"]
+
+    listing = client.get("/api/news/items", params={"symbol": "CRYPTO:BTC/USDT"}, headers=headers)
+    assert listing.status_code == 200
+    assert listing.json()[0]["title"] == "监管发布加密资产风险提示"
+
+    factor = client.get(
+        "/api/news/factors",
+        params={
+            "symbol": "CRYPTO:BTC/USDT",
+            "window": "4h",
+            "as_of": "2026-10-20T13:00:00Z",
+        },
+        headers=headers,
+    )
+    assert factor.status_code == 200, factor.text
+    data = factor.json()
+    assert data["event_count"] == 1
+    assert data["policy_risk"] == 0.765  # 0.85 * 0.9
+    assert data["sentiment"] < 0
+
+    # 同一标题+发布时间重复入库应触发唯一约束（由 raw_hash 拦截）
+    duplicate = client.post(
+        "/api/news/items",
+        json={
+            "title": "监管发布加密资产风险提示",
+            "symbols": ["CRYPTO:BTC/USDT"],
+            "published_at": "2026-10-20T12:00:00Z",
+            "effective_at": "2026-10-20T12:00:00Z",
+        },
+        headers=headers,
+    )
+    assert duplicate.status_code >= 400

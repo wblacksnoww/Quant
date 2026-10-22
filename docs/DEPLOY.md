@@ -353,8 +353,9 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compos
 
 - 回测队列与纸盘/实盘会话协调依赖**共享数据库**：多副本/多 worker 必须使用
   PostgreSQL；SQLite 只适合单实例（文件锁无法跨主机协调）。
-- 新增的三张表由 alembic 自动创建：`backtest_jobs`（持久化回测队列）、
-  `session_leases`（会话租约 + 状态快照）、`session_commands`（跨实例控制命令）。
+- 新增的表由 alembic 自动创建：`backtest_jobs`（持久化回测队列）、
+  `session_leases`（会话租约 + 状态快照）、`session_commands`（跨实例控制命令）、
+  `news_items`（新闻/政策原始条目）。
 - 同一个纸盘 `run_id` / 实盘凭证在任意时刻只会被一个实例持有；租约默认 8 秒过期，
   心跳 1 秒续租。实例宕机后最多 8 秒其他实例可接管。
 - `stop/pause/resume/switch` 在非持有实例上会写入命令并立即返回，持有实例在

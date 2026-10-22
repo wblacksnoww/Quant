@@ -40,6 +40,8 @@ from ..core.portfolio import Account
 from ..core.types import Bar, Fill, Order, OrderType, Position, Side
 from ..execution.broker import Broker
 from ..execution.rules import round_down_lot
+from ..news.factors import NewsFactor
+from .exits import ExitDecision, ExitReason, pick_exit
 
 log = logging.getLogger(__name__)
 
@@ -122,6 +124,7 @@ class StrategyContext:
         bus: EventBus,
         strategy_name: str = "",
         risk: Any = None,
+        news: Any = None,
     ) -> None:
         self.account = account
         self.broker = broker
@@ -132,6 +135,7 @@ class StrategyContext:
         self._frames: dict[str, pd.DataFrame] = dict(frames)
         self._index: dict[str, int] = {}
         self._current_dt: datetime | None = None
+        self._news = news
         self.state: dict[str, Any] = {}  # 策略可自由使用的持久化黑盒
 
     # -- 时间 -------------------------------------------------------------- #
@@ -205,6 +209,12 @@ class StrategyContext:
 
     def symbols(self) -> list[str]:
         return list(self._frames)
+
+    def news_factor(self, symbol: str, window: str = "1h") -> NewsFactor:
+        """当前 bar 时点可见的新闻/政策因子（PIT，无新闻返回中性值）。"""
+        if self._news is None:
+            return NewsFactor.neutral(symbol, self.now, window)
+        return self._news.factor(symbol, as_of=self.now, window=window)
 
     # -- 账户 -------------------------------------------------------------- #
     @property
@@ -369,6 +379,9 @@ class Strategy(ABC):
     def log(self, message: str, level: str = "info") -> None:
         self.ctx.log(message, level)
 
+    def news(self, symbol: str, window: str = "1h") -> NewsFactor:
+        return self.ctx.news_factor(symbol, window)
+
     def has_open_order(self, symbol: str | None = None) -> bool:
         """是否已有在途委托（避免同一根 bar 重复下单）。"""
         orders = self.ctx.open_orders
@@ -386,12 +399,13 @@ class Strategy(ABC):
         percent: float | None = None,
         limit_price: float | None = None,
         tag: str = "",
+        reason: ExitReason | str | None = None,
     ) -> Order | None:
         """买入。``quantity`` / ``amount`` / ``percent`` 三选一，按优先级取。"""
         qty = self._size(symbol, Side.BUY, quantity, amount, percent)
         if qty <= 0:
             return None
-        return self._order(symbol, Side.BUY, qty, limit_price, tag)
+        return self._order(symbol, Side.BUY, qty, limit_price, self._tag(tag, reason))
 
     def sell(
         self,
@@ -403,6 +417,7 @@ class Strategy(ABC):
         limit_price: float | None = None,
         close_only: bool = True,
         tag: str = "",
+        reason: ExitReason | str | None = None,
     ) -> Order | None:
         """卖出。默认不裸卖空（A 股融券需单独适配器）。"""
         pos = self.ctx.position(symbol)
@@ -411,13 +426,44 @@ class Strategy(ABC):
             qty = min(qty, pos.available)
         if qty <= 0:
             return None
-        return self._order(symbol, Side.SELL, qty, limit_price, tag)
+        return self._order(symbol, Side.SELL, qty, limit_price, self._tag(tag, reason))
 
-    def close(self, symbol: str, *, tag: str = "清仓") -> Order | None:
+    def close(
+        self,
+        symbol: str,
+        *,
+        tag: str = "清仓",
+        fraction: float = 1.0,
+        reason: ExitReason | str | None = None,
+    ) -> Order | None:
+        """清仓或按 ``fraction`` 部分退出（0~1）。"""
         pos = self.ctx.position(symbol)
         if pos.available <= 0:
             return None
-        return self._order(symbol, Side.SELL, pos.available, None, tag)
+        ratio = min(1.0, max(0.0, float(fraction)))
+        qty = pos.available if ratio >= 1.0 else round_down_lot(pos.available * ratio, symbol)
+        if qty <= 0:
+            return None
+        return self._order(symbol, Side.SELL, qty, None, self._tag(tag, reason))
+
+    def apply_exit(self, symbol: str, decisions: list[ExitDecision | None]) -> Order | None:
+        """把多条退出规则收敛成唯一动作并执行。"""
+        decision = pick_exit(decisions)
+        if decision is None or self.has_open_order(symbol):
+            return None
+        if decision.action == "close":
+            return self.close(symbol, reason=decision.reason)
+        return self.sell(
+            symbol,
+            percent=min(1.0, max(0.0, decision.fraction)),
+            reason=decision.reason,
+        )
+
+    @staticmethod
+    def _tag(tag: str, reason: ExitReason | str | None) -> str:
+        if reason is None:
+            return tag
+        return reason.value if isinstance(reason, ExitReason) else str(reason)
 
     def order_target_percent(self, symbol: str, target: float, *, tag: str = "") -> Order | None:
         """调仓到目标权重（占当前权益）。正数买入、0 清仓。"""

@@ -6,6 +6,7 @@ import pandas as pd
 
 from ...core.types import Bar
 from ..base import ParamSpec, Strategy
+from ..exits import ExitDecision, ExitReason
 from ..indicators import crossover, sma
 from ..registry import register_strategy
 
@@ -46,25 +47,35 @@ class DualMaStrategy(Strategy):
         if self.has_open_order(bar.symbol):
             return
 
-        # --- 持仓管理：止损 / 止盈 -------------------------------------- #
+        # --- 持仓管理：多条退出规则 → 一个执行动作 ---------------------- #
+        decisions: list[ExitDecision] = []
         if not pos.is_flat and pos.available > 0:
             cost = pos.avg_cost
             if cost > 0:
                 pnl = bar.close / cost - 1.0
                 if self.params["stop_loss"] > 0 and pnl <= -self.params["stop_loss"]:
                     self.log(f"{bar.symbol} 触发止损 {pnl:.2%}")
-                    self.close(bar.symbol, tag="stop_loss")
-                    return
+                    decisions.append(
+                        ExitDecision("close", ExitReason.STOP_LOSS, priority=100, detail={"pnl": pnl})
+                    )
                 if self.params["take_profit"] > 0 and pnl >= self.params["take_profit"]:
                     self.log(f"{bar.symbol} 触发止盈 {pnl:.2%}")
-                    self.close(bar.symbol, tag="take_profit")
-                    return
+                    decisions.append(
+                        ExitDecision("close", ExitReason.TAKE_PROFIT, priority=80, detail={"pnl": pnl})
+                    )
+        if signal < 0 and not pos.is_flat:
+            decisions.append(ExitDecision("close", ExitReason.SIGNAL, priority=50))
+        if decisions:
+            self.apply_exit(bar.symbol, decisions)
+            return
 
-        # --- 信号 -------------------------------------------------------- #
+        # --- 入场 -------------------------------------------------------- #
         if signal > 0 and pos.is_flat:
-            self.buy(bar.symbol, percent=float(self.params["position_pct"]), tag="golden_cross")
-        elif signal < 0 and not pos.is_flat:
-            self.close(bar.symbol, tag="death_cross")
+            self.buy(
+                bar.symbol,
+                percent=float(self.params["position_pct"]),
+                tag="golden_cross",
+            )
 
 
 __all__ = ["DualMaStrategy"]

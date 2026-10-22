@@ -9,6 +9,7 @@ import {
   IconFlask,
   IconLayers,
   IconLogout,
+  IconNews,
   IconPlay,
   IconSettings,
   IconShield,
@@ -18,6 +19,7 @@ import {
 const PAGES: Record<string, { title: string; sub: string }> = {
   '/': { title: '总览', sub: '账户、运行与系统状态一屏掌握' },
   '/market': { title: '行情研究', sub: 'A 股日线与本地数据缓存' },
+  '/news': { title: '新闻政策', sub: '新闻/政策因子：情绪、风险与 Point-in-Time 回测' },
   '/market/': { title: '标的详情', sub: 'K 线、交易规则与一键启动模拟/实盘' },
   '/strategies': { title: '策略库', sub: '内置策略与参数说明' },
   '/strategies/blueprint': { title: '蓝图编辑器', sub: '节点数据流图，编译为 spec v2' },
@@ -35,6 +37,7 @@ const NAV = [
     section: '交易研究',
     items: [
       { to: '/market', label: '行情', icon: IconCandles },
+      { to: '/news', label: '新闻', icon: IconNews },
       { to: '/strategies', label: '策略库', icon: IconLayers },
       { to: '/backtest', label: '回测', icon: IconFlask },
       { to: '/paper', label: '模拟盘', icon: IconPlay },

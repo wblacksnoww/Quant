@@ -76,11 +76,14 @@ class PaperEngine(BaseEngine):
         bus: EventBus | None = None,
         recorder: Any = None,
         resume: PaperResumeState | None = None,
+        news: Any = None,
     ) -> None:
         super().__init__(config)
         self.data = data
         self.options = options or PaperOptions()
         self.resume_state = resume
+        self.news = news
+        self._news_refresh_at = 0.0
         self.bus = bus or EventBus(f"paper:{config.run_id}")
         self.recorder = recorder
         self._recorder_events = EventRecorder(self.bus, limit=5000)
@@ -221,6 +224,7 @@ class PaperEngine(BaseEngine):
             recorder=self.recorder,
             # replay 逐日推进，日终即真实日终；live 由引擎在跨日时撤单
             auto_end_of_day=self.options.mode == "replay",
+            news=self.news,
         )
 
     def _restore_account(self, account: Account) -> None:
@@ -331,6 +335,7 @@ class PaperEngine(BaseEngine):
 
         while not self.cancelled:
             self._wait_if_paused()
+            self._refresh_news()
             now = datetime.now(CN_TZ)
             today = now.date()
 
@@ -387,6 +392,18 @@ class PaperEngine(BaseEngine):
     @staticmethod
     def _update_today_row(frame: pd.DataFrame, price: float) -> pd.DataFrame:
         return update_today_row(frame, price)
+
+    def _refresh_news(self, interval: float = 60.0) -> None:
+        if self.news is None or not hasattr(self.news, "refresh"):
+            return
+        now = time.monotonic()
+        if now - self._news_refresh_at < interval:
+            return
+        self._news_refresh_at = now
+        try:
+            self.news.refresh()
+        except Exception:  # noqa: BLE001
+            log.warning("刷新新闻因子失败", exc_info=True)
 
     def _sleep(self, seconds: float) -> None:
         end = time.monotonic() + seconds

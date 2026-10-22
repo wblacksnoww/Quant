@@ -411,3 +411,54 @@ class BacktestJob(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, index=True, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
+
+
+# --------------------------------------------------------------------------- #
+# 新闻与政策因子
+# --------------------------------------------------------------------------- #
+
+
+class NewsItem(Base):
+    """一条新闻/政策原始条目（Point-in-Time：策略只能看到 effective_at 之前的数据）。"""
+
+    __tablename__ = "news_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source: Mapped[str] = mapped_column(String(64), default="manual", nullable=False)
+    external_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    url: Mapped[str] = mapped_column(String(600), default="", nullable=False)
+    published_at: Mapped[datetime] = mapped_column(DateTime, index=True, nullable=False)
+    ingested_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
+    effective_at: Mapped[datetime] = mapped_column(DateTime, index=True, nullable=False)
+    symbols: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    market: Mapped[str] = mapped_column(String(16), default="", nullable=False)
+    event_type: Mapped[str] = mapped_column(String(32), default="other", nullable=False)
+    sentiment: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    policy_risk: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=0.5, nullable=False)
+    raw_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "source": self.source,
+            "external_id": self.external_id,
+            "title": self.title,
+            "summary": self.summary,
+            "url": self.url,
+            "published_at": self.published_at.isoformat() if self.published_at else None,
+            "ingested_at": self.ingested_at.isoformat() if self.ingested_at else None,
+            "effective_at": self.effective_at.isoformat() if self.effective_at else None,
+            "symbols": self.symbols or [],
+            "market": self.market,
+            "event_type": self.event_type,
+            "sentiment": self.sentiment,
+            "policy_risk": self.policy_risk,
+            "confidence": self.confidence,
+            "created_by": self.created_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }

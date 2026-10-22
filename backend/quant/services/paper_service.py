@@ -7,13 +7,14 @@ CLI 或后台任务也能直接复用。
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from ..core.errors import ConflictError, InvalidRequest, NotFoundError, PermissionDenied
 from ..core.events import EventBus
 from ..engine.base import EngineConfig
 from ..engine.paper import PaperEngine, PaperOptions, PaperResumeState
+from ..news.provider import NewsFactorProvider
 from ..storage.recorder import RunRecorder
 from ..storage.repositories.runs import RunRepository
 from .backtest_service import build_engine_config
@@ -106,6 +107,12 @@ def start(ctx: Any, *, user_id: int, body: Any) -> str:
 
     bus = EventBus(f"paper:{config.run_id}")
     unwire = bus_bridge(bus, ctx.hub, source="paper", run_id=config.run_id, user_id=user_id)
+    news = NewsFactorProvider(
+        ctx.db,
+        config.symbols,
+        start=datetime.combine(config.start, time.min),
+        end=None if body.mode == "live" else datetime.combine(config.end, time.max),
+    )
     engine = PaperEngine(
         config,
         ctx.data,
@@ -118,6 +125,7 @@ def start(ctx: Any, *, user_id: int, body: Any) -> str:
         ),
         bus=bus,
         recorder=recorder,
+        news=news,
     )
     _wire_cleanup(engine, unwire)
     try:
@@ -270,6 +278,12 @@ def continue_run(ctx: Any, *, user_id: int, run_id: str) -> dict[str, Any]:
 
     bus = EventBus(f"paper:{run_id}")
     unwire = bus_bridge(bus, ctx.hub, source="paper", run_id=run_id, user_id=user_id)
+    news = NewsFactorProvider(
+        ctx.db,
+        config.symbols,
+        start=datetime.combine(config.start, time.min),
+        end=None if mode == "live" else datetime.combine(config.end, time.max),
+    )
     engine = PaperEngine(
         config,
         ctx.data,
@@ -283,6 +297,7 @@ def continue_run(ctx: Any, *, user_id: int, run_id: str) -> dict[str, Any]:
         bus=bus,
         recorder=recorder,
         resume=resume_state,
+        news=news,
     )
     _wire_cleanup(engine, unwire)
     try:

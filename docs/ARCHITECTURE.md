@@ -469,3 +469,18 @@ src/
 - 单进程内存态：WS 事件、纸盘与实盘会话都不跨副本；后端多实例部署需要粘性会话或事件总线外置。
   实盘在多副本下同一账号可能各开一个会话——生产请用单实例或外部锁。
 - 审计哈希链防"悄悄改账"，但拥有数据库写权限者可整链重算——它是证据链，不是权限隔离。
+
+
+## 新闻/政策因子与统一退出
+
+- `quant/news/`：`NewsProvider`（当前为手工录入）→ `news_items` → `compute_factor`
+  → `NewsFactor`（PIT 聚合）；`NewsFactorProvider` 由引擎创建，按当前 bar 时间计算，
+  实盘每 60 秒刷新一次。
+- `StrategyContext.news_factor(symbol, window)` 是策略唯一入口；没有新闻时返回中性因子，
+  不会因为新闻源故障阻断交易。
+- `news_dual_ma` 策略演示：金叉 + 情绪/政策风险门槛入场；止损、止盈、政策风险、
+  负面情绪、死叉五类退出规则统一走 `apply_exit`。
+- `quant/strategy/exits.py`：`ExitReason` / `ExitDecision` / `pick_exit`；订单 `tag`
+  记录退出原因，便于审计与归因。
+- 回测 PIT 规则：只使用 `effective_at <= bar_time` 的条目；手工录入时“生效时间”
+  默认等于发布时间，历史补录必须显式填写，否则会被视为当前才可见。

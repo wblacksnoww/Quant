@@ -163,3 +163,10 @@ export const IconWifi = (p: IconProps) => (
     <path d="M12 19h.01" />
   </Base>
 )
+
+export const IconNews = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M5 4h11l3 3v13H5z" />
+    <path d="M8 9h8M8 13h8M8 17h5" />
+  </Base>
+)

@@ -53,11 +53,13 @@ worker 原子认领（并发上限 `QUANT_MAX_CONCURRENT_BACKTESTS`，队列上�
 | --- | --- |
 | `backend/pyproject.toml` | 依赖 + ruff/mypy/pytest 配置 + `quant`/`quant-server` 入口（**含未使用的 alembic/orjson，见 §7**） |
 | `backend/quant/` | 100+ 个 .py，约 18k 行，上表全部内核 |
-| `backend/tests/` | 19 文件（18 个 test_*.py + conftest）/ pytest 收集 **251** 项 |
+| `backend/tests/` | 19 文件（18 个 test_*.py + conftest）/ pytest 收集 **256** 项 |
 | `backend/alembic/` | alembic 配置 + 初始迁移（生产启动自动 upgrade，旧库自动 stamp） |
 | `.github/workflows/ci.yml` | CI：pytest + 构建前后端镜像推送 GHCR（main 分支） |
 | `backend/quant/execution/adapters/` | 实盘适配器：`base`(协议) `ccxt`(虚拟货币) `miniqmt`(A股骨架) |
 | `backend/quant/funds.py` | 场外基金流水聚合（纯函数，不进引擎） |
+| `backend/quant/news/` | 新闻/政策原始条目 → PIT 因子计算与策略提供器 |
+| `backend/quant/strategy/exits.py` | 统一退出原因/决策/优先级 |
 | `backend/quant/services/` | 应用服务层 + 会话租约/命令协调 |
 | `backend/quant/storage/` | 仓储按聚合拆包 + RunRecorder + 回测任务队列 |
 | `backend/quant/engine/live.py` | 实盘引擎 + 按用户隔离的 LiveManager |

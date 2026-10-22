@@ -63,11 +63,14 @@ class LiveEngine(BaseEngine):
         bus: EventBus | None = None,
         recorder: Any = None,
         credential_id: int | None = None,
+        news: Any = None,
     ) -> None:
         super().__init__(config)
         self.data = data
         self.adapter = adapter
         self.credential_id = credential_id
+        self.news = news
+        self._news_refresh_at = 0.0
         self.options = options or LiveOptions()
         self.bus = bus or EventBus(f"live:{config.run_id}")
         self.recorder = recorder
@@ -200,6 +203,7 @@ class LiveEngine(BaseEngine):
             strategy_name=cfg.strategy_id,
             recorder=self.recorder,
             auto_end_of_day=False,  # 跨日才撤 DAY 单
+            news=self.news,
         )
 
     # ------------------------------------------------------------------ #
@@ -212,6 +216,7 @@ class LiveEngine(BaseEngine):
 
         while not self.cancelled:
             self._wait_if_paused()
+            self._refresh_news()
             now = datetime.now(CN_TZ)
             today = now.date()
 
@@ -293,6 +298,18 @@ class LiveEngine(BaseEngine):
         self.reconcile_at = datetime.now(CN_TZ).isoformat(timespec="seconds")
         if not report["ok"]:
             log.warning("实盘对账差异 %s", report)
+
+    def _refresh_news(self, interval: float = 60.0) -> None:
+        if self.news is None or not hasattr(self.news, "refresh"):
+            return
+        now = time.monotonic()
+        if now - self._news_refresh_at < interval:
+            return
+        self._news_refresh_at = now
+        try:
+            self.news.refresh()
+        except Exception:  # noqa: BLE001
+            log.warning("刷新新闻因子失败", exc_info=True)
 
     def _sleep(self, seconds: float) -> None:
         end = time.monotonic() + seconds

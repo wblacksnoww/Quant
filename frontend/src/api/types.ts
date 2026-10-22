@@ -672,3 +672,11 @@ export interface WsEvent<T = Record<string, unknown>> {
   ts: string
   payload: T
 }
+
+// --------------------------------------------------------------------------- //
+// 新闻 / 政策
+// --------------------------------------------------------------------------- //
+
+export type NewsItem = Schemas['NewsItemOut']
+export type NewsItemInput = Schemas['NewsItemIn']
+export type NewsFactor = Schemas['NewsFactorOut']

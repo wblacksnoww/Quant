@@ -10,12 +10,14 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from datetime import date
+from datetime import date, datetime
+from datetime import time as dt_time
 from typing import Any
 
 from ..core.events import EventBus
 from ..engine import BacktestEngine
 from ..engine.base import EngineConfig, EngineResult
+from ..news.provider import NewsFactorProvider
 from ..services.event_bridge import bus_bridge
 from ..storage.backtest_jobs import BacktestJobRepository
 from ..storage.models import utcnow_naive
@@ -120,7 +122,13 @@ class BacktestManager:
         recorder.start()
 
         bus = EventBus(f"backtest:{config.run_id}")
-        engine = BacktestEngine(config, self.ctx.data, recorder=recorder, bus=bus)
+        news = NewsFactorProvider(
+            self.ctx.db,
+            config.symbols,
+            start=datetime.combine(config.start, dt_time.min),
+            end=datetime.combine(config.end, dt_time.max),
+        )
+        engine = BacktestEngine(config, self.ctx.data, recorder=recorder, bus=bus, news=news)
         unwire = bus_bridge(
             bus, self.ctx.hub, source=config.run_id, run_id=config.run_id, user_id=config.user_id
         )

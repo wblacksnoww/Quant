@@ -46,6 +46,13 @@
   **同一券商凭证同时只允许一个会话**（避免两套策略争抢同一笔真实资金），
   不同凭证（不同资金账户）可以并行。
 - **模拟盘双模式**：`replay` 按倍速回放历史行情；`live` 盘中轮询快照（数据源不支持时回退最新收盘价并告警）。**同一账号可同时运行多个会话**（每个会话独立虚拟资金，默认上限 5 个）；支持**暂停/继续**，暂停保留账户、持仓与策略进度，「停止」后也能在历史会话里点「继续」从停止处接着跑（恢复现金、持仓与回放进度，沿用同一运行 ID）；历史会话可查看完整详情（指标、权益曲线、成交/委托/持仓/日志/配置）。
+- **新闻/政策因子**：录入新闻/政策条目（标题、情绪、政策风险、置信度、生效时间），
+  后端按 Point-in-Time 聚合成 `sentiment` / `policy_risk` / `confidence` 因子；回测只使用
+  当时可见的新闻，策略通过 `StrategyContext.news_factor()` 读取，不在 bar 内调外部 API。
+  内置「双均线 + 新闻政策」策略：金叉叠加新闻门槛，政策风险/负面情绪触发统一退出。
+- **统一退出决策**：`ExitPolicy` 把止损、止盈、信号、新闻、政策风险收敛成唯一动作，
+  订单携带结构化退出原因（`stop_loss` / `policy_risk` / `news_risk` / `signal` …），
+  避免多个卖出接口和重复下单。
 - **策略可插拔**：`ParamSpec` 自描述参数，前端自动渲染表单；新增策略无需改 API 或前端。
   另有「条件拼装策略」：网页下拉框拼买卖规则（spec v1）或 **蓝图编辑器**拖节点连线
   （spec v2 节点数据流图，React Flow 画布 + 三模板），免代码创建、存库、直接回测/纸盘。
@@ -301,6 +308,10 @@ GET  /api/market/bars            日线（symbol=MARKET:CODE）
 GET  /api/market/klines          任意周期 K 线（1m/5m/15m/30m/60m/1d/1w/1M）
 GET  /api/market/indices         指数快照（12 个常用指数）
 GET  /api/market/ranking         排行榜（今日/本周/本月 × 涨幅/成交额）
+GET  /api/news/items             新闻/政策条目（可按标的过滤）
+POST /api/news/items             录入新闻/政策（情绪、政策风险、生效时间）
+GET  /api/news/factors           Point-in-Time 新闻因子（情绪/政策风险/置信度）
+DELETE /api/news/items/{id}      删除新闻条目
 GET  /api/market/quote           实时快照（多源聚合，含名称/涨跌/量额/market/currency）
 GET  /api/market/search          标的检索（代码/名称，可带 market=CN|US|HK）
 POST /api/paper/start            启动模拟盘（同账号可多开）
@@ -336,7 +347,7 @@ cd backend
 条件拼装策略（spec 白名单 + 用户隔离 + 引擎端到端；v1 条件与 v2 蓝图节点图）、
 虚拟货币数据源与 T+0/TIF、场外基金申赎聚合、实盘适配器与 LiveBroker 状态机、
 运行中策略切换、指数/排行榜/分钟线契约。
-后端 pytest 全套 **251 项**（`pytest --collect-only` 与 README/文档口径一致）。
+后端 pytest 全套 **256 项**（`pytest --collect-only` 与 README/文档口径一致）。
 
 ## 许可
 

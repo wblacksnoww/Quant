@@ -6,13 +6,23 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ApiError, credentialApi, liveApi, marketApi, paperApi, riskApi, strategyApi } from '../api/client'
+import {
+  ApiError,
+  credentialApi,
+  liveApi,
+  marketApi,
+  newsApi,
+  paperApi,
+  riskApi,
+  strategyApi,
+} from '../api/client'
 import type {
   BarsResponse,
   Credential,
   CustomStrategy,
   InstrumentInfo,
   LiveAdapter,
+  NewsFactor,
   PaperStartRequest,
   RiskPresets,
   Strategy,
@@ -23,6 +33,7 @@ import { IconRefresh } from '../components/icons'
 import {
   fmtCompact,
   fmtNumber,
+  fmtPct,
   fmtPrice,
   fmtSignedPct,
   marketLabel,
@@ -123,6 +134,7 @@ export function InstrumentPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [barsLoading, setBarsLoading] = useState(false)
+  const [newsFactor, setNewsFactor] = useState<NewsFactor | null>(null)
 
   const [strategies, setStrategies] = useState<Strategy[]>([])
   const [customs, setCustoms] = useState<CustomStrategy[]>([])
@@ -147,6 +159,21 @@ export function InstrumentPage() {
 
   const strategy = useMemo(() => strategies.find((item) => item.id === strategyId), [strategies, strategyId])
   const brokerCredentials = useMemo(() => credentials.filter((item) => item.kind === 'broker'), [credentials])
+
+  useEffect(() => {
+    let cancelled = false
+    void newsApi
+      .factor(symbol, '1h')
+      .then((value) => {
+        if (!cancelled) setNewsFactor(value)
+      })
+      .catch(() => {
+        if (!cancelled) setNewsFactor(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [symbol])
 
   // ---- 基础数据（标的规则 + 策略/风控/实盘配置） --------------------------- //
   useEffect(() => {
@@ -467,6 +494,37 @@ export function InstrumentPage() {
           sub={`成交量 ${fmtCompact(info?.volume ?? null)}`}
         />
       </div>
+
+      <Card
+        title="新闻/政策因子"
+        description="1h 窗口 · 情绪/政策风险来自「新闻」页；回测按有效时间 Point-in-Time 对齐"
+        actions={
+          <Button size="sm" variant="ghost" onClick={() => navigate('/news')}>
+            管理新闻
+          </Button>
+        }
+      >
+        <div className="grid grid-4">
+          <Stat
+            label="新闻情绪"
+            value={fmtSignedPct(newsFactor?.sentiment ?? 0)}
+            sub={`${newsFactor?.event_count ?? 0} 条事件`}
+            tone={(newsFactor?.sentiment ?? 0) >= 0 ? 'up' : 'down'}
+          />
+          <Stat
+            label="政策风险"
+            value={fmtPct(newsFactor?.policy_risk ?? 0)}
+            sub="窗口内最大风险"
+            tone={(newsFactor?.policy_risk ?? 0) > 0.5 ? 'down' : undefined}
+          />
+          <Stat label="置信度" value={fmtPct(newsFactor?.confidence ?? 0)} sub="最高条目" />
+          <Stat
+            label="新闻窗口"
+            value={newsFactor?.window ?? '1h'}
+            sub={newsFactor?.as_of ? 'PIT 计算' : '暂无新闻'}
+          />
+        </div>
+      </Card>
 
       <Card
         title="K 线"
