@@ -60,9 +60,20 @@ def upgrade_database(engine: Engine) -> str:
         log.info("数据库迁移：已升级到 head")
         return "upgraded"
     if tables:
-        # 旧库由 create_all 建出：标记为当前版本，后续走增量迁移
-        command.stamp(config, "head")
-        log.info("数据库迁移：旧库已标记为 head")
+        # 旧库由 create_all 建出、没有 alembic_version：先判断它已经具备哪些
+        # 迁移的表，再从对应版本继续升级。直接 stamp head 会跳过后续新增表
+        # （例如 news_items / watchlist_items），导致"更新后功能缺表"。
+        target = "2e6eb884e37d"  # initial schema
+        if "watchlist_items" in tables:
+            target = "head"
+        elif "news_items" in tables:
+            target = "b7c2d9e1f4a6"
+        elif "session_leases" in tables or "backtest_jobs" in tables:
+            target = "9b1f4c2d7e30"
+        command.stamp(config, target)
+        if target != "head":
+            command.upgrade(config, "head")
+        log.info("数据库迁移：旧库已标记为 %s 并升级到 head", target)
         return "stamped"
     command.upgrade(config, "head")
     log.info("数据库迁移：空库已建表并标记 head")
