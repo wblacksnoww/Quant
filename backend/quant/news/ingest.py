@@ -216,6 +216,7 @@ class NewsIngestionService:
             return False
         if self._trigger_thread is not None and self._trigger_thread.is_alive():
             return False
+        log.info("手动触发新闻抓取")
         self._trigger_thread = threading.Thread(
             target=self.run_once, name="news-ingestion-manual", daemon=True
         )
@@ -271,6 +272,13 @@ class NewsIngestionService:
             self._last_result = result
             self._last_at = result["finished_at"]
             self._run_lock.release()
+            log.info(
+                "新闻抓取完成：源 %d 个，新增 %d 条，跳过 %d 条，错误 %d 个",
+                len(result["feeds"]),
+                result["inserted"],
+                result["skipped"],
+                result["errors"],
+            )
         return result
 
     def _store(self, feed: dict[str, Any], items: list[RawNews]) -> tuple[int, int]:

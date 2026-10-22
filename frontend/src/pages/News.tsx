@@ -26,6 +26,7 @@ function nowLocal(): string {
 
 export function NewsPage() {
   const [symbol, setSymbol] = useState('CRYPTO:BTC/USDT')
+  const [symbolInput, setSymbolInput] = useState('CRYPTO:BTC/USDT')
   const [factorWindow, setFactorWindow] = useState('1h')
   const [factor, setFactor] = useState<NewsFactor | null>(null)
   const [items, setItems] = useState<NewsItem[]>([])
@@ -48,6 +49,13 @@ export function NewsPage() {
   const [url, setUrl] = useState('')
 
   const load = useCallback(async () => {
+    if (!symbol.trim()) {
+      setFactor(null)
+      setItems([])
+      setLoading(false)
+      setError('请输入标的代码')
+      return
+    }
     setLoading(true)
     setError('')
     try {
@@ -92,6 +100,21 @@ export function NewsPage() {
       notify('error', err instanceof ApiError ? err.message : '抓取失败')
     } finally {
       setFetching(false)
+    }
+  }
+
+  const applySymbol = () => {
+    const next = symbolInput.trim()
+    if (!next) {
+      setError('请输入标的代码')
+      setFactor(null)
+      setItems([])
+      return
+    }
+    if (next === symbol) {
+      void load()
+    } else {
+      setSymbol(next)
     }
   }
 
@@ -162,7 +185,17 @@ export function NewsPage() {
       >
         <div className="row wrap" style={{ gap: 10, alignItems: 'flex-end' }}>
           <Field label="标的" style={{ flex: '1 1 260px', maxWidth: 360 }}>
-            <input className="input mono" value={symbol} onChange={(e) => setSymbol(e.target.value.trim())} />
+            <input
+              className="input mono"
+              value={symbolInput}
+              onChange={(e) => setSymbolInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  applySymbol()
+                }
+              }}
+            />
           </Field>
           <Field label="聚合窗口">
             <select className="select" value={factorWindow} onChange={(e) => setFactorWindow(e.target.value)}>
@@ -173,7 +206,7 @@ export function NewsPage() {
               ))}
             </select>
           </Field>
-          <Button variant="primary" onClick={() => void load()} loading={loading}>
+          <Button variant="primary" onClick={applySymbol} loading={loading}>
             查询因子
           </Button>
         </div>
