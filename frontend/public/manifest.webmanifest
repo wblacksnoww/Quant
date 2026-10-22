@@ -8,11 +8,13 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone"],
   "orientation": "any",
   "background_color": "#080b11",
   "theme_color": "#0d121b",
-  "categories": ["finance", "productivity"],
+  "categories": [
+    "finance",
+    "productivity"
+  ],
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -34,8 +36,20 @@
     }
   ],
   "shortcuts": [
-    { "name": "行情", "short_name": "行情", "url": "/market" },
-    { "name": "模拟盘", "short_name": "模拟盘", "url": "/paper" },
-    { "name": "新闻政策", "short_name": "新闻", "url": "/news" }
+    {
+      "name": "行情",
+      "short_name": "行情",
+      "url": "/market"
+    },
+    {
+      "name": "模拟盘",
+      "short_name": "模拟盘",
+      "url": "/paper"
+    },
+    {
+      "name": "新闻政策",
+      "short_name": "新闻",
+      "url": "/news"
+    }
   ]
 }
