@@ -12,11 +12,12 @@ ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_INDEX_URL=${PIP_INDEX
 
 WORKDIR /app
 COPY deploy/requirements.lock.txt /app/requirements.lock.txt
-RUN pip install --no-cache-dir -r /app/requirements.lock.txt
+# setuptools 为 --no-build-isolation 构建所需；pybind11（lock 内）编译扩展所需
+RUN pip install --no-cache-dir -r /app/requirements.lock.txt setuptools
 
 COPY backend /app/backend
-# --no-build-isolation：pybind11 已在 lock 依赖里，避免重复下载
-RUN pip install --no-cache-dir --no-deps --no-build-isolation /app/backend     && python -c "from quant import _core"  # 构建产物自检
+RUN pip install --no-cache-dir --no-deps --no-build-isolation /app/backend \
+    && python -c "from quant import _core"  # 构建产物自检
 
 FROM ${PYTHON_IMAGE} AS runtime
 
@@ -51,7 +52,8 @@ COPY backend /app/backend
 COPY --from=builder /usr/local/lib/python3.12/site-packages/quant/_core*.so /app/backend/quant/
 
 # 原生扩展自检：缺失时启动仍可运行（自动回退 Python），但这里显式失败以尽早暴露
-RUN python -c "from quant import core_native; assert core_native.HAS_NATIVE, core_native.NATIVE_ERROR"
+RUN cd /app/backend \
+    && python -c "from quant import core_native; assert core_native.HAS_NATIVE, core_native.NATIVE_ERROR"
 
 # 非 root 运行；数据目录归 quant 所有，命名卷首次挂载会继承该权限
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin quant \
