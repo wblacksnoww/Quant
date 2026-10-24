@@ -555,6 +555,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/gateway/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 启动网关 */
+        post: operations["start_api_gateway_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/gateway/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 网关状态 */
+        get: operations["status_api_gateway_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/gateway/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 停止网关 */
+        post: operations["stop_api_gateway_stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/live/adapters": {
         parameters: {
             query?: never;
@@ -2048,6 +2099,72 @@ export interface components {
             symbol: string;
             /** Trade Date */
             trade_date?: string | null;
+        };
+        /** GatewayStartRequest */
+        GatewayStartRequest: {
+            /**
+             * Bar Interval Sec
+             * @default 60
+             */
+            bar_interval_sec: number;
+            /**
+             * Confirm Live
+             * @default false
+             */
+            confirm_live: boolean;
+            /** Credential Id */
+            credential_id?: number | null;
+            /** Params */
+            params?: {
+                [key: string]: unknown;
+            };
+            /** Risk */
+            risk?: components["schemas"]["RiskRuleInput"][] | null;
+            /**
+             * Sandbox
+             * @default true
+             */
+            sandbox: boolean;
+            /**
+             * Strategy Type
+             * @enum {string}
+             */
+            strategy_type: "grid" | "breakout" | "tick_momentum";
+            /** Symbols */
+            symbols: string[];
+        };
+        /** GatewayStatusOut */
+        GatewayStatusOut: {
+            /** Bar Interval Sec */
+            bar_interval_sec?: number | null;
+            /** Mode */
+            mode?: string | null;
+            /** Positions */
+            positions?: {
+                [key: string]: unknown;
+            };
+            /** Recent Events */
+            recent_events?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Running
+             * @default false
+             */
+            running: boolean;
+            /** Stats */
+            stats?: {
+                [key: string]: unknown;
+            };
+            /** Strategy */
+            strategy?: string | null;
+            /**
+             * Strategy Running
+             * @default false
+             */
+            strategy_running: boolean;
+            /** Symbols */
+            symbols?: string[];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -4389,6 +4506,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_api_gateway_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GatewayStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GatewayStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_api_gateway_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GatewayStatusOut"];
+                };
+            };
+        };
+    };
+    stop_api_gateway_stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
                 };
             };
         };

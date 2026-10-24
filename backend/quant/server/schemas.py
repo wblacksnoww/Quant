@@ -791,3 +791,31 @@ class FeedbackStatusUpdate(BaseModel):
 
 class UserApprovalRequest(BaseModel):
     action: Literal["approve", "reject"]
+
+
+# --------------------------------------------------------------------------- #
+# C++ 交易网关
+# --------------------------------------------------------------------------- #
+
+
+class GatewayStartRequest(BaseModel):
+    strategy_type: Literal["grid", "breakout", "tick_momentum"]
+    params: dict[str, Any] = Field(default_factory=dict)
+    symbols: list[str] = Field(min_length=1, max_length=10)
+    bar_interval_sec: int = Field(default=60, ge=1, le=86400)
+    sandbox: bool = True
+    confirm_live: bool = False
+    credential_id: int | None = None
+    risk: list[RiskRuleInput] | None = None
+
+
+class GatewayStatusOut(BaseModel):
+    running: bool = False
+    mode: str | None = None
+    strategy: str | None = None
+    symbols: list[str] = Field(default_factory=list)
+    bar_interval_sec: int | None = None
+    positions: dict[str, Any] = Field(default_factory=dict)
+    strategy_running: bool = False
+    stats: dict[str, Any] = Field(default_factory=dict)
+    recent_events: list[dict[str, Any]] = Field(default_factory=list)

@@ -19,6 +19,7 @@ import type {
   CustomStrategy,
   DataCacheItem,
   FundNav,
+  GatewayStatus,
   FundPortfolio,
   FundTrade,
   Health,
@@ -464,4 +465,18 @@ export const newsApi = {
 export const watchlistApi = {
   list: () => request<string[]>('/watchlist'),
   replace: (symbols: string[]) => request<string[]>('/watchlist', { method: 'PUT', body: { symbols } }),
+}
+
+export const gatewayApi = {
+  status: () => request<GatewayStatus>('/gateway/status'),
+  start: (body: {
+    strategy_type: 'grid' | 'breakout' | 'tick_momentum'
+    params: Record<string, unknown>
+    symbols: string[]
+    bar_interval_sec: number
+    sandbox: boolean
+    confirm_live?: boolean
+    credential_id?: number | null
+  }) => request<GatewayStatus>('/gateway/start', { method: 'POST', body }),
+  stop: () => request<Message>('/gateway/stop', { method: 'POST' }),
 }

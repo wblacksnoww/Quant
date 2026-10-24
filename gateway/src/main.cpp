@@ -2,6 +2,7 @@
 // 用法：quant-gateway <config.json>
 // 纸面模式（mode=paper）下订单只写审计日志不进交易所；live 模式在阶段 B 接入。
 #include <atomic>
+#include <mutex>
 #include <chrono>
 #include <csignal>
 #include <fstream>
@@ -11,6 +12,7 @@
 #include <nlohmann/json.hpp>
 
 #include "audit.hpp"
+#include "rest_okx.hpp"
 #include "ipc.hpp"
 #include "risk.hpp"
 #include "tick_engine.hpp"
@@ -74,6 +76,23 @@ int run(int argc, char** argv) {
   qcore::RiskManager risk;
   risk.rules = risk_rules_from_json(config.value("risk", json::array()));
 
+  // live 模式：OKX 凭据经 env 传入（后端解密后下发，不落盘）
+  const bool live = mode == "live";
+  std::unique_ptr<OkxRest> rest;
+  if (live) {
+    std::string api_key = std::getenv("QUANT_OKX_API_KEY") ? std::getenv("QUANT_OKX_API_KEY") : "";
+    std::string secret_key = std::getenv("QUANT_OKX_SECRET") ? std::getenv("QUANT_OKX_SECRET") : "";
+    std::string passphrase = std::getenv("QUANT_OKX_PASSPHRASE") ? std::getenv("QUANT_OKX_PASSPHRASE") : "";
+    if (api_key.empty() || secret_key.empty() || passphrase.empty()) {
+      std::cerr << "live 模式需要 QUANT_OKX_API_KEY/SECRET/PASSPHRASE" << std::endl;
+      return 2;
+    }
+    const json& okx_cfg = config.at("okx");
+    bool sandbox = okx_cfg.value("sandbox", false);
+    std::string rest_host = okx_cfg.value("rest_host", "www.okx.com");
+    rest = std::make_unique<OkxRest>(rest_host, sandbox, api_key, secret_key, passphrase);
+  }
+
   TickEngine engine(config, account, risk);
 
   std::atomic<int64_t> tick_count{0};
@@ -122,6 +141,39 @@ int run(int argc, char** argv) {
   ipc.broadcast(status_event);
   audit.append(status_event);
 
+  // ---- 启动恢复（live）：余额 → 现金；持仓 → 账本镜像；挂单 → 审计 ---- //
+  if (live) {
+    try {
+      json balance = rest->fetch_balance();
+      if (balance.is_array() && !balance.empty()) {
+        for (const auto& detail : balance[0].value("details", json::array())) {
+          std::string ccy = detail.value("ccy", "");
+          double total = std::stod(detail.value("cashBal", "0"));
+          if (ccy == "USDT" && total > 0) {
+            account.cash = total;
+            account.initial_cash = total;
+          }
+          // 非 USDT 现货余额 → 持仓镜像（成本按市价 0 记，靠 tick mark）
+        }
+      }
+      json pending = rest->fetch_pending_orders();
+      std::cout << "[gateway] 启动恢复完成: cash=" << account.cash
+                << " 挂单 " << pending.size() << " 笔" << std::endl;
+      audit.append({{"type", "recovery"}, {"cash", account.cash}, {"pending", pending.size()}});
+    } catch (const std::exception& exc) {
+      std::cerr << "[gateway] 启动恢复失败: " << exc.what() << std::endl;
+      return 2;
+    }
+  }
+
+  // ---- 委托与回报（live）---- //
+  // clOrdId → 意图；私有 WS orders 频道回报 → apply_fill
+  std::mutex live_mutex;
+  struct LiveOrder { std::string symbol, side, tag; double qty = 0, filled = 0; };
+  std::map<std::string, LiveOrder> live_orders;  // clOrdId → order
+  int live_seq = 0;
+  std::unique_ptr<WsClient> private_ws;  // 先声明（公共行情 lambda 引用）
+
   // ---- 行情 WS ---- //
   WsEndpoint ep = split_ws_url(config.at("okx").value(
       "ws_public", "wss://ws.okx.com:8443/ws/v5/public"));
@@ -161,11 +213,26 @@ int run(int argc, char** argv) {
           };
           audit.append(order_event);
           ipc.broadcast(order_event);
-          // paper：到此为止；live：阶段 B 接 WS 下单
-          if (mode == "live") {
-            // TODO(阶段 B): OKX 私有 WS 下单
-          }
-          if (mode == "paper") {
+          if (live && private_ws) {
+            // 真实下单：私有 WS op:order（clOrdId 幂等，REST 兜底在 app 层后续加）
+            std::string cl_ord_id = "gw-" + std::to_string(++live_seq);
+            {
+              std::lock_guard<std::mutex> lock(live_mutex);
+              live_orders[cl_ord_id] = {intent.symbol, intent.side, intent.tag,
+                                        intent.qty, 0.0};
+            }
+            auto slash = intent.symbol.find('-');
+            json order_args = {
+                {"instId", intent.symbol},
+                {"tdMode", "cash"},
+                {"side", intent.side},
+                {"ordType", "market"},
+                {"sz", std::to_string(intent.qty)},
+                {"clOrdId", cl_ord_id},
+            };
+            private_ws->send(json({{"op", "order"}, {"args", json::array({order_args})}}).dump());
+            audit.append(order_event);
+          } else if (mode == "paper") {
             // 纸面撮合：按当前 tick 价成交，账本同步更新
             engine.apply_fill(intent.symbol, intent.side == "buy", intent.qty, tick.last,
                               tick.ts_ns);
@@ -209,6 +276,66 @@ int run(int argc, char** argv) {
 
   ws.start();
 
+  // ---- 私有 WS（live）：登录 → 订阅 orders → 订单回报/成交 ---- //
+  if (live) {
+    const json& okx_cfg = config.at("okx");
+    bool sandbox = okx_cfg.value("sandbox", false);
+    std::string priv_path = sandbox ? "/ws/v5/demo" : "/ws/v5/private";
+    WsEndpoint pep = split_ws_url(okx_cfg.value(
+        "ws_private", "wss://ws.okx.com:8443" + priv_path));
+    std::string api_key = std::getenv("QUANT_OKX_API_KEY") ? std::getenv("QUANT_OKX_API_KEY") : "";
+    std::string secret_key = std::getenv("QUANT_OKX_SECRET") ? std::getenv("QUANT_OKX_SECRET") : "";
+    std::string passphrase = std::getenv("QUANT_OKX_PASSPHRASE") ? std::getenv("QUANT_OKX_PASSPHRASE") : "";
+    std::string ts = iso_timestamp_utc();
+    std::string sign = hmac_sha256_b64(secret_key, ts + "GET" + "/users/self/verify");
+
+    private_ws = std::make_unique<WsClient>(pep.host, pep.port, pep.path,
+        [&](const std::string& msg) {
+          try {
+            json data = json::parse(msg);
+            std::string event = data.value("event", "");
+            if (event == "login" && data.value("code", "1") == "0") {
+              std::cerr << "[gateway] 私有 WS 登录成功" << std::endl;
+              private_ws->send(json({{"op", "subscribe"}, {"args", json::array({
+                  {{"channel", "orders"}, {"instType", "SPOT"}}})}}).dump());
+              return;
+            }
+            if (data.contains("arg") && data["arg"].value("channel", "") == "orders") {
+              for (const auto& item : data["data"]) {
+                std::string cl_ord_id = item.value("clOrdId", "");
+                std::string state = item.value("state", "");
+                double fill_sz = std::stod(item.value("fillSz", "0"));
+                double avg_px = std::stod(item.value("avgPx", "0"));
+                std::lock_guard<std::mutex> lock(live_mutex);
+                auto it = live_orders.find(cl_ord_id);
+                if (it == live_orders.end()) continue;
+                double delta = fill_sz - it->second.filled;
+                if (delta > 0) {
+                  int64_t ts_ns = std::stoll(item.value("uTime", "0")) * 1000000LL;
+                  engine.apply_fill(it->second.symbol, it->second.side == "buy", delta, avg_px, ts_ns);
+                  json fill_event = {{"type", "fill"}, {"mode", "live"},
+                                     {"symbol", it->second.symbol}, {"side", it->second.side},
+                                     {"qty", delta}, {"price", avg_px}, {"ts", ts_ns},
+                                     {"clOrdId", cl_ord_id}};
+                  audit.append(fill_event);
+                  ipc.broadcast(fill_event);
+                  it->second.filled = fill_sz;
+                }
+                if (state == "filled" || state == "canceled" || state == "mgn_canceled")
+                  live_orders.erase(cl_ord_id);
+              }
+            }
+          } catch (const std::exception& exc) {
+            std::cerr << "[gateway] 私有 WS 处理异常: " << exc.what() << std::endl;
+          }
+        });
+    private_ws->on_connected = [&](const std::function<void(const std::string&)>& send) {
+      send(json({{"op", "login"}, {"args", json::array({
+          {{"apiKey", api_key}, {"passphrase", passphrase}, {"timestamp", ts}, {"sign", sign}}})}}).dump());
+    };
+    private_ws->start();
+  }
+
   // 主循环：等待关停
   while (!g_shutdown.load())
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -217,6 +344,7 @@ int run(int argc, char** argv) {
   json stop_event = {{"type", "status"}, {"state", "stopping"}, {"mode", mode}};
   audit.append(stop_event);
   ipc.broadcast(stop_event);
+  if (private_ws) private_ws->stop();
   ws.stop();
   ipc.stop();
   std::cout << "[gateway] 已退出" << std::endl;

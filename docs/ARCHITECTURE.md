@@ -524,3 +524,16 @@ src/
   EventBus/前端；命令流反向（启停策略/平仓/关停）。
 - 构建：`cmake -S gateway -B gateway/build && cmake --build gateway/build`；
   CI 独立 job 编译并跑 `gateway-tests`；backend 镜像同时带 `_core` 扩展与网关二进制。
+
+
+## C++ 网关阶段 B/C（完整形态）
+
+- 阶段 B（真实下单）：OKX REST（HMAC 签名，`x-simulated-trading: 1` 走测试网）启动恢复——
+  余额 → 现金、挂单 → 审计；私有 WS（login → subscribe orders）回报驱动 `apply_fill`；
+  下单走私有 WS `op:order`（clOrdId 幂等），paper 模式仍只写审计。
+- 阶段 C（业务层）：`quant/gateway/manager.py`——子进程生命周期（Popen + IPC 就绪探测 +
+  优雅 shutdown/terminate/kill）、配置生成（策略参数/风控规则写入 JSON，密钥经 env
+  QUANT_OKX_API_KEY/SECRET/PASSPHRASE 下发不落盘）、TCP 事件接入（状态/tick 统计/最近事件）。
+- API：`GET /api/gateway/status`、`POST /api/gateway/start|stop`；真实资金复用三重闸门
+  （总开关 + confirm_live + broker 凭据）。前端「网关」页：策略/参数/标的/周期配置、
+  启停、实时事件流（订单/成交/日志）。

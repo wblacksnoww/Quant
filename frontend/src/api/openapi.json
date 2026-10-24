@@ -1312,6 +1312,155 @@
         "title": "FundTradeOut",
         "type": "object"
       },
+      "GatewayStartRequest": {
+        "properties": {
+          "bar_interval_sec": {
+            "default": 60,
+            "maximum": 86400.0,
+            "minimum": 1.0,
+            "title": "Bar Interval Sec",
+            "type": "integer"
+          },
+          "confirm_live": {
+            "default": false,
+            "title": "Confirm Live",
+            "type": "boolean"
+          },
+          "credential_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential Id"
+          },
+          "params": {
+            "additionalProperties": true,
+            "title": "Params",
+            "type": "object"
+          },
+          "risk": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RiskRuleInput"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk"
+          },
+          "sandbox": {
+            "default": true,
+            "title": "Sandbox",
+            "type": "boolean"
+          },
+          "strategy_type": {
+            "enum": [
+              "grid",
+              "breakout",
+              "tick_momentum"
+            ],
+            "title": "Strategy Type",
+            "type": "string"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Symbols",
+            "type": "array"
+          }
+        },
+        "required": [
+          "strategy_type",
+          "symbols"
+        ],
+        "title": "GatewayStartRequest",
+        "type": "object"
+      },
+      "GatewayStatusOut": {
+        "properties": {
+          "bar_interval_sec": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bar Interval Sec"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "positions": {
+            "additionalProperties": true,
+            "title": "Positions",
+            "type": "object"
+          },
+          "recent_events": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Recent Events",
+            "type": "array"
+          },
+          "running": {
+            "default": false,
+            "title": "Running",
+            "type": "boolean"
+          },
+          "stats": {
+            "additionalProperties": true,
+            "title": "Stats",
+            "type": "object"
+          },
+          "strategy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy"
+          },
+          "strategy_running": {
+            "default": false,
+            "title": "Strategy Running",
+            "type": "boolean"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Symbols",
+            "type": "array"
+          }
+        },
+        "title": "GatewayStatusOut",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -5593,6 +5742,89 @@
         "summary": "删除一笔流水（补录错误修正）",
         "tags": [
           "基金"
+        ]
+      }
+    },
+    "/api/gateway/start": {
+      "post": {
+        "operationId": "start_api_gateway_start_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GatewayStartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "启动网关",
+        "tags": [
+          "网关"
+        ]
+      }
+    },
+    "/api/gateway/status": {
+      "get": {
+        "operationId": "status_api_gateway_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "网关状态",
+        "tags": [
+          "网关"
+        ]
+      }
+    },
+    "/api/gateway/stop": {
+      "post": {
+        "operationId": "stop_api_gateway_stop_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "停止网关",
+        "tags": [
+          "网关"
         ]
       }
     },

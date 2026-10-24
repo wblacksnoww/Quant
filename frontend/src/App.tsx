@@ -9,6 +9,7 @@ import { BlueprintPage } from './pages/Blueprint'
 import { DashboardPage } from './pages/Dashboard'
 import { FeedbackPage } from './pages/Feedback'
 import { FundsPage } from './pages/Funds'
+import { GatewayPage } from './pages/Gateway'
 import { InstrumentPage } from './pages/Instrument'
 import { LivePage } from './pages/Live'
 import { Login } from './pages/Login'
@@ -73,6 +74,7 @@ export default function App() {
           <Route path="/backtest" element={<BacktestPage />} />
           <Route path="/paper" element={<PaperPage />} />
           <Route path="/live" element={<LivePage />} />
+          <Route path="/gateway" element={<GatewayPage />} />
           <Route path="/funds" element={<FundsPage />} />
           <Route path="/risk" element={<RiskPage />} />
           <Route path="/settings" element={<SettingsPage />} />

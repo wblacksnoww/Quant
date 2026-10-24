@@ -177,3 +177,11 @@ export const IconMessage = (p: IconProps) => (
     <path d="M8 9h8M8 12h5" />
   </Base>
 )
+
+export const IconGateway = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M4 8h16M4 16h16" />
+    <circle cx="9" cy="8" r="2" />
+    <circle cx="15" cy="16" r="2" />
+  </Base>
+)

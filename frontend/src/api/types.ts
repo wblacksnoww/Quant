@@ -744,3 +744,9 @@ export interface Feedback {
   created_at?: string | null
   updated_at?: string | null
 }
+
+// --------------------------------------------------------------------------- //
+// C++ 交易网关
+// --------------------------------------------------------------------------- //
+
+export type GatewayStatus = Schemas['GatewayStatusOut']

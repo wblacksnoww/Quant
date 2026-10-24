@@ -23,6 +23,7 @@ add_executable(quant-gateway
   src/risk.cpp
   src/audit.cpp
   src/ipc.cpp
+  src/rest_okx.cpp
   ../backend/cpp/core.cpp   # qcore 账本/风控实现
 )
 target_include_directories(quant-gateway PRIVATE ${GW_INCLUDES})
