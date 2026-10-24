@@ -41,14 +41,14 @@ RUN apt-get update \
 COPY deploy/requirements.lock.txt /app/requirements.lock.txt
 RUN pip install --no-cache-dir -r /app/requirements.lock.txt
 
-COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
-
 # 旧版 CSV 缓存作为离线行情种子（容器首次启动即可回测）
 COPY data/cache /app/data/cache
 
-# 应用源码（含 quant/_core*.so 原生扩展）
+# 应用源码
 COPY backend /app/backend
+
+# C++ 原生扩展：builder 里编译好的 _core*.so 放进源码包
+COPY --from=builder /usr/local/lib/python3.12/site-packages/quant/_core*.so /app/backend/quant/
 
 # 原生扩展自检：缺失时启动仍可运行（自动回退 Python），但这里显式失败以尽早暴露
 RUN python -c "from quant import core_native; assert core_native.HAS_NATIVE, core_native.NATIVE_ERROR"
