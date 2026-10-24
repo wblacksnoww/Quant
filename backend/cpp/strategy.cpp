@@ -3,8 +3,6 @@
 #include <map>
 #include <stdexcept>
 
-namespace py = pybind11;
-
 namespace qcore {
 
 double Columns::at(const std::string& field, size_t i) const {
@@ -48,24 +46,24 @@ bool is_indicator(const std::string& name) {
   }
 }
 
-int as_int(const py::handle& h, int def) {
-  if (h.is_none()) return def;
-  return static_cast<int>(py::cast<double>(h));
+int as_int(const json& j, int def) {
+  if (j.is_null()) return def;
+  return static_cast<int>(j.get<double>());
 }
-double as_double(const py::handle& h, double def) {
-  if (h.is_none()) return def;
-  return py::cast<double>(h);
-}
-
-void fill_params(SpecNode& node, const py::dict& params) {
-  node.period = as_int(params.contains("period") ? params["period"] : py::none(), 0);
-  node.width = as_double(params.contains("width") ? params["width"] : py::none(), 2.0);
-  node.fast = as_int(params.contains("fast") ? params["fast"] : py::none(), 12);
-  node.slow = as_int(params.contains("slow") ? params["slow"] : py::none(), 26);
-  node.signal = as_int(params.contains("signal") ? params["signal"] : py::none(), 9);
+double as_double(const json& j, double def) {
+  if (j.is_null()) return def;
+  return j.get<double>();
 }
 
-SpecNode make_indicator_node(const std::string& name, const py::dict& params) {
+void fill_params(SpecNode& node, const json& params) {
+  node.period = params.contains("period") ? as_int(params["period"], 0) : 0;
+  node.width = params.contains("width") ? as_double(params["width"], 2.0) : 2.0;
+  node.fast = params.contains("fast") ? as_int(params["fast"], 12) : 12;
+  node.slow = params.contains("slow") ? as_int(params["slow"], 26) : 26;
+  node.signal = params.contains("signal") ? as_int(params["signal"], 9) : 9;
+}
+
+SpecNode make_indicator_node(const std::string& name, const json& params) {
   SpecNode node;
   node.type = name;
   fill_params(node, params);
@@ -77,12 +75,11 @@ int add_node(CompiledSpec& spec, SpecNode node) {
   return static_cast<int>(spec.nodes.size()) - 1;
 }
 
-int operand_node(CompiledSpec& spec, const py::object& op, int close_idx,
+int operand_node(CompiledSpec& spec, const json& d, int close_idx,
                  std::map<std::string, int>& cache) {
-  py::dict d = py::cast<py::dict>(op);
-  std::string kind = py::cast<std::string>(d["kind"]);
+  std::string kind = d.value("kind", "");
   if (kind == "const") {
-    double value = py::cast<double>(d["value"]);
+    double value = d.value("value", 0.0);
     std::string key = "const:" + std::to_string(value);
     auto it = cache.find(key);
     if (it != cache.end()) return it->second;
@@ -94,7 +91,7 @@ int operand_node(CompiledSpec& spec, const py::object& op, int close_idx,
     return idx;
   }
   if (kind == "field") {
-    std::string field = py::cast<std::string>(d["field"]);
+    std::string field = d.value("field", "");
     std::string key = "field:" + field;
     auto it = cache.find(key);
     if (it != cache.end()) return it->second;
@@ -105,9 +102,9 @@ int operand_node(CompiledSpec& spec, const py::object& op, int close_idx,
     cache[key] = idx;
     return idx;
   }
-  std::string name = py::cast<std::string>(d["name"]);
-  py::dict params = py::cast<py::dict>(d.contains("params") ? d["params"] : py::dict());
-  std::string key = name + ":" + py::cast<std::string>(py::repr(params));
+  std::string name = d.value("name", "");
+  json params = d.contains("params") ? d["params"] : json::object();
+  std::string key = name + ":" + params.dump();
   auto it = cache.find(key);
   if (it != cache.end()) return it->second;
   SpecNode node = make_indicator_node(name, params);
@@ -127,25 +124,24 @@ StrategyKind strategy_kind(const std::string& id) {
   return StrategyKind::CustomRule;
 }
 
-CompiledSpec compile_spec(const py::dict& spec) {
+CompiledSpec compile_spec(const json& spec) {
   CompiledSpec out;
-  int version = as_int(spec.contains("version") ? py::object(spec["version"]) : py::object(py::int_(1)), 1);
-  out.position_pct = as_double(spec.contains("position_pct") ? py::object(spec["position_pct"]) : py::object(py::float_(0.9)), 0.9);
-  out.stop_loss = as_double(spec.contains("stop_loss") ? py::object(spec["stop_loss"]) : py::object(py::float_(0.08)), 0.08);
-  out.take_profit = as_double(spec.contains("take_profit") ? py::object(spec["take_profit"]) : py::object(py::float_(0.0)), 0.0);
+  int version = spec.contains("version") ? as_int(spec["version"], 1) : 1;
+  out.position_pct = spec.contains("position_pct") ? as_double(spec["position_pct"], 0.9) : 0.9;
+  out.stop_loss = spec.contains("stop_loss") ? as_double(spec["stop_loss"], 0.08) : 0.08;
+  out.take_profit = spec.contains("take_profit") ? as_double(spec["take_profit"], 0.0) : 0.0;
 
   if (version == 1) {
     out.is_graph = false;
     int close_idx = add_node(out, SpecNode{.type = "data", .field = "close"});
     std::map<std::string, int> cache;
-    auto parse_side = [&](py::object list) {
+    auto parse_side = [&](const json& list) {
       std::vector<Condition> conds;
-      for (auto item : py::cast<py::list>(list)) {
-        py::dict d = py::cast<py::dict>(item);
+      for (const auto& d : list) {
         Condition cond;
-        cond.type = py::cast<std::string>(d["type"]);
-        cond.left = operand_node(out, py::object(d["left"]), close_idx, cache);
-        cond.right = operand_node(out, py::object(d["right"]), close_idx, cache);
+        cond.type = d.value("type", "");
+        cond.left = operand_node(out, d["left"], close_idx, cache);
+        cond.right = operand_node(out, d["right"], close_idx, cache);
         conds.push_back(cond);
       }
       return conds;
@@ -159,21 +155,17 @@ CompiledSpec compile_spec(const py::dict& spec) {
   out.is_graph = true;
   struct Raw {
     std::string id, type;
-    py::dict d;
+    json d;
   };
   std::vector<Raw> raws;
   std::map<std::string, std::vector<std::pair<std::string, std::string>>> inputs;  // to → (port, from)
-  for (auto item : py::cast<py::list>(spec["nodes"])) {
-    py::dict d = py::cast<py::dict>(item);
-    raws.push_back({py::cast<std::string>(d["id"]), py::cast<std::string>(d["type"]), d});
+  for (const auto& d : spec["nodes"]) {
+    raws.push_back({d.value("id", ""), d.value("type", ""), d});
   }
-  for (auto item : py::cast<py::list>(spec["edges"])) {
-    py::dict d = py::cast<py::dict>(item);
-    std::string from = py::cast<std::string>(d["from"]);
-    std::string to = py::cast<std::string>(d["to"]);
-    std::string port = d.contains("to_port") && !d["to_port"].is_none()
-                           ? py::cast<std::string>(d["to_port"])
-                           : "in";
+  for (const auto& d : spec["edges"]) {
+    std::string from = d.value("from", "");
+    std::string to = d.value("to", "");
+    std::string port = d.contains("to_port") && !d["to_port"].is_null() ? d.value("to_port", "in") : "in";
     inputs[to].emplace_back(port, from);
   }
   // Kahn 拓扑（就绪队列按原始插入序，保证确定性）
@@ -201,14 +193,14 @@ CompiledSpec compile_spec(const py::dict& spec) {
 
   std::map<std::string, int> by_id;
   for (auto& id : order) {
-    py::dict d;
+    json d;
     for (auto& r : raws)
       if (r.id == id) { d = r.d; break; }
     SpecNode node;
-    std::string type = py::cast<std::string>(d["type"]);
+    std::string type = d.value("type", "");
     if (type == "const") {
       node.type = "const";
-      node.const_value = as_double(d.contains("value") ? py::object(d["value"]) : py::object(py::float_(0.0)), 0.0);
+      node.const_value = d.contains("value") ? as_double(d["value"], 0.0) : 0.0;
     } else if (type == "data" || !is_indicator(type)) {
       // 数据源节点（close/open/.../news_*）：无输入连线
       bool has_inputs = inputs.count(id) > 0;
@@ -219,7 +211,7 @@ CompiledSpec compile_spec(const py::dict& spec) {
         node.type = type;  // 罕见：有输入的非指标节点按原类型走（编译期报错更清晰）
       }
     } else {
-      node = make_indicator_node(type, py::cast<py::dict>(d.contains("params") ? py::object(d["params"]) : py::dict()));
+      node = make_indicator_node(type, d.contains("params") ? d["params"] : json::object());
     }
     by_id[id] = add_node(out, std::move(node));
   }
@@ -231,9 +223,9 @@ CompiledSpec compile_spec(const py::dict& spec) {
     std::sort(list.begin(), list.end(), [](auto& a, auto& b) { return a.first < b.first; });
     for (auto& [port, from] : list) out.nodes[idx].inputs.push_back(by_id[from]);
   }
-  py::dict outputs = py::cast<py::dict>(spec["outputs"]);
-  out.entry_idx = by_id[py::cast<std::string>(outputs["entry"])];
-  out.exit_idx = by_id[py::cast<std::string>(outputs["exit"])];
+  const json& outputs = spec["outputs"];
+  out.entry_idx = by_id[outputs.value("entry", "")];
+  out.exit_idx = by_id[outputs.value("exit", "")];
   return out;
 }
 
@@ -333,4 +325,48 @@ std::pair<bool, bool> SpecState::step(size_t cursor, const Columns& cols) {
   return {entry, exit};
 }
 
+// ------------------------------------------------------------------ //
+// live 幂等：同一根 bar 重复 step 时回滚重算
+// ------------------------------------------------------------------ //
+std::vector<SpecState::NodeState> SpecState::clone_states() const {
+  std::vector<NodeState> out;
+  out.reserve(st_.size());
+  for (const auto& s : st_) {
+    NodeState copy;
+    copy.val = s.val;
+    copy.prev = s.prev;
+    copy.bval = s.bval;
+    if (s.ind) copy.ind = std::make_unique<Indicator>(*s.ind);
+    out.push_back(std::move(copy));
+  }
+  return out;
+}
+
+void SpecState::restore_states(std::vector<NodeState> snapshot) { st_ = std::move(snapshot); }
+
+std::pair<bool, bool> SpecState::step_idempotent(size_t cursor, const Columns& cols) {
+  auto deep_copy = [](const std::vector<NodeState>& src) {
+    std::vector<NodeState> out;
+    out.reserve(src.size());
+    for (const auto& s : src) {
+      NodeState copy;
+      copy.val = s.val;
+      copy.prev = s.prev;
+      copy.bval = s.bval;
+      if (s.ind) copy.ind = std::make_unique<Indicator>(*s.ind);
+      out.push_back(std::move(copy));
+    }
+    return out;
+  };
+  if (cursor == snap_cursor_) {
+    // 同一根 bar 的重复求值（实时模式今日 bar 更新）：回滚到该 bar 推进前
+    restore_states(deep_copy(snapshot_));
+  } else {
+    snapshot_ = deep_copy(st_);
+    snap_cursor_ = cursor;
+  }
+  return step(cursor, cols);
+}
+
 }  // namespace qcore
+

@@ -1,4 +1,4 @@
-#include "strategy.hpp"
+#include "strategy_py.hpp"
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -24,8 +24,55 @@ py::dict run_backtest_native(
     std::vector<std::map<std::string, py::array_t<double, py::array::c_style | py::array::forcecast>>> extras,
     py::function progress);
 
+namespace {
+
+// numpy 列 → Columns（指针直接指向 numpy 缓冲，调用期间保持引用即可）
+Columns columns_from_py(size_t n,
+                       const py::array_t<double, py::array::c_style | py::array::forcecast>& open,
+                       const py::array_t<double, py::array::c_style | py::array::forcecast>& high,
+                       const py::array_t<double, py::array::c_style | py::array::forcecast>& low,
+                       const py::array_t<double, py::array::c_style | py::array::forcecast>& close,
+                       const py::array_t<double, py::array::c_style | py::array::forcecast>& volume,
+                       const py::array_t<double, py::array::c_style | py::array::forcecast>& amount,
+                       const py::dict& extras) {
+  Columns cols;
+  cols.n = n;
+  cols.open = open.size() ? open.data() : nullptr;
+  cols.high = high.size() ? high.data() : nullptr;
+  cols.low = low.size() ? low.data() : nullptr;
+  cols.close = close.size() ? close.data() : nullptr;
+  cols.volume = volume.size() ? volume.data() : nullptr;
+  cols.amount = amount.size() ? amount.data() : nullptr;
+  for (auto item : extras) {
+    std::string key = py::cast<std::string>(item.first);
+    auto arr = py::cast<py::array_t<double, py::array::c_style | py::array::forcecast>>(item.second);
+    if (arr.size()) cols.extra[key] = arr.data();
+  }
+  return cols;
+}
+
+}  // namespace
+
 PYBIND11_MODULE(_core, m) {
   m.doc() = "Quant Terminal C++ 加速核心（回测热路径）";
+  py::class_<SpecEvaluator>(m, "SpecEvaluator")
+      .def(py::init([](const py::dict& spec) { return new SpecEvaluator(spec); }))
+      .def(
+          "step",
+          [](SpecEvaluator& self, size_t cursor, size_t n,
+             const py::array_t<double, py::array::c_style | py::array::forcecast>& open,
+             const py::array_t<double, py::array::c_style | py::array::forcecast>& high,
+             const py::array_t<double, py::array::c_style | py::array::forcecast>& low,
+             const py::array_t<double, py::array::c_style | py::array::forcecast>& close,
+             const py::array_t<double, py::array::c_style | py::array::forcecast>& volume,
+             const py::array_t<double, py::array::c_style | py::array::forcecast>& amount,
+             const py::dict& extras) {
+            Columns cols = columns_from_py(n, open, high, low, close, volume, amount, extras);
+            return self.step(cursor, cols);
+          },
+          py::arg("cursor"), py::arg("n"), py::arg("open"), py::arg("high"), py::arg("low"),
+          py::arg("close"), py::arg("volume"), py::arg("amount"), py::arg("extras") = py::dict());
+
   m.def("run_backtest", &run_backtest_native,
         "C++ 回测：与 Python 引擎逐点等价",
         py::arg("symbols"), py::arg("bar_interval"), py::arg("start_ns"), py::arg("end_ns"),

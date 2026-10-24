@@ -159,3 +159,47 @@ GW_TEST(bad_params_rejected) {
 }
 
 }  // namespace
+
+namespace {
+
+GW_TEST(bar_spec_enters_and_exits) {
+  // spec：close > 50 买入 / close < 45 卖出（逐 bar 评估，活 bar 实时更新）
+  json params = json::parse(R"({
+    "spec": {
+      "version": 1,
+      "entry": [{"type": "gt", "left": {"kind": "field", "field": "close"}, "right": {"kind": "const", "value": 50.0}}],
+      "exit":  [{"type": "lt", "left": {"kind": "field", "field": "close"}, "right": {"kind": "const", "value": 45.0}}],
+      "position_pct": 0.9, "stop_loss": 0.0, "take_profit": 0.0
+    },
+    "order_qty": 1.0
+  })");
+  BarSpecStrategy strat(params, 60);
+  const std::string sym = "BTC-USDT";
+  int64_t base = 1700000000000LL;  // ms
+
+  StrategyContext flat;
+  auto intents = strat.on_tick(make_tick(sym, 40.0, base), flat);
+  if (!intents.empty()) throw std::runtime_error("新 bar 首 tick 不应交易");
+  intents = strat.on_tick(make_tick(sym, 52.0, base + 30000), flat);
+  if (intents.size() != 1 || intents[0].side != "buy")
+    throw std::runtime_error("close>50 应产生买入信号");
+
+  StrategyContext holding;
+  holding.position_qty = 1.0;
+  strat.on_tick(make_tick(sym, 44.0, base + 61000), holding);  // 新 bar 开盘
+  intents = strat.on_tick(make_tick(sym, 43.0, base + 90000), holding);
+  if (intents.size() != 1 || intents[0].side != "sell" || intents[0].qty != 1.0)
+    throw std::runtime_error("close<45 应清仓");
+}
+
+GW_TEST(bar_spec_missing_spec_rejected) {
+  bool threw = false;
+  try {
+    BarSpecStrategy bad({{"order_qty", 1.0}}, 60);
+  } catch (const std::runtime_error&) {
+    threw = true;
+  }
+  if (!threw) throw std::runtime_error("缺 spec 应抛错");
+}
+
+}  // namespace

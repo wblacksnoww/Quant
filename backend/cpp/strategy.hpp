@@ -1,9 +1,9 @@
 // 拼装策略 spec（v1/v2）编译与逐 bar 求值。
 #pragma once
 #include "indicators.hpp"
-#include <pybind11/pybind11.h>
+#include <nlohmann/json.hpp>
 
-namespace py = pybind11;
+using json = nlohmann::json;
 #include <memory>
 #include <unordered_map>
 
@@ -48,7 +48,7 @@ struct CompiledSpec {
   double position_pct = 0.9, stop_loss = 0.08, take_profit = 0.0;
 };
 
-CompiledSpec compile_spec(const py::dict& spec);
+CompiledSpec compile_spec(const json& spec);  // nlohmann json（网关 / Python 两侧共用）
 
 enum class StrategyKind { DualMa, MomentumRotation, RsiReversion, BuyHold, CustomRule };
 StrategyKind strategy_kind(const std::string& id);
@@ -60,15 +60,26 @@ class SpecState {
   // 返回 (entry_signal, exit_signal)
   std::pair<bool, bool> step(size_t cursor, const Columns& cols);
 
+  // ---- live 幂等：同一根 bar 被重复 step（实时模式每秒更新今日 bar）时，
+  // 先回滚到该 bar 首次求值前的状态再推进，保证结果一致。
+  std::pair<bool, bool> step_idempotent(size_t cursor, const Columns& cols);
+
  private:
-  const CompiledSpec& spec_;
   struct NodeState {
     double val = NAN_, prev = NAN_;
     bool bval = false;
     std::unique_ptr<Indicator> ind;
   };
+  std::vector<NodeState> clone_states() const;
+  void restore_states(std::vector<NodeState> snapshot);
+
+  const CompiledSpec& spec_;
   std::vector<NodeState> st_;
   bool inited_ = false;
+  std::vector<NodeState> snapshot_;
+  size_t snap_cursor_ = static_cast<size_t>(-1);
 };
+
+
 
 }  // namespace qcore

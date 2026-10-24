@@ -62,6 +62,11 @@ from .indicators import (
 )
 from .registry import register_strategy
 
+try:  # C++ 拼装策略求值器（不可用时回退 Python 解释器）
+    from .. import core_native as _core_native
+except Exception:  # pragma: no cover
+    _core_native = None
+
 STRATEGY_ID = "custom_rule"
 
 SPEC_VERSION = 1
@@ -425,6 +430,15 @@ class CustomRuleStrategy(Strategy):
         self._is_graph = isinstance(self.spec, GraphSpec)
         self._news_fields = self._news_fields_used()
         self._uses_news = bool(self._news_fields)
+        # 信号计算优先走 C++（与回测同源的解释器）；不可用回退 Python
+        self._native = None
+        if _core_native is not None and _core_native.HAS_NATIVE:
+            try:
+                raw = params.get("spec") if isinstance(params, Mapping) else None
+                self._native = _core_native._native.SpecEvaluator(raw)
+            except Exception:  # noqa: BLE001 - spec 结构不支持的组合走 Python
+                self._native = None
+        self._native_cache: dict[str, Any] = {}  # symbol → numpy 列缓存（避免每 bar 重建）
         if self._is_graph:
             self._min_rows = graph_lookback(self.spec)
             self.log(
@@ -467,6 +481,39 @@ class CustomRuleStrategy(Strategy):
             out[field] = values
         return out
 
+    def _native_signals(self, symbol: str, frame: pd.DataFrame) -> tuple[bool, bool]:
+        """C++ 求值：frame → numpy 列（带行数缓存），spec 支持新闻字段列。"""
+        import numpy as np
+
+        cursor = self.ctx.cursor(symbol)
+        cached = self._native_cache.get(symbol)
+        if cached is None or cached[0] is not frame or cached[1] != len(frame):
+            arrays = {}
+            for col in ("open", "high", "low", "close", "volume", "amount"):
+                if col in frame.columns:
+                    arrays[col] = pd.to_numeric(frame[col], errors="coerce").to_numpy(dtype="float64")
+                else:
+                    arrays[col] = np.zeros(len(frame))
+            # 新闻因子列（_attach_news 已展开进 frame）作为 extras 传给 C++
+            extras = {}
+            for field in self._news_fields:
+                if field in frame.columns:
+                    extras[field] = pd.to_numeric(frame[field], errors="coerce").to_numpy(dtype="float64")
+            cached = (frame, len(frame), arrays, extras)
+            self._native_cache[symbol] = cached
+        _, _, arrays, extras = cached
+        return self._native.step(
+            cursor,
+            len(frame),
+            arrays["open"],
+            arrays["high"],
+            arrays["low"],
+            arrays["close"],
+            arrays["volume"],
+            arrays["amount"],
+            extras,
+        )
+
     def on_bars(self, bars: Mapping[str, Bar]) -> None:
         for bar in bars.values():
             self._on_symbol(bar)
@@ -495,8 +542,11 @@ class CustomRuleStrategy(Strategy):
                 self.close(bar.symbol, tag="take_profit")
                 return
 
-        # --- 信号（v1 条件数组 / v2 蓝图节点图共用同一订单纪律） ---------- #
-        if self._is_graph:
+        # --- 信号：优先 C++ SpecEvaluator（与回测同源），回退 Python ---------- #
+        entry_signal = exit_signal = False
+        if self._native is not None:
+            entry_signal, exit_signal = self._native_signals(bar.symbol, frame)
+        elif self._is_graph:
             entry_signal, exit_signal = graph_signals(frame, self.spec)
         else:
             entry_signal = all(_condition_series(frame, c, cache).iloc[-1] for c in self.spec.entry)

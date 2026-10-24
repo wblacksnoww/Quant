@@ -129,3 +129,66 @@ class TestNativeEquivalence:
         py = _run(context, "custom_rule", "eq_py_c2", native=False, spec=spec)
         native = _run(context, "custom_rule", "eq_nat_c2", native=True, spec=spec)
         _assert_equivalent(py, native)
+
+
+def _run_paper(context, native: bool, spec: dict) -> object:
+    """模拟盘 replay 引擎直接驱动（不起线程），返回引擎结果。"""
+    from quant.engine.paper import PaperEngine, PaperOptions
+
+    original = core_native.HAS_NATIVE
+    core_native.HAS_NATIVE = native
+    try:
+        config = EngineConfig(
+            strategy_id="custom_rule",
+            symbols=["CN:600519"],
+            start=date(2023, 1, 1),
+            end=date(2024, 6, 28),
+            initial_cash=1_000_000,
+            params={"spec": spec},
+            run_id=f"paper_{'nat' if native else 'py'}",
+        )
+        engine = PaperEngine(
+            config, context.data, options=PaperOptions(mode="replay", replay_days=120, replay_interval=0.0)
+        )
+        return engine.run()
+    finally:
+        core_native.HAS_NATIVE = original
+
+
+@pytest.mark.skipif(not core_native.HAS_NATIVE, reason="C++ 扩展未构建")
+class TestPaperNativeEquivalence:
+    def test_paper_replay_custom_strategy_identical(self, context):
+        sma5 = {"kind": "indicator", "name": "sma", "params": {"period": 5}}
+        sma20 = {"kind": "indicator", "name": "sma", "params": {"period": 20}}
+        spec = {
+            "version": 1,
+            "entry": [{"type": "cross_above", "left": sma5, "right": sma20}],
+            "exit": [{"type": "cross_below", "left": sma5, "right": sma20}],
+            "position_pct": 0.9,
+            "stop_loss": 0.08,
+            "take_profit": 0.0,
+        }
+        py = _run_paper(context, native=False, spec=spec)
+        native = _run_paper(context, native=True, spec=spec)
+        assert py.status == native.status == "finished"
+        ta = [(t["symbol"], t["side"], t["quantity"], t["price"], t["dt"]) for t in py.trades]
+        tb = [(t["symbol"], t["side"], t["quantity"], t["price"], t["dt"]) for t in native.trades]
+        assert ta == tb, f"成交序列不一致: py={len(ta)} native={len(tb)}"
+        for ea, eb in zip(py.equity_curve, native.equity_curve, strict=False):
+            assert ea["total_equity"] == pytest.approx(eb["total_equity"], abs=1e-6)
+
+    def test_paper_replay_rsi_spec_identical(self, context):
+        rsi7 = {"kind": "indicator", "name": "rsi", "params": {"period": 7}}
+        spec = {
+            "version": 1,
+            "entry": [{"type": "lt", "left": rsi7, "right": {"kind": "const", "value": 45}}],
+            "exit": [{"type": "gt", "left": rsi7, "right": {"kind": "const", "value": 60}}],
+            "position_pct": 0.5,
+            "stop_loss": 0.0,
+            "take_profit": 0.0,
+        }
+        py = _run_paper(context, native=False, spec=spec)
+        native = _run_paper(context, native=True, spec=spec)
+        ta = [(t["side"], t["quantity"], t["price"]) for t in py.trades]
+        tb = [(t["side"], t["quantity"], t["price"]) for t in native.trades]
+        assert ta == tb

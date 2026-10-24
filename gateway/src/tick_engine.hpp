@@ -11,12 +11,15 @@
 #include <nlohmann/json.hpp>
 
 #include "qcore.hpp"  // qcore::Account / RiskManager（复用 backend/cpp）
+#include "strategy.hpp"  // CompiledSpec / SpecState（拼装策略求值）
 
 namespace gw {
 
 using json = nlohmann::json;
 using qcore::Account;
+using qcore::CompiledSpec;
 using qcore::RiskManager;
+using qcore::SpecState;
 
 struct Tick {
   std::string symbol;  // 交易所符号，如 BTC-USDT
@@ -114,7 +117,28 @@ class TickMomentumStrategy final : public TickStrategy {
   int64_t last_fire_ns_ = 0;
 };
 
-std::unique_ptr<TickStrategy> make_strategy(const json& cfg);
+// 拼装策略（spec v1/v2）在网关里运行：bar 收盘时求 entry/exit。
+// 自己维护 bar 历史（OHLC 平面向量），收盘后构造 Columns 交给 C++ spec 求值器。
+class BarSpecStrategy final : public TickStrategy {
+ public:
+  BarSpecStrategy(const json& params, int64_t bar_sec);
+  std::vector<OrderIntent> on_tick(const Tick& tick, const StrategyContext& ctx) override;
+  const char* name() const override { return "bar_spec"; }
+
+ private:
+  struct Bar {
+    double open, high, low, close;
+  };
+  double order_qty_ = 0.0;
+  int64_t bar_sec_;
+  CompiledSpec spec_;
+  std::map<std::string, std::vector<Bar>> history_;
+  std::map<std::string, Bar> cur_;
+  std::map<std::string, int64_t> cur_start_;
+  std::map<std::string, std::unique_ptr<SpecState>> states_;
+};
+
+std::unique_ptr<TickStrategy> make_strategy(const json& cfg, int64_t bar_sec);
 
 // ------------------------------------------------------------------ //
 // TickEngine：行情聚合 + 策略 + 风控 + 账本镜像

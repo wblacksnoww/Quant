@@ -1,5 +1,5 @@
 // 回测主循环：严格镜像 engine.session.TradingSession.step 的时序。
-#include "strategy.hpp"
+#include "strategy_py.hpp"
 #include <pybind11/functional.h>
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>

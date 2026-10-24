@@ -9,9 +9,11 @@ namespace gw {
 
 using qcore::Account;
 using qcore::BarView;
+using qcore::Columns;
 using qcore::Position;
 using qcore::Order;
 using qcore::RiskManager;
+using qcore::compile_spec;
 
 // ------------------------------------------------------------------ //
 // 网格
@@ -158,13 +160,81 @@ std::vector<OrderIntent> TickMomentumStrategy::on_tick(const Tick& tick, const S
   return intents;
 }
 
-std::unique_ptr<TickStrategy> make_strategy(const json& cfg) {
+std::unique_ptr<TickStrategy> make_strategy(const json& cfg, int64_t bar_sec) {
   std::string type = cfg.value("type", "");
   const json& params = cfg.contains("params") ? cfg["params"] : json::object();
   if (type == "grid") return std::make_unique<GridStrategy>(params);
   if (type == "breakout") return std::make_unique<BreakoutStrategy>(params);
   if (type == "tick_momentum") return std::make_unique<TickMomentumStrategy>(params);
+  if (type == "bar_spec") return std::make_unique<BarSpecStrategy>(params, bar_sec);
   throw std::runtime_error("未知 tick 策略类型: " + type);
+}
+
+// ------------------------------------------------------------------ //
+// 拼装策略（bar 收盘触发）
+// ------------------------------------------------------------------ //
+BarSpecStrategy::BarSpecStrategy(const json& params, int64_t bar_sec)
+    : TickStrategy(params), bar_sec_(std::max<int64_t>(1, bar_sec)) {
+  if (!params.contains("spec")) throw std::runtime_error("bar_spec 需要 params.spec（拼装策略 spec v1/v2）");
+  order_qty_ = params.value("order_qty", 0.0);
+  if (order_qty_ <= 0) throw std::runtime_error("bar_spec.order_qty 必须大于 0");
+  spec_ = compile_spec(params.at("spec"));
+}
+
+std::vector<OrderIntent> BarSpecStrategy::on_tick(const Tick& tick, const StrategyContext& ctx) {
+  if (tick.last <= 0) return {};
+  const int64_t bar_ns = bar_sec_ * 1000000000LL;
+  const int64_t bucket = tick.ts_ns - (tick.ts_ns % bar_ns);
+
+  auto& hist = history_[tick.symbol];
+  auto start_it = cur_start_.find(tick.symbol);
+  Bar bar{tick.last, tick.last, tick.last, tick.last};
+  bool new_bar = start_it == cur_start_.end() || start_it->second != bucket;
+  if (!new_bar) {
+    bar = cur_[tick.symbol];
+    bar.high = std::max(bar.high, tick.last);
+    bar.low = std::min(bar.low, tick.last);
+    bar.close = tick.last;
+  }
+  cur_[tick.symbol] = bar;
+  cur_start_[tick.symbol] = bucket;
+  if (new_bar) return {};  // 新 bar 的第一个 tick：先开盘，等收盘再评估
+
+  // 尚未收盘（无法预知下一 tick 是否换 bar）——网关模式下以“当前 bar 的实时状态”评估，
+  // 与模拟盘 live 模式的语义一致（今日活 bar 每次更新都重新求值，SpecState 幂等保证一致）
+  hist.push_back(bar);  // 追加当前（活）bar 作为最后一行
+  size_t cursor = hist.size() - 1;
+
+  // 平面化历史 → Columns
+  std::vector<double> opens, highs, lows, closes, vols(hist.size(), 0.0), amts(hist.size(), 0.0);
+  opens.reserve(hist.size());
+  for (const auto& b : hist) {
+    opens.push_back(b.open);
+    highs.push_back(b.high);
+    lows.push_back(b.low);
+    closes.push_back(b.close);
+  }
+  Columns cols;
+  cols.n = hist.size();
+  cols.open = opens.data();
+  cols.high = highs.data();
+  cols.low = lows.data();
+  cols.close = closes.data();
+  cols.volume = vols.data();
+  cols.amount = amts.data();
+
+  auto& state = states_[tick.symbol];
+  if (!state) state = std::make_unique<SpecState>(spec_);
+  auto [entry, exit] = state->step_idempotent(cursor, cols);
+
+  std::vector<OrderIntent> intents;
+  bool flat = ctx.position_qty <= 0;
+  if (flat && entry) {
+    intents.push_back({tick.symbol, "buy", order_qty_, "spec_entry", "bar_spec entry"});
+  } else if (!flat && ctx.position_qty > 0 && exit) {
+    intents.push_back({tick.symbol, "sell", ctx.position_qty, "spec_exit", "bar_spec exit"});
+  }
+  return intents;
 }
 
 // ------------------------------------------------------------------ //
@@ -177,7 +247,7 @@ TickEngine::TickEngine(const json& config, Account& account, RiskManager& risk)
   bar_sec_ = config.value("bar_interval_sec", 60);
   auto strategy = config.at("strategy");
   for (const auto& s : symbols_) {
-    strategies_[s] = make_strategy(strategy);
+    strategies_[s] = make_strategy(strategy, bar_sec_);
     state_[s] = SymbolState{};
   }
 }

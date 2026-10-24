@@ -24,7 +24,9 @@ add_executable(quant-gateway
   src/audit.cpp
   src/ipc.cpp
   src/rest_okx.cpp
-  ../backend/cpp/core.cpp   # qcore 账本/风控实现
+  ../backend/cpp/core.cpp      # qcore 账本/风控实现
+  ../backend/cpp/indicators.cpp
+  ../backend/cpp/strategy.cpp  # spec 编译与求值（拼装策略）
 )
 target_include_directories(quant-gateway PRIVATE ${GW_INCLUDES})
 target_link_libraries(quant-gateway PRIVATE OpenSSL::SSL OpenSSL::Crypto Threads::Threads Boost::headers)
@@ -38,6 +40,8 @@ add_executable(gateway-tests
   src/risk.cpp
   src/audit.cpp
   ../backend/cpp/core.cpp
+  ../backend/cpp/indicators.cpp
+  ../backend/cpp/strategy.cpp
 )
 target_include_directories(gateway-tests PRIVATE ${GW_INCLUDES})
 add_test(NAME gateway-tests COMMAND gateway-tests)
