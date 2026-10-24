@@ -3,16 +3,16 @@
 > 本文是 Quant Terminal 的可渲染版框架图（Mermaid），与
 > [PROJECT_MAP.md](PROJECT_MAP.md) §1 的 ASCII 总览、[ARCHITECTURE.md](ARCHITECTURE.md)
 > 的分层描述互为补充。分层依赖方向永远向下：`前端 → 服务 → 引擎 → 交易内核 → 基础设施`。
-> 更新时间：2026-10-18（虚拟货币 / 场外基金 / 实盘三块接入后；后端 232 项测试全绿）。
+> 更新时间：2026-10-25（C++ 加速核心与 C++ 交易网关接入后的混合架构；后端 279 项测试全绿）。
 
 ## 1. 总体框架
 
 ```mermaid
 graph TB
-    subgraph fe["① 前端 SPA — React + TS + Vite + ECharts"]
-        pages["11 页面：Dashboard / Market / Strategies+Blueprint / Backtest / Paper / Live / Funds / Risk / Settings / Login"]
-        api["api/client.ts（fetch + 401 静默刷新）+ api/types.ts 手写镜像"]
-        store["store：auth / toast / events"]
+    subgraph fe["① 前端 SPA — React + TS + Vite + ECharts（可安装 PWA）"]
+        pages["13 页面：Dashboard / Market / News / Strategies+Blueprint / Backtest / Paper / Live / Gateway / Funds / Risk / Feedback / Settings / Login"]
+        api["api/client.ts + OpenAPI 生成类型（schema.ts，CI 防漂移）"]
+        store["store：auth / toast / events / watchlist"]
         wshook["hooks/useWebSocket"]
     end
 
@@ -20,73 +20,80 @@ graph TB
         proxy["反代 /api/* · /ws · /healthz → backend:8000"]
     end
 
-    subgraph server["③ 服务层 — FastAPI quant.server"]
-        routers["routers ×11：auth · market · strategies · backtest · paper · live · funds · risk · credentials · system · admin"]
-        guard["deps 鉴权 · schemas 校验 · custom_params 服务端白名单"]
-        btmgr["BacktestManager 持久化队列（原子认领, 每实例并发上限）"]
-        ppmgr["PaperManager 每用户一线程（同账号单会话）"]
-        lvmgr["LiveManager 每用户一线程（实盘，单会话）"]
-        hub["ws.EventHub 按用户定向推送（断线回放 200 条）"]
-        recorder["RunRecorder 运行结果落库（runs.kind = backtest/paper/live）"]
+    subgraph server["③ 业务层 — FastAPI quant.server（Python）"]
+        routers["routers ×14：auth · market · news · strategies · backtest · paper · live · gateway · funds · risk · credentials · feedback · system · admin"]
+        btmgr["BacktestManager 持久化队列（原子认领）"]
+        ppmgr["PaperManager 多会话（同账号可多开）"]
+        lvmgr["LiveManager 按凭证并行"]
+        gtmgr["GatewayManager 网关子进程生命周期 + 密钥 env 下发 + TCP 事件接入"]
+        hub["ws.EventHub 按用户定向推送"]
+        recorder["RunRecorder 落库（runs / 压缩 JSON）"]
     end
 
-    subgraph engine["④ 引擎层 — quant.engine"]
-        session["TradingSession（唯一交易时序：T+1/T+0 解冻 → 撮合/回报 → 重估 → 策略 → 风控 → 日终）"]
-        bt["BacktestEngine 模拟时钟 · 逐交易日"]
-        paper["PaperEngine replay 倍速回放 / live 真实时钟轮询"]
-        live["LiveEngine 真实时钟 + 交易所回报（本地不撮合）"]
-        frames["live_frames：今日活 bar（纸盘/实盘共用）"]
+    subgraph engine["④ Python 引擎层 — quant.engine"]
+        session["TradingSession（唯一交易时序，模拟盘/实盘共用）"]
+        bt["BacktestEngine —— 分发：受支持策略走 C++ 快速路径"]
+        paper["PaperEngine replay / live（分钟级可选）"]
+        live["LiveEngine + LiveBroker + adapters{ccxt, miniqmt}"]
     end
 
-    subgraph kernel["⑤ 交易内核"]
-        strat["strategy：registry 注册 · builtin×4 · custom v1 表单 / v2 蓝图（共用 INDICATOR_SPECS）"]
-        exec_sim["execution：SimBroker 撮合 · matching 一字板/量能/停牌 · cost 佣金税滑点"]
-        exec_live["execution：LiveBroker 累计回报→增量记账 · adapters{ccxt, miniqmt}"]
-        risk["risk：8 条规则链 pre_trade 拒单（原因落库）"]
-        funds["funds：compute_positions 申赎流水→持仓/收益（纯函数）"]
-        metrics["metrics：夏普 / 回撤 / 索提诺 / 月度 / 基准超额"]
-        core_["core：types(float 数量) · events · portfolio(T+0/T+1) · clock · markets(5 市场规则)"]
+    subgraph native["⑤ C++ 加速核心 — quant._core（pybind11）"]
+        ncore["qcore：账本 · 撮合 · 8 风控规则 · 14 指标增量状态机"]
+        nspec["拼装策略 v1/v2 解释器 + 内置策略直译 + 回测主循环（~70×，等价性测试把门）"]
     end
 
-    subgraph infra["⑥ 基础设施"]
-        data_["data：akshare / csv / synthetic / crypto(ccxt) / fund(净值) → normalize → DataStore(Parquet) · realtime 三源"]
-        db["storage：SQLAlchemy → SQLite/PostgreSQL · CompressedJSON · fund_trades"]
-        sec["security：HKDF+AES-GCM · Argon2id · JWT 轮换 · TOTP · 审计链（凭据加密）"]
+    subgraph gateway["⑥ C++ 交易网关 — quant-gateway 独立进程"]
+        gws["OKX WS 公共行情(tick) + 私有(登录/orders 回报)"]
+        gtick["TickEngine tick→bar 聚合 · 网格/突破/动量纯 tick 策略"]
+        gord["专职写线程下单(clOrdId 幂等, µs) · 启动恢复(REST) · JSONL 审计 · 本地 TCP :8790"]
     end
 
-    fe ==>|"HTTPS：REST /api + WS /ws"| gw
+    subgraph kernel["⑦ 交易内核（Python 侧，供引擎/网关共用语义）"]
+        strat["strategy：registry · builtin×4+news_dual_ma · custom v1/v2"]
+        risk["risk：8 条规则链 pre_trade 拒单"]
+        funds["funds：申赎流水聚合（纯函数）"]
+        metrics["metrics：夏普 / 回撤 / 月度"]
+    end
+
+    subgraph infra["⑧ 基础设施"]
+        data_["data：akshare / csv / synthetic / crypto / fund → DataStore(Parquet) + 分钟线增量缓存"]
+        db["storage：SQLAlchemy → SQLite/PostgreSQL · 会话租约 · 持久化回测队列 · 新闻/自选/反馈"]
+        sec["security：HKDF+AES-GCM · Argon2id · JWT 轮换 · TOTP · 审计链"]
+        news["news：RSS 抓取 → 规则分类 → PIT 因子"]
+    end
+
+    fe ==>|HTTPS REST + WS| gw
     gw ==> server
     server ==> engine
+    bt ==>|受支持策略| ncore
+    gtmgr ==>|子进程 + 127.0.0.1 TCP| gateway
     engine ==> kernel
+    gateway -. qcore 风控/账本复用 .-> ncore
     kernel -.-> infra
+    gtmgr -. 网关事件(订单/成交/状态) .-> hub
 
-    btmgr --> bt
-    ppmgr --> paper
-    lvmgr --> live
-    bt --> session
-    paper --> session
-    live --> session
-    live --> exec_live
-    paper -. 进度事件 .-> hub
-    live -. 进度事件 .-> hub
-    recorder -. 权益/成交/委托 .-> db
-
-    classDef front fill:#e7f5ff,stroke:#1971c2,stroke-width:1.5px
-    classDef gate fill:#f8f9fa,stroke:#868e96,stroke-width:1.5px
-    classDef srv fill:#e5dbff,stroke:#5f3dc4,stroke-width:1.5px
-    classDef eng fill:#d3f9d8,stroke:#2f9e44,stroke-width:1.5px
-    classDef krn fill:#fff4e6,stroke:#e67700,stroke-width:1.5px
-    classDef inf fill:#ffe8cc,stroke:#d9480f,stroke-width:1.5px
+    classDef front fill:#e7f5ff,stroke:#1971c2
+    classDef gate fill:#f8f9fa,stroke:#868e96
+    classDef srv fill:#e5dbff,stroke:#5f3dc4
+    classDef eng fill:#d3f9d8,stroke:#2f9e44
+    classDef nat fill:#ffc9c9,stroke:#c92a2a,stroke-width:2px
+    classDef gtw fill:#ffdeeb,stroke:#a61e4d,stroke-width:2px
+    classDef krn fill:#fff4e6,stroke:#e67700
+    classDef inf fill:#ffe8cc,stroke:#d9480f
     class fe front
     class gw gate
     class server srv
     class engine eng
+    class native nat
+    class gateway gtw
     class kernel krn
     class infra inf
 ```
 
-图例：蓝=前端 · 灰=网关 · 紫=服务层 · 绿=引擎层 · 黄=交易内核 · 橙=基础设施。
-实线 `==>` 是请求/事件主通道，虚线是落库与推送。
+图例：蓝=前端 · 灰=反代 · 紫=业务层 · 绿=Python 引擎 · **红=C++ 回测核心** · **粉=C++ 交易网关** · 黄=交易内核 · 橙=基础设施。
+实线 `==>` 是请求/事件主通道，虚线是落库、推送与复用。
+
+**策略执行路径速查**：回测（拼装 v1/v2 + 4 内置策略 + 指标）→ C++ `_core`（~70×，等价性测试保证与 Python 逐点一致，故障自动回退）；模拟盘/实盘引擎 → Python 解释器；C++ 网关 → 网格/突破/动量三个纯 tick 策略全程 C++（tick→策略→下单，网关内部 ≈50µs）。
 
 ## 2. 一次回测的完整链路
 
@@ -105,6 +112,13 @@ sequenceDiagram
     API->>API: schemas 校验 · 按用户注入 custom spec（服务端白名单）
     API-->>FE: 202 + run_id
     API->>BM: 写入 backtest_jobs（queued）
+    BM->>ENG: worker 原子认领
+    alt 拼装策略 / 4 内置策略 / 无 benchmark
+        ENG->>ENG: 走 C++ quant._core（账本·撮合·指标·解释器·主循环，~70×）
+        Note over ENG: 等价性测试保证与 Python 逐点一致；故障自动回退
+    else 其他策略 / 带 benchmark
+        ENG->>ENG: Python TradingSession 路径
+    end
     loop 逐交易日推进
         ENG->>BK: 跨日解冻(T+1/T+0) → 撮合「昨日」订单（开盘价）
         ENG->>ENG: 收盘价重估权益 → strategy.on_bars（游标防未来函数）
@@ -169,11 +183,13 @@ graph LR
 
 ## 5. 与旧框架图的差异
 
-1. **新增两个市场**：`Market.CRYPTO`（`CRYPTO:BTC/USDT`，T+0/无涨跌停/小数数量/7×24）与
-   `Market.FUND`（`FUND:007005`，场外基金，净值制）。
-2. **新增实盘层**：`LiveEngine + LiveBroker + BrokerAdapter`；`TradingSession` 增加
-   `auto_end_of_day` 开关与 `on_order/on_fill` 回调链。
-3. **板块规则上移 `core/markets.py`**：涨跌停/整手/T+0 规则已成唯一来源；
-   `execution/rules.py` 仅保留再导出（5 处旧 import 待收尾）。
-4. **指标白名单单源化**：v1 `custom.py` 与 v2 `custom_graph.py` 共用 `INDICATOR_SPECS`。
-5. **数量类型 float**：订单/成交/持仓全链路小数，A 股整手约束仍在校验层生效。
+1. **C++ 加速核心（quant._core）**：回测热路径（账本/撮合/风控/14 指标/拼装策略
+   解释器/内置策略/主循环）C++ 化，与 Python 逐点等价（等价性测试），~70× 提速；
+   不可用或不受支持自动回退 Python。
+2. **C++ 交易网关（quant-gateway）**：策略层全 C++ 的独立进程——OKX 公共/私有 WS、
+   tick→bar 聚合、网格/突破/动量纯 tick 策略、qcore 风控、WS 下单（clOrdId 幂等、
+   专职写线程 µs 级）、启动恢复与 JSONL 审计；Python GatewayManager 管生命周期/密钥/事件。
+3. **多市场**：`Market.CRYPTO`（T+0/无涨跌停/小数数量/7×24）与 `Market.FUND`（净值制）。
+4. **实盘层**：`LiveEngine + LiveBroker + BrokerAdapter`（ccxt / miniqmt），三重闸门。
+5. **指标白名单单源化**：v1/v2 共用 `INDICATOR_SPECS`；C++ 侧为增量状态机实现。
+6. **数量类型 float**：全链路小数，A 股整手约束在校验层生效。

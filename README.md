@@ -92,33 +92,52 @@
 
 ## 架构
 
+Python 业务层 + C++ 策略层的混合架构（策略热路径已 C++ 化）：
+
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  前端 SPA（React / ECharts）                                  │
-│  行情 · 策略 · 回测 · 模拟盘 · 实盘 · 基金 · 风控 · 设置       │
-└───────────────┬──────────────────────────┬───────────────────┘
-                │ REST /api                 │ WebSocket /ws
-┌───────────────▼──────────────────────────▼───────────────────┐
-│  FastAPI（认证、限流、审计、任务管理）                          │
-│                                                              │
-│  TradingSession ◄──────────────► SimBroker                   │
-│    │  统一会话循环                │  订单队列 / 撮合 / 成交     │
-│    │                              │                          │
-│    ├─ BacktestEngine（模拟时钟，t+1 撮合）                     │
-│    ├─ PaperEngine replay（倍速回放）                           │
-│    ├─ PaperEngine live（真实时钟 + 轮询）                      │
-│    └─ LiveEngine（真实时钟）──► LiveBroker ──► BrokerAdapter   │
-│                                    （ccxt / miniqmt）        │
-│                                                              │
-│  Strategy ─ RiskManager ─ CostModel ─ Portfolio ─ Metrics     │
-│  FundTrade 流水聚合（场外基金，不走引擎）                       │
-│                                                              │
-│  DataStore（parquet 缓存）→ akshare / csv / synthetic /       │
-│                              crypto(ccxt) / fund(净值)        │
-│  SQLAlchemy → SQLite / PostgreSQL                             │
-│  HKDF → AES-GCM 字段加密 · JWT · TOTP · 审计链                 │
-└──────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│  前端 SPA（React / ECharts，可安装 PWA）                         │
+│  行情 · 新闻 · 策略 · 回测 · 模拟盘 · 实盘 · 网关 · 基金 · 风控  │
+└────────────────┬───────────────────────────────┬───────────────┘
+                 │ REST /api                     │ WebSocket /ws
+┌────────────────▼───────────────────────────────▼───────────────┐
+│  业务层 —— Python（FastAPI：认证 · 限流 · 审计 · 任务 · 凭据）    │
+│                                                                │
+│  BacktestManager 持久化队列 ──► BacktestEngine                  │
+│                                  │ 分发：受支持策略走 C++        │
+│  PaperManager / LiveManager ──► PaperEngine / LiveEngine        │
+│                                （Python TradingSession 轮询）    │
+│  GatewayManager ──子进程/TCP──► quant-gateway（C++，见下）        │
+│  新闻抓取/因子 · 自选 · 反馈 · 策略共享 · 基金流水（Python）       │
+└──────────────┬──────────────────────────────┬───────────────────┘
+               │ quant._core（pybind11）       │ 子进程 + TCP JSON
+┌──────────────▼──────────────┐  ┌─────────────▼─────────────────┐
+│  C++ 回测核心 quant._core     │  │  C++ 交易网关 quant-gateway    │
+│  账本 · 撮合 · 8 风控规则      │  │  OKX WS 公共行情(tick) + 私有  │
+│  14 指标增量状态机            │  │  登录/下单(clOrdId 幂等)       │
+│  拼装策略 v1/v2 解释器        │  │  TickEngine tick→bar 聚合     │
+│  内置策略直译 · 回测主循环     │  │  网格/突破/动量(纯tick策略)     │
+│  （与 Python 逐点等价，        │  │  qcore 风控 · 启动恢复(REST)   │
+│   等价性测试把门，~70× 提速）   │  │  JSONL 审计 · 专职写线程(µs)   │
+└─────────────────────────────┘  └───────────────────────────────┘
+               │                                │
+┌──────────────▼────────────────────────────────▼───────────────┐
+│  数据层：DataStore(Parquet 缓存) · 分钟线增量缓存               │
+│  akshare / csv / synthetic / crypto(ccxt) / fund(净值)         │
+│  SQLAlchemy → SQLite / PostgreSQL · HKDF+AES-GCM · 审计链      │
+└────────────────────────────────────────────────────────────────┘
 ```
+
+### 策略执行路径（哪个策略在哪一层跑）
+
+| 场景 | 拼装策略（spec v1/v2） | 内置策略（dual_ma 等） | 指标算子 | tick 策略（网格/突破/动量） |
+| --- | --- | --- | --- | --- |
+| 回测 | **C++**（`_core` 解释器） | **C++**（直译版） | **C++**（增量状态机） | — |
+| 模拟盘 / 实盘（Python 引擎） | Python 解释器 | Python（builtin/*.py） | Python（pandas 版） | — |
+| C++ 交易网关 | 尚未接入（解释器已备） | 尚未接入 | C++ | **C++**（每 tick 触发） |
+
+两套实现（C++ 增量版 / Python pandas 版指标与解释器）由**等价性测试**保证逐点一致；
+C++ 不可用或不受支持的组合自动回退 Python，功能无损。
 
 更详细的分层、事件顺序与扩展点见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)；
 框架目录地图与结构审查清单见 [`docs/PROJECT_MAP.md`](docs/PROJECT_MAP.md)；
