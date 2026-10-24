@@ -482,10 +482,14 @@ class CustomRuleStrategy(Strategy):
         return out
 
     def _native_signals(self, symbol: str, frame: pd.DataFrame) -> tuple[bool, bool]:
-        """C++ 求值：frame → numpy 列（带行数缓存），spec 支持新闻字段列。"""
+        """C++ 求值：frame → numpy 列（带行数缓存），spec 支持新闻字段列。
+
+        frame 已是 history(min_rows) 截断后的窗口——cursor 必须用窗口内
+        行号（len-1），不能用全局游标（会越界读到窗口外的数据）。
+        """
         import numpy as np
 
-        cursor = self.ctx.cursor(symbol)
+        cursor = len(frame) - 1
         cached = self._native_cache.get(symbol)
         if cached is None or cached[0] is not frame or cached[1] != len(frame):
             arrays = {}
@@ -502,8 +506,10 @@ class CustomRuleStrategy(Strategy):
             cached = (frame, len(frame), arrays, extras)
             self._native_cache[symbol] = cached
         _, _, arrays, extras = cached
-        return self._native.step(
+        # 窗口重喂：与 Python history(symbol, min_rows) 滑窗口径一致（ewm 类指标需要）
+        return self._native.evaluate_window(
             cursor,
+            self._min_rows,
             len(frame),
             arrays["open"],
             arrays["high"],

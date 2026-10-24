@@ -71,7 +71,23 @@ PYBIND11_MODULE(_core, m) {
             return self.step(cursor, cols);
           },
           py::arg("cursor"), py::arg("n"), py::arg("open"), py::arg("high"), py::arg("low"),
-          py::arg("close"), py::arg("volume"), py::arg("amount"), py::arg("extras") = py::dict());
+          py::arg("close"), py::arg("volume"), py::arg("amount"), py::arg("extras") = py::dict())
+        .def(
+            "evaluate_window",
+            [](SpecEvaluator& self, size_t cursor, size_t window, size_t n,
+               const py::array_t<double, py::array::c_style | py::array::forcecast>& open,
+               const py::array_t<double, py::array::c_style | py::array::forcecast>& high,
+               const py::array_t<double, py::array::c_style | py::array::forcecast>& low,
+               const py::array_t<double, py::array::c_style | py::array::forcecast>& close,
+               const py::array_t<double, py::array::c_style | py::array::forcecast>& volume,
+               const py::array_t<double, py::array::c_style | py::array::forcecast>& amount,
+               const py::dict& extras) {
+              Columns cols = columns_from_py(n, open, high, low, close, volume, amount, extras);
+              return self.evaluate_window(cursor, window, cols);
+            },
+            py::arg("cursor"), py::arg("window"), py::arg("n"), py::arg("open"), py::arg("high"),
+            py::arg("low"), py::arg("close"), py::arg("volume"), py::arg("amount"),
+            py::arg("extras") = py::dict());
 
   m.def("run_backtest", &run_backtest_native,
         "C++ 回测：与 Python 引擎逐点等价",

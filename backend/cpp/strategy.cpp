@@ -124,6 +124,14 @@ StrategyKind strategy_kind(const std::string& id) {
   return StrategyKind::CustomRule;
 }
 
+
+// 该指标的实际依赖周期（与 Python _operand_lookback 对齐：macd 用 slow+signal，其余用 period）
+int indicator_lookback(const SpecNode& node) {
+  if (node.type == "macd_dif" || node.type == "macd_dea" || node.type == "macd_hist")
+    return node.slow + node.signal;
+  return node.period;
+}
+
 CompiledSpec compile_spec(const json& spec) {
   CompiledSpec out;
   int version = spec.contains("version") ? as_int(spec["version"], 1) : 1;
@@ -148,6 +156,16 @@ CompiledSpec compile_spec(const json& spec) {
     };
     out.entry = parse_side(spec["entry"]);
     out.exit = parse_side(spec["exit"]);
+    // warmup：指标最大依赖周期（与 Python spec_lookback 的 lookback 部分对齐）
+    out.lookback = 0;
+    for (const auto& node : out.nodes) {
+      try {
+        indicator_kind(node.type);
+        out.lookback = std::max(out.lookback, indicator_lookback(node));
+      } catch (const std::runtime_error&) {
+        continue;
+      }
+    }
     return out;
   }
 
@@ -226,6 +244,15 @@ CompiledSpec compile_spec(const json& spec) {
   const json& outputs = spec["outputs"];
   out.entry_idx = by_id[outputs.value("entry", "")];
   out.exit_idx = by_id[outputs.value("exit", "")];
+  out.lookback = 0;
+  for (const auto& node : out.nodes) {
+    try {
+      indicator_kind(node.type);
+      out.lookback = std::max(out.lookback, indicator_lookback(node));
+    } catch (const std::runtime_error&) {
+      continue;
+    }
+  }
   return out;
 }
 
@@ -343,6 +370,13 @@ std::vector<SpecState::NodeState> SpecState::clone_states() const {
 }
 
 void SpecState::restore_states(std::vector<NodeState> snapshot) { st_ = std::move(snapshot); }
+
+void SpecState::reset() {
+  st_.clear();
+  inited_ = false;
+  snapshot_.clear();
+  snap_cursor_ = static_cast<size_t>(-1);
+}
 
 std::pair<bool, bool> SpecState::step_idempotent(size_t cursor, const Columns& cols) {
   auto deep_copy = [](const std::vector<NodeState>& src) {

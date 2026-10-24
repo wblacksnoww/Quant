@@ -46,6 +46,7 @@ struct CompiledSpec {
   std::vector<Condition> entry, exit;
   int entry_idx = -1, exit_idx = -1;  // v2 输出节点下标
   double position_pct = 0.9, stop_loss = 0.08, take_profit = 0.0;
+  int lookback = 0;  // 指标最大周期（warmup = lookback + 2，对齐 Python spec_lookback）
 };
 
 CompiledSpec compile_spec(const json& spec);  // nlohmann json（网关 / Python 两侧共用）
@@ -59,6 +60,9 @@ class SpecState {
   explicit SpecState(const CompiledSpec& spec) : spec_(spec) {}
   // 返回 (entry_signal, exit_signal)
   std::pair<bool, bool> step(size_t cursor, const Columns& cols);
+
+  // 回到初始状态（窗口重喂用：与 Python history(n) 滑窗口径一致）
+  void reset();
 
   // ---- live 幂等：同一根 bar 被重复 step（实时模式每秒更新今日 bar）时，
   // 先回滚到该 bar 首次求值前的状态再推进，保证结果一致。

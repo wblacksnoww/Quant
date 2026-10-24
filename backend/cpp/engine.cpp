@@ -285,8 +285,18 @@ struct Engine {
     for (size_t k = 0; k < bar_syms.size(); ++k) {
       size_t s = bar_syms[k];
       size_t i = bar_idx[k];
+      // 与 Python _on_symbol 语义对齐：在途委托期间不再评估（市价单次日成交）
+      if (has_open_order(s)) continue;
+      // warmup：与 Python spec_lookback 对齐（lookback + 2 行历史才评估）
+      size_t min_rows = static_cast<size_t>(p.spec.lookback) + 2;
+      if (i + 1 < min_rows) continue;
       if (!spec_states[s].has_value()) spec_states[s].emplace(p.spec);
-      auto [entry, exit] = spec_states[s]->step(i, cols[s]);
+      // 窗口重喂：与 Python history(n) 滑窗口径一致（ewm 类指标需要全窗口重算）
+      spec_states[s]->reset();
+      size_t begin = i - min_rows + 1;
+      std::pair<bool, bool> sig{false, false};
+      for (size_t k = begin; k <= i; ++k) sig = spec_states[s]->step(k, cols[s]);
+      auto [entry, exit] = sig;
       const std::string& sym_name = symbols[s];
       auto it = acct.positions.find(sym_name);
       bool flat = it == acct.positions.end() || it->second.flat();
@@ -295,11 +305,12 @@ struct Engine {
 
       if (!flat && available > 0 && it->second.avg_cost > 0) {
         double pnl = cols[s].close[i] / it->second.avg_cost - 1.0;
-        if (p.stop_loss > 0 && pnl <= -p.stop_loss) {
+        // 止损/止盈来自 spec（与 Python CustomRuleStrategy 同源），不是 StrategyParams 默认
+        if (p.spec.stop_loss > 0 && pnl <= -p.spec.stop_loss) {
           close_pos(s, "stop_loss", now);
           continue;
         }
-        if (p.take_profit > 0 && pnl >= p.take_profit) {
+        if (p.spec.take_profit > 0 && pnl >= p.spec.take_profit) {
           close_pos(s, "take_profit", now);
           continue;
         }
@@ -378,7 +389,7 @@ py::dict run_backtest_native(
   eng.p.overbought = getf("overbought", eng.p.overbought);
   eng.p.min_momentum = getf("min_momentum", eng.p.min_momentum);
   if (params.contains("spec") && !params["spec"].is_none())
-    eng.p.spec = compile_spec(py::cast<py::dict>(params["spec"]));
+    eng.p.spec = compile_spec_py(py::cast<py::dict>(params["spec"]));
   eng.spec_states.resize(symbols.size());
 
   // 数据

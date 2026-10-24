@@ -18,6 +18,7 @@ else:
         Pybind11Extension(
             "quant._core",
             sorted(glob("cpp/*.cpp")),
+            include_dirs=["cpp"],  # nlohmann/json.hpp（backend/cpp/nlohmann/）
             cxx_std=17,
             extra_compile_args=["-O2"],
         ),
