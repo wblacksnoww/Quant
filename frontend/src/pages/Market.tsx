@@ -13,6 +13,7 @@ import { Badge, Banner, Button, Card, Empty, Field, Loading, Stat } from '../com
 import { IconRefresh, IconSearch, IconTrash } from '../components/icons'
 import {
   classForSign,
+  displayCode,
   fmtCompact,
   fmtPrice,
   fmtSignedPct,
@@ -259,10 +260,6 @@ export function MarketPage() {
   }, [data])
 
   /** 展示用：从规范 id 截出代码部分（``CN:600519`` → ``600519``）。 */
-  const displayCode = (id: string) => {
-    const index = id.indexOf(':')
-    return index >= 0 ? id.slice(index + 1) : id
-  }
 
   const submit = (event: FormEvent) => {
     event.preventDefault()

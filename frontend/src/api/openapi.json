@@ -216,6 +216,19 @@
       },
       "BacktestRequest": {
         "properties": {
+          "bar_interval": {
+            "default": "1d",
+            "enum": [
+              "1d",
+              "1m",
+              "5m",
+              "15m",
+              "30m",
+              "60m"
+            ],
+            "title": "Bar Interval",
+            "type": "string"
+          },
           "benchmark": {
             "anyOf": [
               {
@@ -1605,6 +1618,19 @@
             "title": "Adapter",
             "type": "string"
           },
+          "bar_interval": {
+            "default": "1d",
+            "enum": [
+              "1d",
+              "1m",
+              "5m",
+              "15m",
+              "30m",
+              "60m"
+            ],
+            "title": "Bar Interval",
+            "type": "string"
+          },
           "benchmark": {
             "anyOf": [
               {
@@ -2290,6 +2316,19 @@
       },
       "PaperStartRequest": {
         "properties": {
+          "bar_interval": {
+            "default": "1d",
+            "enum": [
+              "1d",
+              "1m",
+              "5m",
+              "15m",
+              "30m",
+              "60m"
+            ],
+            "title": "Bar Interval",
+            "type": "string"
+          },
           "benchmark": {
             "anyOf": [
               {

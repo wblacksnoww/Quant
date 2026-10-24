@@ -17,7 +17,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import pandas as pd
@@ -167,11 +167,40 @@ class PaperEngine(BaseEngine):
     def _load_frames(self) -> dict[str, pd.DataFrame]:
         frames: dict[str, pd.DataFrame] = {}
         end = self.config.end
+        minute = self.config.bar_interval != "1d"
         if self.options.mode == "replay":
+            if minute:
+                # 分钟回放：回放最近 replay_days 个自然日的分钟 bar
+                start = end - timedelta(days=max(1, self.options.replay_days))
+                start_dt = datetime.combine(start, datetime.min.time())
+                end_dt = datetime.combine(end, datetime.max.time())
+                for symbol in self.config.symbols:
+                    try:
+                        frame = self.data.minute_bars(symbol, start_dt, end_dt, freq=self.config.bar_interval)
+                    except Exception as exc:  # noqa: BLE001
+                        log.warning("纸盘加载 %s 分钟线失败: %s", symbol, exc)
+                        continue
+                    if frame is not None and len(frame):
+                        frames[symbol] = frame.reset_index(drop=True)
+                return frames
             # 回放最近 N 个交易日
             probe = self.data.bars(self.config.symbols[0], self.config.start, end)
             tail = probe.tail(self.options.replay_days)
             start = tail["date"].iloc[0].date() if len(tail) else self.config.start
+        elif minute:
+            # 实时分钟模式：预热用分钟 K 线（上限 7 天，避免一次性拉太多）
+            warmup_days = min(7, max(1, self.options.replay_days))
+            start_dt = datetime.combine(end - timedelta(days=warmup_days), datetime.min.time())
+            end_dt = datetime.combine(end, datetime.max.time())
+            for symbol in self.config.symbols:
+                try:
+                    frame = self.data.minute_bars(symbol, start_dt, end_dt, freq=self.config.bar_interval)
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("纸盘预热 %s 分钟线失败: %s", symbol, exc)
+                    continue
+                if frame is not None and len(frame):
+                    frames[symbol] = frame.reset_index(drop=True)
+            return frames
         else:
             start = self.config.start
         for symbol in self.config.symbols:
@@ -304,21 +333,38 @@ class PaperEngine(BaseEngine):
         interval = max(0.0, self.options.replay_interval)
 
         resume_after = self.resume_state.last_date if self.resume_state is not None else None
-        for day in dates:
+        minute = self.config.bar_interval != "1d"
+        stamps: list = []
+        stamp_maps: dict[str, dict] = {}
+        if minute:
+            stamps = sorted(set().union(*[set(frames[s]["date"].tolist()) for s in symbols]))
+            stamp_maps = {s: {ts: i for i, ts in enumerate(frames[s]["date"].tolist())} for s in symbols}
+        for day in stamps if minute else dates:
             if self.cancelled:
                 return
-            if resume_after is not None and day <= resume_after:
-                continue
             self._wait_if_paused()
             bars: dict[str, Bar] = {}
             indexes: dict[str, int] = {}
-            for symbol in symbols:
-                i = index_maps[symbol].get(day)
-                if i is None:
+            if minute:
+                if resume_after is not None and pd.Timestamp(day) <= pd.Timestamp(resume_after):
                     continue
-                bars[symbol] = bar_from_frame(frames[symbol], i, symbol)
-                indexes[symbol] = i
-            moment = datetime.combine(day, datetime.min.time()).replace(tzinfo=CN_TZ)
+                for symbol in symbols:
+                    i = stamp_maps[symbol].get(day)
+                    if i is None:
+                        continue
+                    bars[symbol] = bar_from_frame(frames[symbol], i, symbol)
+                    indexes[symbol] = i
+                moment = pd.Timestamp(day).to_pydatetime().replace(tzinfo=CN_TZ)
+            else:
+                if resume_after is not None and day <= resume_after:
+                    continue
+                for symbol in symbols:
+                    i = index_maps[symbol].get(day)
+                    if i is None:
+                        continue
+                    bars[symbol] = bar_from_frame(frames[symbol], i, symbol)
+                    indexes[symbol] = i
+                moment = datetime.combine(day, datetime.min.time()).replace(tzinfo=CN_TZ)
             session.step(moment, bars, indexes)
             self.last_prices = {s: b.close for s, b in bars.items()}
             if interval:
@@ -332,6 +378,7 @@ class PaperEngine(BaseEngine):
         live_frames: dict[str, pd.DataFrame] = {s: frames[s].copy() for s in symbols}
         current_day: date | None = None
         interval = max(1.0, self.options.poll_interval)
+        minute = self.config.bar_interval != "1d"
 
         while not self.cancelled:
             self._wait_if_paused()
@@ -350,7 +397,83 @@ class PaperEngine(BaseEngine):
                 prices = {s: float(live_frames[s]["close"].iloc[-1]) for s in symbols if len(live_frames[s])}
                 self.bus.emit_log("实时行情不可用，使用最近收盘价模拟", level="warning", source="paper")
 
-            # 新交易日：先把昨日的 DAY 挂单过期，再给每个标的追加"今日"的活 bar
+            if minute:
+                # 分钟级：整分钟对齐；新的一分钟到来时，把上一分钟定格成
+                # 完整 bar 追加进历史窗口，然后以实时价开启新的活 bar。
+                # 价格 REST 拉取跟随 poll_interval（快照 TTL 内复用）。
+                minute_bucket = now.replace(second=0, microsecond=0)
+                if now.minute != getattr(self, "_last_minute", None):
+                    self._last_minute = now.minute
+                    try:
+                        window_end = now.replace(tzinfo=None)
+                        window_start = window_end - timedelta(minutes=90)
+                        for symbol in symbols:
+                            fresh = self.data.minute_bars(
+                                symbol,
+                                window_start,
+                                window_end,
+                                freq=self.config.bar_interval,
+                                refresh=True,
+                            )
+                            if fresh is not None and len(fresh):
+                                live_frames[symbol] = fresh.reset_index(drop=True)
+                    except Exception as exc:  # noqa: BLE001
+                        log.warning("分钟窗口刷新失败（沿用本地累计）: %s", exc)
+                    session.frames = live_frames
+                    session.ctx._frames = live_frames
+
+                bars: dict[str, Bar] = {}
+                indexes: dict[str, int] = {}
+                bucket = pd.Timestamp(minute_bucket.replace(tzinfo=None))
+                for symbol in symbols:
+                    price = prices.get(symbol)
+                    if not price:
+                        continue
+                    df = live_frames[symbol]
+                    if len(df) and df["date"].iloc[-1] == bucket:
+                        # 同一分钟桶：更新活 bar 的 close/high/low
+                        last = df.index[-1]
+                        df.at[last, "close"] = float(price)
+                        df.at[last, "high"] = max(float(df.at[last, "high"]), float(price))
+                        df.at[last, "low"] = min(float(df.at[last, "low"]), float(price))
+                    else:
+                        # 新的一分钟：追加活 bar（volume/amount 由交易所分钟线刷新时补齐）
+                        df = pd.concat(
+                            [
+                                df,
+                                pd.DataFrame(
+                                    [
+                                        {
+                                            "date": bucket,
+                                            "open": float(price),
+                                            "high": float(price),
+                                            "low": float(price),
+                                            "close": float(price),
+                                            "volume": 0.0,
+                                            "amount": 0.0,
+                                        }
+                                    ]
+                                ),
+                            ],
+                            ignore_index=True,
+                        )
+                    live_frames[symbol] = df
+                    i = len(df) - 1
+                    bars[symbol] = bar_from_frame(df, i, symbol)
+                    indexes[symbol] = i
+
+                if bars:
+                    session.frames = live_frames
+                    session.ctx._frames = live_frames
+                    session.step(now, bars, indexes)
+                    self.last_prices = {s: b.close for s, b in bars.items()}
+                    if self.recorder is not None:
+                        self.recorder.touch()
+
+                self._sleep(interval)
+                continue
+
+            # 日线模式（原有逻辑）
             if current_day != today:
                 if current_day is not None:
                     session.broker.end_of_day()

@@ -243,3 +243,9 @@ export function reasonLabel(value: string | null | undefined): string {
   if (!value) return '—'
   return EXIT_REASON_LABELS[value] ?? value
 }
+
+/** ``CN:600519`` → ``600519``（去掉市场前缀，展示用）。 */
+export function displayCode(id: string): string {
+  const index = id.indexOf(':')
+  return index >= 0 ? id.slice(index + 1) : id
+}

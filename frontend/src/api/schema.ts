@@ -1592,6 +1592,12 @@ export interface components {
         };
         /** BacktestRequest */
         BacktestRequest: {
+            /**
+             * Bar Interval
+             * @default 1d
+             * @enum {string}
+             */
+            bar_interval: "1d" | "1m" | "5m" | "15m" | "30m" | "60m";
             /** Benchmark */
             benchmark?: string | null;
             cost?: components["schemas"]["CostInput"] | null;
@@ -2184,6 +2190,12 @@ export interface components {
              * @enum {string}
              */
             adapter: "ccxt" | "miniqmt";
+            /**
+             * Bar Interval
+             * @default 1d
+             * @enum {string}
+             */
+            bar_interval: "1d" | "1m" | "5m" | "15m" | "30m" | "60m";
             /** Benchmark */
             benchmark?: string | null;
             /**
@@ -2500,6 +2512,12 @@ export interface components {
         };
         /** PaperStartRequest */
         PaperStartRequest: {
+            /**
+             * Bar Interval
+             * @default 1d
+             * @enum {string}
+             */
+            bar_interval: "1d" | "1m" | "5m" | "15m" | "30m" | "60m";
             /** Benchmark */
             benchmark?: string | null;
             cost?: components["schemas"]["CostInput"] | null;

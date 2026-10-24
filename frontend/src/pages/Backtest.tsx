@@ -6,6 +6,7 @@ import { useSearchParams } from 'react-router-dom'
 import { ApiError, backtestApi, riskApi, strategyApi } from '../api/client'
 import type {
   BacktestRequest,
+  BarInterval,
   CostConfig,
   RiskPresets,
   RiskRuleInput,
@@ -15,12 +16,14 @@ import type {
   StrategyParam,
 } from '../api/types'
 import { CustomStrategySelect } from '../components/CustomStrategySelect'
+import { SymbolPicker } from '../components/SymbolPicker'
 import { IconFlask, IconRefresh, IconStop, IconTrash } from '../components/icons'
 import { RunDetailBody, RunMetrics } from '../components/RunDetail'
 import { Badge, Banner, Button, Card, Empty, Field, Loading, Progress, StatusBadge } from '../components/ui'
 import { useEvents } from '../store/events'
+import { useWatchlist } from '../store/watchlist'
 import { notify } from '../store/toast'
-import { durationText, fmtDateTime, fmtSignedPct, parseSymbols, todayISO, yearsAgoISO } from '../utils/format'
+import { durationText, fmtDateTime, fmtSignedPct, todayISO, yearsAgoISO } from '../utils/format'
 
 const DEFAULT_COST: CostConfig = {
   commission_rate: 3e-4,
@@ -62,7 +65,8 @@ export function BacktestPage() {
   const [formError, setFormError] = useState('')
 
   const [strategyId, setStrategyId] = useState('')
-  const [symbolsText, setSymbolsText] = useState('600519, 000001')
+  const [symbols, setSymbols] = useState<string[]>([])
+  const [barInterval, setBarInterval] = useState<BarInterval>('1d')
   const [start, setStart] = useState(yearsAgoISO(3))
   const [end, setEnd] = useState(todayISO())
   const [initialCash, setInitialCash] = useState(1_000_000)
@@ -197,6 +201,13 @@ export function BacktestPage() {
     }
   }, [lastEvent, selectedId, refreshRuns])
 
+  const watchlist = useWatchlist((state) => state.items)
+  const loadWatchlist = useWatchlist((state) => state.load)
+
+  useEffect(() => {
+    void loadWatchlist()
+  }, [loadWatchlist])
+
   const changeStrategy = (id: string) => {
     setStrategyId(id)
     const next = strategies.find((item) => item.id === id)
@@ -206,7 +217,6 @@ export function BacktestPage() {
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     setFormError('')
-    const symbols = parseSymbols(symbolsText)
     if (!strategyId) {
       setFormError('请选择策略')
       return
@@ -216,7 +226,7 @@ export function BacktestPage() {
       return
     }
     if (symbols.length === 0) {
-      setFormError('请至少填写一个标的代码')
+      setFormError('请至少选择一个标的')
       return
     }
     if (symbols.length > 30) {
@@ -258,6 +268,7 @@ export function BacktestPage() {
       cost,
       risk: riskRules,
       risk_free_rate: 0.02,
+      bar_interval: barInterval,
     }
 
     setSubmitting(true)
@@ -356,19 +367,26 @@ export function BacktestPage() {
               </Field>
             </div>
 
-            <Field
-              label="标的代码"
-              hint="规范符号如 CN:600519 / US:AAPL / HK:00700 / CRYPTO:BTC/USDT，兼容旧 6 位代码；逗号或换行分隔。"
-            >
-              <input
-                className="input mono"
-                value={symbolsText}
-                onChange={(event) => setSymbolsText(event.target.value)}
-                placeholder="600519, 000001, 300059"
-              />
+            <Field label="标的" hint="优先从账号自选勾选；也可以搜索或直接输入规范代码。">
+              <SymbolPicker watchlist={watchlist} selected={symbols} onChange={setSymbols} />
             </Field>
 
             {isCustomRule && <CustomStrategySelect value={selectedCustom} onChange={setSelectedCustom} />}
+
+            <Field label="K 线周期" hint="分钟级目前仅虚拟货币支持历史回测；日线策略不受影响">
+              <select
+                className="select"
+                value={barInterval}
+                onChange={(event) => setBarInterval(event.target.value as BarInterval)}
+              >
+                <option value="1d">日线（默认）</option>
+                <option value="60m">60 分钟</option>
+                <option value="30m">30 分钟</option>
+                <option value="15m">15 分钟</option>
+                <option value="5m">5 分钟</option>
+                <option value="1m">1 分钟（高频）</option>
+              </select>
+            </Field>
 
             <div className="form-grid-3">
               <Field label="开始日期">

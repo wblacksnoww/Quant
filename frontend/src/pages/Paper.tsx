@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { ApiError, backtestApi, paperApi, riskApi, strategyApi } from '../api/client'
 import type {
+  BarInterval,
   PaperStartRequest,
   PaperState,
   RiskPresets,
@@ -13,6 +14,7 @@ import type {
   Strategy,
 } from '../api/types'
 import { CustomStrategySelect } from '../components/CustomStrategySelect'
+import { SymbolPicker } from '../components/SymbolPicker'
 import { PaperHistory } from '../components/paper/PaperHistory'
 import { PaperSessionResults } from '../components/paper/PaperSessionResults'
 import { PaperSessionStatus } from '../components/paper/PaperSessionStatus'
@@ -21,7 +23,8 @@ import { IconPlay, IconStop } from '../components/icons'
 import { Badge, Banner, Button, Card, Field, Loading } from '../components/ui'
 import { useEvents } from '../store/events'
 import { notify } from '../store/toast'
-import { fmtMoney, fmtSignedPct, parseSymbols } from '../utils/format'
+import { useWatchlist } from '../store/watchlist'
+import { fmtMoney, fmtSignedPct } from '../utils/format'
 
 function defaultsFor(strategy: Strategy | undefined): Record<string, unknown> {
   if (!strategy) return {}
@@ -50,10 +53,11 @@ export function PaperPage() {
 
   const [strategyId, setStrategyId] = useState('')
   const [params, setParams] = useState<Record<string, unknown>>({})
-  const [symbolsText, setSymbolsText] = useState('600519, 000001')
+  const [symbols, setSymbols] = useState<string[]>([])
   const [initialCash, setInitialCash] = useState(1_000_000)
   const [mode, setMode] = useState<'replay' | 'live'>('replay')
   const [replayDays, setReplayDays] = useState(120)
+  const [barInterval, setBarInterval] = useState<BarInterval>('1d')
   const [replayInterval, setReplayInterval] = useState(0.35)
   const [pollInterval, setPollInterval] = useState(5)
   const [respectMarketHours, setRespectMarketHours] = useState(true)
@@ -63,6 +67,13 @@ export function PaperPage() {
   const [selectedCustom, setSelectedCustom] = useState<number | null>(null)
 
   const isCustomRule = strategyId === 'custom_rule'
+
+  const watchlist = useWatchlist((state) => state.items)
+  const loadWatchlist = useWatchlist((state) => state.load)
+
+  useEffect(() => {
+    void loadWatchlist()
+  }, [loadWatchlist])
 
   const strategy = useMemo(() => strategies.find((item) => item.id === strategyId), [strategies, strategyId])
 
@@ -151,7 +162,6 @@ export function PaperPage() {
   const start = async (event: FormEvent) => {
     event.preventDefault()
     setError('')
-    const symbols = parseSymbols(symbolsText)
     if (!strategyId) {
       setError('请选择策略')
       return
@@ -162,7 +172,7 @@ export function PaperPage() {
       return
     }
     if (symbols.length === 0) {
-      setError('请填写至少一个标的')
+      setError('请至少选择一个标的')
       return
     }
     const cleanParams: Record<string, unknown> = {}
@@ -195,6 +205,7 @@ export function PaperPage() {
       replay_interval: replayInterval,
       poll_interval: pollInterval,
       respect_market_hours: respectMarketHours,
+      bar_interval: barInterval,
     }
 
     setStarting(true)
@@ -393,17 +404,27 @@ export function PaperPage() {
               </Field>
             </div>
 
-            <div className="form-grid">
-              <Field label="标的代码" hint="逗号分隔，自动补零去重">
-                <input
-                  className="input mono"
-                  value={symbolsText}
-                  onChange={(event) => setSymbolsText(event.target.value)}
-                  placeholder="600519, 000001"
-                />
-              </Field>
+            <Field label="标的" hint="优先从账号自选勾选；也可以搜索或直接输入代码">
+              <SymbolPicker watchlist={watchlist} selected={symbols} onChange={setSymbols} />
+            </Field>
 
-              {isCustomRule && <CustomStrategySelect value={selectedCustom} onChange={setSelectedCustom} />}
+            {isCustomRule && <CustomStrategySelect value={selectedCustom} onChange={setSelectedCustom} />}
+
+            <div className="form-grid">
+              <Field label="K 线周期" hint="分钟级目前仅虚拟货币支持历史数据">
+                <select
+                  className="select"
+                  value={barInterval}
+                  onChange={(event) => setBarInterval(event.target.value as BarInterval)}
+                >
+                  <option value="1d">日线（默认）</option>
+                  <option value="60m">60 分钟</option>
+                  <option value="30m">30 分钟</option>
+                  <option value="15m">15 分钟</option>
+                  <option value="5m">5 分钟</option>
+                  <option value="1m">1 分钟（高频）</option>
+                </select>
+              </Field>
               <Field label="初始资金（元）">
                 <input
                   className="input mono"

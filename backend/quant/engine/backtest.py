@@ -81,35 +81,63 @@ class BacktestEngine(BaseEngine):
             self._session = session
             session.begin()
 
-            dates = self._trading_dates(frames)
-            total = max(1, len(dates))
-            index_map = {
-                symbol: {d: i for i, d in enumerate(frame["date"].dt.date)}
-                for symbol, frame in frames.items()
-            }
-
-            self._report(0.15, f"开始回测，共 {total} 个交易日")
-            for step, day in enumerate(dates, start=1):
-                if self.cancelled:
-                    result.status = "cancelled"
-                    break
-
-                bars: dict[str, Bar] = {}
-                indexes: dict[str, int] = {}
-                for symbol, frame in frames.items():
-                    i = index_map[symbol].get(day)
-                    if i is None:
+            minute = cfg.bar_interval != "1d"
+            if minute:
+                # 分钟级：按时间戳逐 bar 推进（对齐所有标的的时间戳）
+                stamps = sorted(set().union(*[set(frame["date"].tolist()) for frame in frames.values()]))
+                total = max(1, len(stamps))
+                index_map = {
+                    symbol: {ts: i for i, ts in enumerate(frame["date"].tolist())}
+                    for symbol, frame in frames.items()
+                }
+                self._report(0.15, f"开始分钟级回测，共 {total} 根 {cfg.bar_interval} bar")
+                for step, ts in enumerate(stamps, start=1):
+                    if self.cancelled:
+                        result.status = "cancelled"
+                        break
+                    bars: dict[str, Bar] = {}
+                    indexes: dict[str, int] = {}
+                    for symbol, imap in index_map.items():
+                        i = imap.get(ts)
+                        if i is None:
+                            continue
+                        bars[symbol] = bar_from_frame(frames[symbol], i, symbol)
+                        indexes[symbol] = i
+                    if not bars:
                         continue
-                    bars[symbol] = bar_from_frame(frame, i, symbol)
-                    indexes[symbol] = i
-                if not bars:
-                    continue
+                    session.step(pd.Timestamp(ts).to_pydatetime(), bars, indexes)
+                    if step % max(1, total // 100) == 0:
+                        self._report(0.15 + 0.80 * step / total, f"{ts} ({step}/{total})")
+            else:
+                dates = self._trading_dates(frames)
+                total = max(1, len(dates))
+                index_map = {
+                    symbol: {d: i for i, d in enumerate(frame["date"].dt.date)}
+                    for symbol, frame in frames.items()
+                }
 
-                moment = datetime.combine(day, datetime.min.time())
-                session.step(moment, bars, indexes)
+                self._report(0.15, f"开始回测，共 {total} 个交易日")
+                for step, day in enumerate(dates, start=1):
+                    if self.cancelled:
+                        result.status = "cancelled"
+                        break
 
-                if step % max(1, total // 100) == 0:
-                    self._report(0.15 + 0.80 * step / total, f"{day} ({step}/{total})")
+                    bars: dict[str, Bar] = {}
+                    indexes: dict[str, int] = {}
+                    for symbol, frame in frames.items():
+                        i = index_map[symbol].get(day)
+                        if i is None:
+                            continue
+                        bars[symbol] = bar_from_frame(frame, i, symbol)
+                        indexes[symbol] = i
+                    if not bars:
+                        continue
+
+                    moment = datetime.combine(day, datetime.min.time())
+                    session.step(moment, bars, indexes)
+
+                    if step % max(1, total // 100) == 0:
+                        self._report(0.15 + 0.80 * step / total, f"{day} ({step}/{total})")
 
             session.finish()
             self._report(0.97, "计算绩效指标")
@@ -143,12 +171,19 @@ class BacktestEngine(BaseEngine):
             "benchmark": cfg.benchmark,
             "adjust": cfg.adjust,
             "volume_limit_pct": cfg.volume_limit_pct,
+            "bar_interval": cfg.bar_interval,
         }
 
     def _load_frames(self) -> dict[str, pd.DataFrame]:
         frames: dict[str, pd.DataFrame] = {}
+        minute = self.config.bar_interval != "1d"
         for symbol in self.config.symbols:
-            frame = self.data.bars(symbol, self.config.start, self.config.end)
+            if minute:
+                start_dt = datetime.combine(self.config.start, datetime.min.time())
+                end_dt = datetime.combine(self.config.end, datetime.max.time())
+                frame = self.data.minute_bars(symbol, start_dt, end_dt, freq=self.config.bar_interval)
+            else:
+                frame = self.data.bars(symbol, self.config.start, self.config.end)
             if frame is None or len(frame) == 0:
                 log.warning("标的 %s 无数据，已跳过", symbol)
                 continue

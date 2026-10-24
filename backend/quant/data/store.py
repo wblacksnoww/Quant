@@ -16,7 +16,7 @@ import threading
 import time
 from collections.abc import Iterable, Sequence
 from dataclasses import replace
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -274,6 +274,89 @@ class DataStore:
         return out
 
 
+    def minute_bars(
+        self,
+        symbol: str,
+        start: datetime,
+        end: datetime,
+        *,
+        freq: str = "1m",
+        refresh: bool = False,
+    ) -> pd.DataFrame:
+        """分钟 K 线：按 (标的, freq) 缓存到 Parquet，命中区间则不联网。
+
+        缓存文件如 ``CRYPTO_BTC_USDT_1m.parquet``；每次只增量补齐缺失区间。
+        """
+        inst = parse_instrument(symbol)
+        if freq not in ("1m", "5m", "15m", "30m", "60m"):
+            raise ValueError(f"不支持的分钟周期: {freq}")
+        if start >= end:
+            raise ValueError(f"start({start}) 晚于 end({end})")
+        safe = inst.id.replace("/", "-").replace(":", "_")
+        path = self.root / f"{safe}_{freq}.parquet"
+        providers = [self.provider, *self.fallbacks]
+        provider = next(
+            (item for item in providers if hasattr(item, "intraday_range")),
+            None,
+        )
+        if provider is None:
+            raise DataError("没有支持分钟历史的数据源")
+
+        with self._lock:
+            cached: pd.DataFrame | None = None
+            if not refresh and path.exists():
+                try:
+                    cached = pd.read_parquet(path)
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("分钟缓存损坏，忽略 %s: %s", path, exc)
+
+            if cached is not None and len(cached):
+                cached_start = pd.Timestamp(cached["date"].min())
+                cached_end = pd.Timestamp(cached["date"].max())
+                wanted = pd.Timestamp(start)
+                if wanted >= cached_start and pd.Timestamp(end) <= cached_end + self._freq_delta(freq):
+                    out = cached[
+                        (cached["date"] >= pd.Timestamp(start)) & (cached["date"] < pd.Timestamp(end))
+                    ]
+                    return out.reset_index(drop=True)
+
+                # 增量补齐：只拉缓存缺口
+                frames = [cached]
+                if wanted < cached_start:
+                    gap_end = min(cached_start, pd.Timestamp(end))
+                    frames.insert(
+                        0, provider.intraday_range(inst.id, start, gap_end.to_pydatetime(), freq=freq)
+                    )
+                if pd.Timestamp(end) > cached_end + self._freq_delta(freq):
+                    gap_start = max(cached_end, pd.Timestamp(start))
+                    frames.append(
+                        provider.intraday_range(
+                            inst.id,
+                            gap_start.to_pydatetime(),
+                            end,
+                            freq=freq,
+                        )
+                    )
+                merged = (
+                    pd.concat(frames, ignore_index=True).drop_duplicates(subset="date").sort_values("date")
+                )
+                merged.to_parquet(path, index=False)
+                out = merged[(merged["date"] >= pd.Timestamp(start)) & (merged["date"] < pd.Timestamp(end))]
+                if out.empty:
+                    raise DataNotFound(f"{inst.id} 区间 {start}~{end} 无 {freq} 数据")
+                return out.reset_index(drop=True)
+
+            frame = provider.intraday_range(inst.id, start, end, freq=freq)
+            frame.to_parquet(path, index=False)
+            return frame.reset_index(drop=True)
+
+    @staticmethod
+    def _freq_delta(freq: str) -> pd.Timedelta:
+        minutes = {"1m": 1, "5m": 5, "15m": 15, "30m": 30, "60m": 60}[freq]
+        return pd.Timedelta(minutes=minutes)
+
+
+
 class MarketDataService:
     """数据层门面：引擎与 API 都通过它取数，屏蔽缓存/降级细节。"""
 
@@ -305,6 +388,22 @@ class MarketDataService:
     def provider_for_market(self, market: str) -> DataProvider:
         """该市场实际使用的数据源（用于响应里的 source 标注）。"""
         return self._provider_for(market)
+
+    def minute_bars(
+        self,
+        symbol: str,
+        start: datetime,
+        end: datetime,
+        *,
+        freq: str = "1m",
+        refresh: bool = False,
+    ) -> pd.DataFrame:
+        """分钟 K 线（带缓存），按市场分派；引擎分钟级模式用。"""
+        inst = parse_instrument(symbol)
+        provider = self._provider_for(inst.market.value)
+        if not hasattr(provider, "intraday_range"):
+            raise DataError(f"{provider.name} 不支持分钟历史数据")
+        return self.store.minute_bars(symbol, start, end, freq=freq, refresh=refresh)
 
     def intraday(self, symbol: str, *, freq: str = "5m", limit: int = 240) -> pd.DataFrame:
         """分钟 K 线（今日/本周视图），按市场分派到对应数据源。"""

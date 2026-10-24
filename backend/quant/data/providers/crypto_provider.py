@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import date
+from datetime import date, datetime
 
 import pandas as pd
 
-from ...core.errors import DataNotFound, DataProviderUnavailable
+from ...core.errors import DataError, DataNotFound, DataProviderUnavailable
 from ...core.markets import Market, parse_instrument
 from ..base import DataProvider, SymbolInfo, normalize_frame, register_provider
 from ..calendar import calendar_range
@@ -298,6 +298,56 @@ class CryptoProvider(DataProvider):
         frame["date"] = pd.to_datetime(frame["date"], unit="ms", utc=True).dt.tz_localize(None)
         frame["amount"] = frame["close"] * frame["volume"]
         return normalize_frame(frame, symbol=inst.id)
+
+    # ------------------------------------------------------------------ #
+    def intraday_range(
+        self, symbol: str, start: datetime, end: datetime, *, freq: str = "1m"
+    ) -> pd.DataFrame:
+        """按时间区间分页拉取分钟 K 线（交易所单次有上限）。
+
+        ``date`` 列为 bar 的**开始时间**（naive UTC）；频率只支持 _TIMEFRAMES 键。
+        """
+        inst = parse_instrument(symbol)
+        timeframe = _TIMEFRAMES.get(freq)
+        if timeframe is None:
+            raise DataError(f"不支持的分钟周期: {freq}")
+        ex = self._exchange()
+        since_ms = int(start.timestamp() * 1000)
+        end_ms = int(end.timestamp() * 1000)
+        if since_ms >= end_ms:
+            raise DataError(f"分钟线区间无效: {start} ~ {end}")
+        if end_ms - since_ms > 90 * 24 * 3600 * 1000:
+            raise DataError("分钟线一次最多拉取 90 天，请缩小区间")
+
+        rows: list[list] = []
+        cursor = since_ms
+        try:
+            while cursor < end_ms:
+                batch = ex.fetch_ohlcv(inst.code, timeframe=timeframe, since=cursor, limit=300)
+                if not batch:
+                    break
+                rows.extend(r[:6] for r in batch)
+                last_ts = int(batch[-1][0])
+                if last_ts <= cursor:
+                    break
+                cursor = last_ts + 1
+                if last_ts >= end_ms:
+                    break
+        except DataProviderUnavailable:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise DataProviderUnavailable(f"{self.exchange_id} 分钟线 {inst.code} 拉取失败: {exc}") from exc
+
+        if not rows:
+            raise DataNotFound(f"{inst.code} 区间 {start}~{end} 无 {freq} 分钟线")
+        frame = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
+        frame["date"] = pd.to_datetime(frame["date"], unit="ms", utc=True).dt.tz_localize(None)
+        frame = frame[(frame["date"] >= pd.Timestamp(start)) & (frame["date"] < pd.Timestamp(end))]
+        frame["amount"] = frame["close"] * frame["volume"]
+        frame = frame.drop_duplicates(subset="date").sort_values("date")
+        if frame.empty:
+            raise DataNotFound(f"{inst.code} 区间 {start}~{end} 无 {freq} 分钟线")
+        return normalize_frame(frame.reset_index(drop=True), symbol=inst.id)
 
     # ------------------------------------------------------------------ #
     def calendar(self, start: date, end: date) -> list[date]:

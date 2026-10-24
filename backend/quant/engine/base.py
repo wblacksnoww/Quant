@@ -38,6 +38,8 @@ class EngineConfig:
     market: str = "CN"  # 由 symbols 推断（同一运行不允许混市场）
     run_id: str = field(default_factory=lambda: f"run_{uuid.uuid4().hex[:16]}")
     user_id: int | None = None
+    # bar 周期：1d（默认，日线）或 1m/5m/15m/30m/60m（分钟级，仅虚拟货币支持历史回测）
+    bar_interval: str = "1d"
 
     def validate(self) -> None:
         if not self.symbols:
@@ -54,6 +56,10 @@ class EngineConfig:
         instruments = [parse_instrument(s) for s in self.symbols]
         self.symbols = [inst.id for inst in instruments]
         self.market = single_market(self.symbols).value
+        if self.bar_interval != "1d" and self.bar_interval not in ("1m", "5m", "15m", "30m", "60m"):
+            raise ValueError(f"bar_interval 只支持 1d/1m/5m/15m/30m/60m，当前 {self.bar_interval!r}")
+        if self.bar_interval != "1d" and self.market != "CRYPTO":
+            raise ValueError("分钟级 bar_interval 目前仅支持虚拟货币市场")
 
 
 @dataclass

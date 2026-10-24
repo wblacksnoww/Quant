@@ -323,6 +323,8 @@ export interface RiskRuleInput {
   symbols?: string[] | null
 }
 
+export type BarInterval = '1d' | '1m' | '5m' | '15m' | '30m' | '60m'
+
 export interface BacktestRequest {
   strategy_id: string
   symbols: string[]
@@ -334,6 +336,7 @@ export interface BacktestRequest {
   risk?: RiskRuleInput[] | null
   benchmark?: string | null
   risk_free_rate?: number
+  bar_interval?: BarInterval
 }
 
 export interface PaperStartRequest extends BacktestRequest {

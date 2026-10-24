@@ -269,6 +269,7 @@ class BacktestManager:
             adjust=str(payload.get("adjust") or "qfq"),
             volume_limit_pct=float(payload.get("volume_limit_pct", 0.10)),
             risk_free_rate=float(payload.get("risk_free_rate") or 0.0),
+            bar_interval=str(payload.get("bar_interval") or "1d"),
             run_id=run_id,
             user_id=user_id,
         )

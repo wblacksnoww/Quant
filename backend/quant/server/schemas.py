@@ -348,6 +348,8 @@ class BacktestRequest(BaseModel):
     risk: list[RiskRuleInput] | None = None
     benchmark: str | None = None
     risk_free_rate: float = Field(default=0.02, ge=-0.1, le=0.5)
+    # K 线周期：1d（默认）或 1m/5m/15m/30m/60m（分钟级，虚拟货币专用）
+    bar_interval: Literal["1d", "1m", "5m", "15m", "30m", "60m"] = "1d"
 
     @field_validator("symbols")
     @classmethod
@@ -414,6 +416,7 @@ class PaperStartRequest(BacktestRequest):
     replay_days: int = Field(default=120, ge=10, le=1000)
     replay_interval: float = Field(default=0.35, ge=0.0, le=10)
     respect_market_hours: bool = True
+    bar_interval: Literal["1d", "1m", "5m", "15m", "30m", "60m"] = "1d"
 
 
 class PaperStateOut(BaseModel):
