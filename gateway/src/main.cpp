@@ -32,6 +32,12 @@ struct WsEndpoint {
   std::string host, port, path;
 };
 
+int64_t now_ns() {
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+             std::chrono::system_clock::now().time_since_epoch())
+      .count();
+}
+
 WsEndpoint split_ws_url(const std::string& url) {
   // wss://ws.okx.com:8443/ws/v5/public
   std::string rest = url;
@@ -210,6 +216,8 @@ int run(int argc, char** argv) {
               {"tag", intent.tag},
               {"reason", intent.reason},
               {"ts", tick.ts_ns},
+              // 信号延迟：交易所 tick 时间戳 → 本地订单意图生成（网关内部耗时）
+              {"signal_latency_us", (now_ns() - tick.ts_ns) / 1000},
           };
           audit.append(order_event);
           ipc.broadcast(order_event);
