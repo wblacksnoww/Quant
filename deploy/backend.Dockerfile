@@ -2,6 +2,21 @@
 # 国内拉取基础镜像走 daocloud 镜像站；如网络允许也可换回官方镜像名。
 
 ARG PYTHON_IMAGE=docker.m.daocloud.io/library/python:3.12-slim
+# 构建层：需要 g++ 编译 quant._core（C++ 回测加速核心，pybind11）
+ARG BUILDER_IMAGE=docker.m.daocloud.io/library/python:3.12
+
+FROM ${BUILDER_IMAGE} AS builder
+
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_INDEX_URL=${PIP_INDEX_URL}
+
+WORKDIR /app
+COPY deploy/requirements.lock.txt /app/requirements.lock.txt
+RUN pip install --no-cache-dir -r /app/requirements.lock.txt
+
+COPY backend /app/backend
+# --no-build-isolation：pybind11 已在 lock 依赖里，避免重复下载
+RUN pip install --no-cache-dir --no-deps --no-build-isolation /app/backend     && python -c "from quant import _core"  # 构建产物自检
 
 FROM ${PYTHON_IMAGE} AS runtime
 
@@ -26,13 +41,17 @@ RUN apt-get update \
 COPY deploy/requirements.lock.txt /app/requirements.lock.txt
 RUN pip install --no-cache-dir -r /app/requirements.lock.txt
 
-COPY backend /app/backend
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # 旧版 CSV 缓存作为离线行情种子（容器首次启动即可回测）
 COPY data/cache /app/data/cache
 
-# 只装本地包本身（依赖已由 lock 安装）
-RUN pip install --no-cache-dir --no-deps /app/backend
+# 应用源码（含 quant/_core*.so 原生扩展）
+COPY backend /app/backend
+
+# 原生扩展自检：缺失时启动仍可运行（自动回退 Python），但这里显式失败以尽早暴露
+RUN python -c "from quant import core_native; assert core_native.HAS_NATIVE, core_native.NATIVE_ERROR"
 
 # 非 root 运行；数据目录归 quant 所有，命名卷首次挂载会继承该权限
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin quant \

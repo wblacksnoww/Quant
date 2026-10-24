@@ -17,8 +17,10 @@ jobs:
       - name: Install backend (locked runtime + dev tools)
         run: |
           pip install -r deploy/requirements.lock.txt
-          pip install -e "backend" --no-deps
+          pip install -e "backend" --no-deps --no-build-isolation
           pip install pytest pytest-asyncio pytest-cov ruff mypy respx
+      - name: C++ core built
+        run: python -c "from quant import core_native; assert core_native.HAS_NATIVE, core_native.NATIVE_ERROR"
       - name: Ruff
         run: ruff check backend
 

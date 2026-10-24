@@ -45,6 +45,7 @@ psycopg-binary==3.3.6
 psycopg==3.3.6
 py-mini-racer==0.6.0
 pyarrow==26.0.0
+pybind11==2.13.6
 pycparser==3.0
 pydantic-settings==2.16.0
 pydantic==2.14.1

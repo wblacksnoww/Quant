@@ -45,3 +45,7 @@ htmlcov/
 
 # 工具生成的会话/计划文件
 .zcode/
+
+# C++ 原生扩展构建产物
+backend/quant/_core*.so
+backend/quant/_core*.pyd

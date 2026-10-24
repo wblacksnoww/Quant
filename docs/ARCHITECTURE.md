@@ -496,3 +496,20 @@ src/
 - 共享库只展示源策略仍然启用、且当前用户可见（public 或 target=本人）的策略；
   源策略更新不会自动改副本，副本列表显示 `update_available`，用户手动调用 sync。
 - fork 是独立副本：源策略删除/撤销共享后，副本仍可继续使用；管理员可管理全部策略。
+
+
+## C++ 加速核心（quant._core）
+
+- `backend/cpp/`：pybind11 扩展，实现回测热路径 —— 账户账本（含费摊薄成本、T+1）、
+  撮合引擎（涨跌停/整手/滑点/量能上限）、8 条风控规则、拼装策略 v1/v2 解释器、
+  4 个内置策略、回测主循环。
+- 数值语义与 Python 实现逐点对齐，`tests/test_native_equivalence.py` 用同一输入跑双路径，
+  成交序列与权益曲线必须完全一致（浮点容差 1e-6）；不一致会在 CI 直接失败。
+- `BacktestEngine.run` 分发：策略受支持且无 benchmark 时走 C++（`quant/core_native.py`
+  探测可用性），否则走 Python。实测 3 标的 4.5 年日线回测 3.5s → 0.05s（约 70 倍）。
+- 构建：`pip install backend` 自动编译（需要 g++ 与 Python 头文件）；Docker 多阶段构建
+  在 builder 层编译，运行时层只带产物；`QUANT_SKIP_NATIVE=1` 跳过编译并回退 Python。
+- 语义对齐中踩过的边界（供后续维护参考）：`Account.last_price` 优先返回持仓残留的
+  最后一笔成交价（清仓后也不清空）；`StrategyContext.cash` 是**可用资金**（扣冻结）；
+  `session.step` 在撮合后会再按收盘价重估一遍（覆盖成交价 mark）；回测结束时
+  `finish()` 会撤销全部未成交挂单。

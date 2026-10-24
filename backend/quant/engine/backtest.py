@@ -23,8 +23,9 @@ from ..execution.broker import SimBroker
 from ..execution.cost import CostModel
 from ..execution.matching import MatchingEngine
 from ..metrics.performance import compute
-from ..risk.base import RiskManager
+from ..risk.base import DEFAULT_RULES, RiskManager
 from ..strategy.base import Strategy
+from ..strategy.custom_fields import NEWS_FIELDS
 from ..strategy.registry import get_strategy
 from .base import BaseEngine, EngineConfig, EngineResult
 from .session import TradingSession, bar_from_frame
@@ -75,6 +76,14 @@ class BacktestEngine(BaseEngine):
             frames = self._load_frames()
             if not frames:
                 raise RuntimeError("没有可用的行情数据，请先检查数据源或日期区间")
+
+            from .. import core_native
+
+            if core_native.HAS_NATIVE and core_native.native_ready(cfg.strategy_id, benchmark=cfg.benchmark):
+                try:
+                    return self._run_native(frames, result)
+                except Exception:  # noqa: BLE001 - 原生路径故障自动回退 Python
+                    log.exception("C++ 快速路径失败，回退 Python 引擎 run_id=%s", cfg.run_id)
 
             self._report(0.12, "准备策略与账户")
             session = self._build_session(frames)
@@ -173,6 +182,152 @@ class BacktestEngine(BaseEngine):
             "volume_limit_pct": cfg.volume_limit_pct,
             "bar_interval": cfg.bar_interval,
         }
+
+    def _run_native(self, frames: dict[str, pd.DataFrame], result: EngineResult) -> EngineResult:
+        """C++ 快速路径：数据列化后交给 quant._core，结果结构与 Python 路径一致。"""
+        import numpy as np
+
+        from .. import core_native
+
+        cfg = self.config
+        symbols = [s for s in cfg.symbols if s in frames and len(frames[s])]
+        start_dt = pd.Timestamp(datetime.combine(cfg.start, datetime.min.time()))
+        end_dt = pd.Timestamp(datetime.combine(cfg.end, datetime.max.time()))
+        start_ns = int(start_dt.value)
+        end_ns = int(end_dt.value)
+
+        def cols_of(frame: pd.DataFrame) -> dict[str, np.ndarray]:
+            def f(name: str) -> np.ndarray:
+                if name in frame.columns:
+                    values = pd.to_numeric(frame[name], errors="coerce").to_numpy(dtype="float64")
+                else:
+                    values = np.full(len(frame), np.nan)
+                return values
+
+            dates = pd.to_datetime(frame["date"])
+            if dates.dt.tz is not None:
+                dates = dates.dt.tz_localize(None)
+            ns = dates.astype("datetime64[ns]").astype("int64").to_numpy()
+            return {
+                "dates": ns,
+                "open": f("open"),
+                "high": f("high"),
+                "low": f("low"),
+                "close": f("close"),
+                "volume": f("volume"),
+                "amount": f("amount"),
+                "prev_close": f("prev_close"),
+                "limit_up": f("limit_up"),
+                "limit_down": f("limit_down"),
+            }
+
+        arrays = [cols_of(frames[s]) for s in symbols]
+        extras: list[dict[str, np.ndarray]] = []
+        spec = None
+        if cfg.strategy_id == "custom_rule":
+            raw = cfg.params.get("spec")
+            if isinstance(raw, dict):
+                spec = raw
+            elif isinstance(raw, str):
+                import json
+
+                spec = json.loads(raw)
+        if spec is not None:
+            news_fields = sorted(
+                {
+                    str(item.get("field"))
+                    for cond in spec.get("entry", []) + spec.get("exit", [])
+                    for item in (cond.get("left"), cond.get("right"))
+                    if isinstance(item, dict) and str(item.get("field", "")).startswith("news_")
+                }
+            )
+            if spec.get("version") == 2:
+                news_fields = sorted(
+                    {
+                        str(n.get("type"))
+                        for n in spec.get("nodes", [])
+                        if str(n.get("type", "")).startswith("news_")
+                    }
+                )
+            if news_fields and self.news is not None:
+                for s in symbols:
+                    frame = frames[s]
+                    extra: dict[str, np.ndarray] = {}
+                    for field in news_fields:
+                        metric, window = NEWS_FIELDS[field]
+                        values = [
+                            self.news.news_factor_at(s, as_of=row.to_pydatetime(), window=window)
+                            for row in pd.to_datetime(frame["date"])
+                        ]
+                        extra[field] = np.array([getattr(f, metric) for f in values], dtype="float64")
+                    extras.append(extra)
+        while len(extras) < len(symbols):
+            extras.append({})
+
+        progress = self._make_progress_cb()
+        raw_result = core_native._native.run_backtest(
+            symbols,
+            cfg.bar_interval,
+            start_ns,
+            end_ns,
+            cfg.initial_cash,
+            cfg.risk_free_rate,
+            CostModel.for_market(cfg.market, cfg.cost).to_dict(),
+            bool(CostModel.for_market(cfg.market, cfg.cost).stamp_both_sides),
+            cfg.volume_limit_pct,
+            cfg.risk if cfg.risk is not None else DEFAULT_RULES,
+            cfg.strategy_id,
+            {**cfg.params, **({"spec": spec} if spec is not None else {})},
+            [arr["dates"] for arr in arrays],
+            [arr["open"] for arr in arrays],
+            [arr["high"] for arr in arrays],
+            [arr["low"] for arr in arrays],
+            [arr["close"] for arr in arrays],
+            [arr["volume"] for arr in arrays],
+            [arr["amount"] for arr in arrays],
+            [arr["prev_close"] for arr in arrays],
+            [arr["limit_up"] for arr in arrays],
+            [arr["limit_down"] for arr in arrays],
+            extras,
+            progress,
+        )
+
+        result.status = raw_result.get("status", "finished")
+        result.equity_curve = raw_result.get("equity_curve", [])
+        result.trades = raw_result.get("trades", [])
+        result.orders = raw_result.get("orders", [])
+        result.positions = raw_result.get("positions", [])
+        result.logs = raw_result.get("logs", [])
+        # metrics 仍由 Python 计算（与 Python 路径同一实现）
+        curve = pd.DataFrame(result.equity_curve)
+        if len(curve):
+            equity = pd.Series(curve["total_equity"].to_numpy(), index=pd.to_datetime(curve["dt"]))
+            from ..engine.paper import PaperEngine as _PE  # 复用成交重建，保证口径一致
+
+            fills = [_PE._fill_from_record(t) for t in result.trades]
+            result.metrics = compute(
+                equity,
+                trades=fills,
+                initial_equity=cfg.initial_cash,
+                rf_annual=cfg.risk_free_rate,
+            )
+        if self.recorder is not None:
+            self.recorder.finalize(result)
+            for fill in result.trades:
+                self.recorder.record_fill(fill)
+            for order in result.orders:
+                self.recorder.record_order(order)
+        self._report(1.0, "完成")
+        return result
+
+    def _make_progress_cb(self):
+        recorder = self.recorder
+
+        def cb(progress: float, message: str) -> None:
+            if recorder is not None:
+                recorder.update_progress(progress, message)
+
+        return cb
 
     def _load_frames(self) -> dict[str, pd.DataFrame]:
         frames: dict[str, pd.DataFrame] = {}
