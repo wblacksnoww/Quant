@@ -17,6 +17,7 @@ jobs:
       - name: Install backend (locked runtime + dev tools)
         run: |
           pip install -r deploy/requirements.lock.txt
+          pip install setuptools wheel pybind11
           pip install -e "backend" --no-deps --no-build-isolation
           pip install pytest pytest-asyncio pytest-cov ruff mypy respx
       - name: C++ core built
