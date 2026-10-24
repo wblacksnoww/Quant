@@ -52,8 +52,23 @@ jobs:
           ./scripts/gen-api-types.sh
           git diff --exit-code -- frontend/src/api/openapi.json frontend/src/api/schema.ts
 
+  gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake libboost-dev libssl-dev
+      - name: Build gateway
+        run: |
+          cmake -S gateway -B gateway/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build gateway/build -j
+      - name: Gateway tests
+        run: gateway/build/gateway-tests
+
   images:
-    needs: test
+    needs: [test, gateway]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

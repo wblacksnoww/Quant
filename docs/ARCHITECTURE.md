@@ -513,3 +513,14 @@ src/
   最后一笔成交价（清仓后也不清空）；`StrategyContext.cash` 是**可用资金**（扣冻结）；
   `session.step` 在撮合后会再按收盘价重估一遍（覆盖成交价 mark）；回测结束时
   `finish()` 会撤销全部未成交挂单。
+
+
+## C++ 交易网关（quant-gateway）
+
+- `gateway/`：独立 C++ 进程（Boost.Beast + OpenSSL + nlohmann/json），策略层的最终形态：
+  OKX 公共 WS 行情 → TickEngine（tick→bar 聚合）→ 纯 tick 策略 → qcore 风控 → 订单意图。
+- 阶段 A 为 paper 模式：订单只写 JSONL 审计日志（`audit_path`），不进交易所。
+- 事件流：本地 TCP :8790（127.0.0.1，长度前缀 JSON）→ Python GatewayManager（阶段 C）→
+  EventBus/前端；命令流反向（启停策略/平仓/关停）。
+- 构建：`cmake -S gateway -B gateway/build && cmake --build gateway/build`；
+  CI 独立 job 编译并跑 `gateway-tests`；backend 镜像同时带 `_core` 扩展与网关二进制。

@@ -19,6 +19,14 @@ COPY backend /app/backend
 RUN pip install --no-cache-dir --no-deps --no-build-isolation /app/backend \
     && python -c "from quant import _core"  # 构建产物自检
 
+# C++ 交易网关二进制（backend 以子进程启动）
+COPY gateway /app/gateway
+RUN rm -rf /app/gateway/build && apt-get update \
+    && apt-get install -y --no-install-recommends cmake libboost-dev libssl-dev \
+    && cmake -S /app/gateway -B /app/gateway/build -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build /app/gateway/build -j \
+    && cp /app/gateway/build/quant-gateway /usr/local/bin/
+
 FROM ${PYTHON_IMAGE} AS runtime
 
 # 默认走国内 PyPI 镜像（CI/海外构建用 --build-arg 换成官方源）
@@ -41,6 +49,9 @@ RUN apt-get update \
 # 先装锁定依赖：源码变动不会让这一层缓存失效（改码重建从分钟级降到秒级）
 COPY deploy/requirements.lock.txt /app/requirements.lock.txt
 RUN pip install --no-cache-dir -r /app/requirements.lock.txt
+
+# C++ 网关二进制（builder 层编译产物）
+COPY --from=builder /usr/local/bin/quant-gateway /usr/local/bin/quant-gateway
 
 # 旧版 CSV 缓存作为离线行情种子（容器首次启动即可回测）
 COPY data/cache /app/data/cache
