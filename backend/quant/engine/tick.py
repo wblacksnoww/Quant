@@ -32,7 +32,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
-from typing import Any, Protocol
+from typing import Protocol
 
 import numpy as np
 import pandas as pd
@@ -47,8 +47,8 @@ class TickFrame:
     """单标的的 tick 列式数据（直接映射到 C++ TickSeries）。"""
 
     symbol: str
-    ts: np.ndarray       # int64, ns since epoch
-    price: np.ndarray    # float64
+    ts: np.ndarray  # int64, ns since epoch
+    price: np.ndarray  # float64
     bid: np.ndarray
     ask: np.ndarray
     volume: np.ndarray
@@ -65,19 +65,28 @@ class TickFrame:
     def size(self) -> int:
         return len(self.ts)
 
-    def slice_range(self, start: date, end: date) -> "TickFrame":
+    def slice_range(self, start: date, end: date) -> TickFrame:
         """按日期切片（ts 是 ns，先转成日期边界再比较）。"""
         lo = int(pd.Timestamp(datetime.combine(start, datetime.min.time())).value)
         hi = int(pd.Timestamp(datetime.combine(end, datetime.max.time())).value)
         mask = (self.ts >= lo) & (self.ts <= hi)
         idx = np.flatnonzero(mask)
         if len(idx) == 0:
-            return TickFrame(self.symbol, *[np.array([], dtype=t) for t in (
-                np.int64, np.float64, np.float64, np.float64, np.float64, np.float64)])
+            return TickFrame(
+                self.symbol,
+                *[
+                    np.array([], dtype=t)
+                    for t in (np.int64, np.float64, np.float64, np.float64, np.float64, np.float64)
+                ],
+            )
         return TickFrame(
             self.symbol,
-            self.ts[idx], self.price[idx], self.bid[idx],
-            self.ask[idx], self.volume[idx], self.amount[idx],
+            self.ts[idx],
+            self.price[idx],
+            self.bid[idx],
+            self.ask[idx],
+            self.volume[idx],
+            self.amount[idx],
         )
 
 
@@ -87,8 +96,7 @@ class TickProvider(Protocol):
     接入真实 Level2 时实现这个接口即可 —— 引擎与上层代码都不需要改。
     """
 
-    def fetch(self, symbol: str, start: date, end: date) -> TickFrame:
-        ...
+    def fetch(self, symbol: str, start: date, end: date) -> TickFrame: ...
 
     @property
     def is_synthetic(self) -> bool:
@@ -111,9 +119,7 @@ def _normalize_frame(frame: pd.DataFrame) -> pd.DataFrame:
     if isinstance(df.index, pd.DatetimeIndex):
         df = df.reset_index()
         # reset_index 后列名可能是 index / date / datetime，取第一个时间列
-        time_col = next(
-            (c for c in df.columns if c in ("date", "datetime", "index", "level_0")), None
-        )
+        time_col = next((c for c in df.columns if c in ("date", "datetime", "index", "level_0")), None)
         if time_col is None:
             time_col = df.columns[0]
         df = df.rename(columns={time_col: "date"})
@@ -137,6 +143,26 @@ def _normalize_frame(frame: pd.DataFrame) -> pd.DataFrame:
         if need not in df.columns:
             raise ValueError(f"K 线缺少 {need} 列，实际列：{list(df.columns)}")
     return df.reset_index(drop=True)
+
+
+def _interp_path(open_: float, high: float, close: float, low: float, frac: float) -> float:
+    """在一根 bar 内部按**三段折线**估一个价格。
+
+    ``frac=0`` 得到 open、``frac=0.5`` 撞到 high、``frac=1`` 落到 close，
+    最后钳制在 ``[low, high]`` 内。
+
+    这是对 bar 内部走势的**猜**，不是还原：
+    真实 tick 没有"必定先摸高点再回落到收盘"这种规律。之所以这样选，
+    是因为它至少保证端点与极值和真实 bar 一致（实测首末价、max/min 完全吻合），
+    比"open 直线到 close"更能触发 tick 级止损 —— 而验证止损时机正是
+    合成数据的用途。**不要用它的收益判断策略优劣。**
+    """
+    if frac < 0.5:
+        price = open_ + (high - open_) * (frac / 0.5)
+    else:
+        price = high + (close - high) * ((frac - 0.5) / 0.5)
+    # 数据本身 high < low（脏数据）时不做钳制，避免把价格压成一个点
+    return max(low, min(high, price)) if high >= low else price
 
 
 @dataclass
@@ -184,7 +210,7 @@ class SyntheticTickProvider:
         # 用位置取列而不是 itertuples：itertuples 会把非法标识符列名改写
         # （open → _1），依赖 row.open 会在脏列名上静默取错值。
         col = {k: df[k].to_numpy() for k in ("date", "open", "close")}
-        for opt, default in (("high", None), ("low", None), ("volume", 0.0)):
+        for opt in ("high", "low", "volume"):
             col[opt] = df[opt].to_numpy() if opt in df.columns else None
 
         for i in range(len(df)):
@@ -217,19 +243,12 @@ class SyntheticTickProvider:
                     segs.append((seg_start // 100, seg_start % 100, end_min - start_min))
 
             for hh, mm, span_min in segs:
-                if intraday:
-                    n_ticks = 1  # 一根分钟 bar 自己就是一档
-                else:
-                    n_ticks = max(1, (span_min * 60) // step)
+                # 一根分钟 bar 自己就是一档；日线段按秒数切分
+                n_ticks = 1 if intraday else max(1, (span_min * 60) // step)
                 base = datetime.combine(day, datetime.min.time()).replace(hour=hh, minute=mm)
-                # 价格路径：open → high → close（三段折线）
                 for k in range(n_ticks):
                     frac = k / max(1, n_ticks - 1)
-                    if frac < 0.5:
-                        p = o + (h - o) * (frac / 0.5)
-                    else:
-                        p = h + (c - h) * ((frac - 0.5) / 0.5)
-                    p = max(lo, min(h, p)) if h >= lo else p
+                    p = _interp_path(o, h, c, lo, frac)
                     if self.noise_bps > 0:
                         p *= 1.0 + rng.normal(0, self.noise_bps / 10000.0)
                     ts_list.append(int(pd.Timestamp(base + timedelta(seconds=k * step)).value))
@@ -254,9 +273,7 @@ class SyntheticTickProvider:
         return TickFrame(symbol, ts_arr, px_arr, bid, ask, vol_arr, amount)
 
 
-def build_tick_frame_from_provider(
-    provider: TickProvider, symbol: str, start: date, end: date
-) -> TickFrame:
+def build_tick_frame_from_provider(provider: TickProvider, symbol: str, start: date, end: date) -> TickFrame:
     """从 provider 取 tick 并做基本健全性检查。"""
     tf = provider.fetch(symbol, start, end)
     if tf.size == 0:
@@ -264,16 +281,24 @@ def build_tick_frame_from_provider(
     # 时间戳必须严格非递减（C++ 侧用二分查找依赖有序性）
     if np.any(np.diff(tf.ts) < 0):
         order = np.argsort(tf.ts, kind="stable")
-        tf = TickFrame(symbol, tf.ts[order], tf.price[order], tf.bid[order],
-                       tf.ask[order], tf.volume[order], tf.amount[order])
+        tf = TickFrame(
+            symbol,
+            tf.ts[order],
+            tf.price[order],
+            tf.bid[order],
+            tf.ask[order],
+            tf.volume[order],
+            tf.amount[order],
+        )
         log.warning("%s 的 tick 时间戳非有序，已重新排序", symbol)
     # 价格必须为正
     bad = tf.price <= 0
     if np.any(bad):
         log.warning("%s 有 %d 个非正价格 tick，已过滤", symbol, int(bad.sum()))
         keep = ~bad
-        tf = TickFrame(symbol, tf.ts[keep], tf.price[keep], tf.bid[keep],
-                       tf.ask[keep], tf.volume[keep], tf.amount[keep])
+        tf = TickFrame(
+            symbol, tf.ts[keep], tf.price[keep], tf.bid[keep], tf.ask[keep], tf.volume[keep], tf.amount[keep]
+        )
     return tf
 
 

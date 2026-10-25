@@ -45,7 +45,7 @@ class EngineConfig:
     # bar 周期：1d（默认，日线）或 1m/5m/15m/30m/60m（分钟级，仅虚拟货币支持历史回测）
     bar_interval: str = "1d"
 
-    def cost_model(self) -> "object":
+    def cost_model(self) -> object:
         """按市场取成本模型，并把默认滑点/冲击注入（用户未显式指定时）。"""
         from ..execution.cost import CostModel
 

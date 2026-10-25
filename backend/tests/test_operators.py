@@ -106,7 +106,9 @@ class TestOperatorComputation:
         assert np.isnan(values).all()
 
     def test_wrong_length_returns_nan(self):
-        @register_operator("_test_short", )
+        @register_operator(
+            "_test_short",
+        )
         def _short(frame):
             return pd.Series([1.0, 2.0])
 
@@ -218,9 +220,7 @@ class TestOperatorRunsThroughCpp:
         """门槛放宽应产生成交 —— 证明列不是全 NaN。"""
         loose = self._run(context, self._spec("op:zscore(period=20)", 0.5), "op_loose")
         assert loose.status == "finished", loose.error
-        assert loose.trades, (
-            "算子字段 spec 零成交。若列是全 NaN，说明算子没被喂进 C++。"
-        )
+        assert loose.trades, "算子字段 spec 零成交。若列是全 NaN，说明算子没被喂进 C++。"
 
     def test_operator_threshold_changes_result(self, context):
         """不同门槛必须给出不同成交 —— 否则条件没生效。"""
@@ -232,18 +232,16 @@ class TestOperatorRunsThroughCpp:
         assert ta != tb, "不同门槛产生了相同成交序列，算子条件未生效"
 
     def test_unregistered_operator_yields_no_trades_and_warns(self, context):
-        result = self._run(
-            context, self._spec("op:no_such_op(period=5)", 0.5), "op_missing"
-        )
+        result = self._run(context, self._spec("op:no_such_op(period=5)", 0.5), "op_missing")
         assert result.status == "finished", result.error
         assert result.trades == [], "未注册算子的列是全 NaN，条件恒不成立，不该有成交"
         msgs = " ".join(str(item.get("message", "")) for item in (result.logs or []))
         # 必须点名是哪个算子、且说明为什么没用 —— 只说"算子"两个字测试会假通过
         assert "no_such_op" in msgs, f"告警未点名具体算子，logs={result.logs}"
         assert "未注册" in msgs, f"告警未说明未注册，logs={result.logs}"
-        assert any(
-            str(item.get("level")) == "error" for item in (result.logs or [])
-        ), f"不可用算子应以 error 级别呈现，logs={result.logs}"
+        assert any(str(item.get("level")) == "error" for item in (result.logs or [])), (
+            f"不可用算子应以 error 级别呈现，logs={result.logs}"
+        )
 
     def test_bad_param_operator_rejected_at_validation(self, context):
         """参数格式错误在校验阶段就拦住，并指明位置 —— 比运行时告警更有用。"""
@@ -310,6 +308,4 @@ class TestOperatorRunsThroughCpp:
         """算子跑出结果必须在日志里标明是研究通道，避免与 C++ 结果混为一谈。"""
         result = self._run(context, self._spec("op:zscore(period=20)", 0.5), "op_label")
         msgs = " ".join(str(item.get("message", "")) for item in (result.logs or []))
-        assert "Python 算子" in msgs or "研究通道" in msgs, (
-            f"算子回测未标注研究通道，logs={result.logs}"
-        )
+        assert "Python 算子" in msgs or "研究通道" in msgs, f"算子回测未标注研究通道，logs={result.logs}"

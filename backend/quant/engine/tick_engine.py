@@ -19,7 +19,6 @@ import time
 from datetime import datetime
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
 from ..core.events import EventBus
@@ -70,9 +69,7 @@ class TickBacktestEngine(BaseEngine):
             from .. import core_native
 
             if not core_native.HAS_NATIVE:
-                raise RuntimeError(
-                    f"tick 回测需要 C++ 核心（quant._core）：{core_native.NATIVE_ERROR}"
-                )
+                raise RuntimeError(f"tick 回测需要 C++ 核心（quant._core）：{core_native.NATIVE_ERROR}")
 
             self._report(0.08, "生成 spec")
             spec = core_native.spec_for_strategy(cfg.strategy_id, dict(cfg.params))
@@ -131,7 +128,10 @@ class TickBacktestEngine(BaseEngine):
                     curves.append(curve)
                 log.info(
                     "%s tick 回测完成：%d 个 tick，%d 笔成交，warmup 跳过 %d",
-                    symbol, raw["ticks_processed"], len(raw["fills"]), raw["ticks_skipped_warmup"],
+                    symbol,
+                    raw["ticks_processed"],
+                    len(raw["fills"]),
+                    raw["ticks_skipped_warmup"],
                 )
 
             self._report(0.85, "合并权益曲线")
@@ -148,8 +148,7 @@ class TickBacktestEngine(BaseEngine):
                 merged["total_equity"].to_numpy(dtype="float64"),
                 index=pd.to_datetime(merged["dt"]),
             )
-            result.metrics = compute(equity, initial_equity=cfg.initial_cash,
-                                     rf_annual=cfg.risk_free_rate)
+            result.metrics = compute(equity, initial_equity=cfg.initial_cash, rf_annual=cfg.risk_free_rate)
             if synthetic:
                 # 把"这是模拟数据"这个事实记进日志，避免报告被误读
                 result.logs.append(
@@ -305,8 +304,11 @@ class TickBacktestEngine(BaseEngine):
                 merged = part
             else:
                 merged = pd.merge_asof(
-                    merged.sort_values("dt"), part.sort_values("dt"),
-                    on="dt", direction="backward", suffixes=("", "_r"),
+                    merged.sort_values("dt"),
+                    part.sort_values("dt"),
+                    on="dt",
+                    direction="backward",
+                    suffixes=("", "_r"),
                 )
                 for col in ("equity", "cash", "position"):
                     merged[col] = merged[col].fillna(0.0) + merged[f"{col}_r"].fillna(0.0)

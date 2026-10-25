@@ -44,8 +44,9 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -115,9 +116,7 @@ def parse_operator_field(field_name: str) -> tuple[str, dict[str, float]]:
     """把 `op:name(a=1,b=2)` 解析成 (name, params)。格式错直接抛 ValueError。"""
     match = _OP_RE.match(field_name)
     if match is None:
-        raise ValueError(
-            f"算子字段格式应为 op:name(k=v)，实际 {field_name!r}"
-        )
+        raise ValueError(f"算子字段格式应为 op:name(k=v)，实际 {field_name!r}")
     name, raw_args = match.group(1), match.group(2).strip()
     params: dict[str, float] = {}
     if raw_args:
@@ -165,8 +164,7 @@ def compute_operator(frame: pd.DataFrame, field_name: str) -> np.ndarray:
     spec = _REGISTRY.get(name)
     if spec is None:
         log.warning(
-            "算子 %s 未注册（可用：%s），该字段将全为 NaN，"
-            "相关条件恒不成立。",
+            "算子 %s 未注册（可用：%s），该字段将全为 NaN，相关条件恒不成立。",
             name,
             sorted(_REGISTRY) or "无",
         )
@@ -249,7 +247,9 @@ def _vol_ratio(frame: pd.DataFrame, fast: int = 5, slow: int = 20) -> pd.Series:
     return v_fast / v_slow.replace(0.0, np.nan)
 
 
-@register_operator("gap", )
+@register_operator(
+    "gap",
+)
 def _gap(frame: pd.DataFrame) -> pd.Series:
     """隔夜跳空幅度：(open - prev_close) / prev_close。"""
     open_ = pd.to_numeric(frame["open"], errors="coerce")
@@ -285,8 +285,7 @@ def assert_causal(
         if not np.all(both_nan | close):
             bad = np.flatnonzero(~(both_nan | close))
             return False, (
-                f"截断到 {k} 行后第 {bad[0]} 行值从 {b[bad[0]]!r} 变为 {a[bad[0]]!r}，"
-                f"说明算子用了未来数据"
+                f"截断到 {k} 行后第 {bad[0]} 行值从 {b[bad[0]]!r} 变为 {a[bad[0]]!r}，说明算子用了未来数据"
             )
     return True, ""
 

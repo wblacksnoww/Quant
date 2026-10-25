@@ -13,13 +13,14 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import datetime
 
 import pandas as pd
 import pytest
 
+from quant.core.errors import InsufficientCash
 from quant.core.portfolio import Account
-from quant.core.types import Bar, Fill, FeeBreakdown, Order, OrderType, Side, TimeInForce
+from quant.core.types import Bar, FeeBreakdown, Fill, Order, OrderType, Side, TimeInForce
 from quant.execution.broker import SimBroker
 from quant.execution.cost import CostModel
 from quant.execution.matching import MatchingEngine
@@ -31,14 +32,20 @@ from quant.execution.matching import MatchingEngine
 def make_broker(cash: float = 100_000, *, volume_limit_pct: float = 1.0, age_days: int = 30):
     account = Account(cash)
     matching = MatchingEngine(CostModel(), volume_limit_pct=volume_limit_pct)
-    broker = SimBroker(
-        account, matching=matching, match_on_submit=False, max_order_age_days=age_days
-    )
+    broker = SimBroker(account, matching=matching, match_on_submit=False, max_order_age_days=age_days)
     return account, broker
 
 
-def bar(symbol: str, day: int, *, open_: float, high: float = None, low: float = None,
-        close: float = None, volume: float = 10_000_000) -> Bar:
+def bar(
+    symbol: str,
+    day: int,
+    *,
+    open_: float,
+    high: float = None,
+    low: float = None,
+    close: float = None,
+    volume: float = 10_000_000,
+) -> Bar:
     return Bar(
         symbol=symbol,
         dt=datetime(2024, 1, day),
@@ -71,8 +78,7 @@ class TestCashNeverNegative:
         """跳空 +30% 高开：原数量买不起时应缩减，而不是把现金扣成负数。"""
         account, broker = make_broker(100_000)
         account.mark_price("CN:600000", 10.0)
-        order = Order(symbol="CN:600000", side=Side.BUY, quantity=9_700,
-                      order_type=OrderType.MARKET)
+        order = Order(symbol="CN:600000", side=Side.BUY, quantity=9_700, order_type=OrderType.MARKET)
         broker.submit(order)
 
         broker.on_bar(bar("CN:600000", 2, open_=13.0))
@@ -89,8 +95,7 @@ class TestCashNeverNegative:
         """跳空到完全买不起一手：订单被明确阻断，资金分文不动。"""
         account, broker = make_broker(10_000)
         account.mark_price("CN:600000", 10.0)
-        order = Order(symbol="CN:600000", side=Side.BUY, quantity=900,
-                      order_type=OrderType.MARKET)
+        order = Order(symbol="CN:600000", side=Side.BUY, quantity=900, order_type=OrderType.MARKET)
         broker.submit(order)
         before = account.cash
 
@@ -106,7 +111,9 @@ class TestCashNeverNegative:
     def test_account_rejects_overdraft_fill(self):
         """账户层是最后一道闸门：绕过撮合直接结算超额买单必须抛错。"""
         account = Account(1_000)
-        with pytest.raises(Exception):
+        # 必须抛 InsufficientCash 而不是任意异常：上层要按类型区分
+        # "资金不足"（可缩减数量重试）与"数据错误"（该直接失败）
+        with pytest.raises(InsufficientCash):
             account.apply_fill(fill("CN:600000", Side.BUY, 1_000, 10.0))
         assert account.cash == 1_000, "抛错后账户不应被改动"
 
@@ -115,8 +122,7 @@ class TestCashNeverNegative:
         """各种跳空幅度下都不允许负现金。"""
         account, broker = make_broker(100_000)
         account.mark_price("CN:600000", 10.0)
-        order = Order(symbol="CN:600000", side=Side.BUY, quantity=9_800,
-                      order_type=OrderType.MARKET)
+        order = Order(symbol="CN:600000", side=Side.BUY, quantity=9_800, order_type=OrderType.MARKET)
         broker.submit(order)
         broker.on_bar(bar("CN:600000", 2, open_=10.0 * gap))
         assert account.cash >= -1e-6, f"跳空 {gap:.2f}x 后现金 {account.cash}"
@@ -132,8 +138,7 @@ class TestFillWithinLiquidity:
         account.mark_price("CN:600000", 10.0)
         volume = 1_000_000
         qty = int(volume / pct) if pct > 0 else 1_000
-        order = Order(symbol="CN:600000", side=Side.BUY, quantity=qty,
-                      order_type=OrderType.MARKET)
+        order = Order(symbol="CN:600000", side=Side.BUY, quantity=qty, order_type=OrderType.MARKET)
         broker.submit(order)
         broker.on_bar(bar("CN:600000", 2, open_=10.0, volume=volume))
 
@@ -149,8 +154,7 @@ class TestTPlusOne:
     def test_same_day_buy_not_sellable(self):
         account, broker = make_broker(100_000)
         account.mark_price("CN:600000", 10.0)
-        buy = Order(symbol="CN:600000", side=Side.BUY, quantity=1_000,
-                    order_type=OrderType.MARKET)
+        buy = Order(symbol="CN:600000", side=Side.BUY, quantity=1_000, order_type=OrderType.MARKET)
         broker.submit(buy)
         broker.on_bar(bar("CN:600000", 2, open_=10.0))
 
@@ -158,16 +162,14 @@ class TestTPlusOne:
         assert pos.quantity == 1_000
         assert pos.available == 0, "A 股当日买入不应计入可卖"
 
-        sell = Order(symbol="CN:600000", side=Side.SELL, quantity=1_000,
-                     order_type=OrderType.MARKET)
+        sell = Order(symbol="CN:600000", side=Side.SELL, quantity=1_000, order_type=OrderType.MARKET)
         broker.submit(sell)
         assert sell.status.value == "rejected", "T+1 市场当日买入后不应允许卖出"
 
     def test_next_day_becomes_sellable(self):
         account, broker = make_broker(100_000)
         account.mark_price("CN:600000", 10.0)
-        broker.submit(Order(symbol="CN:600000", side=Side.BUY, quantity=1_000,
-                            order_type=OrderType.MARKET))
+        broker.submit(Order(symbol="CN:600000", side=Side.BUY, quantity=1_000, order_type=OrderType.MARKET))
         broker.on_bar(bar("CN:600000", 2, open_=10.0))
 
         account.on_new_session()  # 次日开盘解冻
@@ -178,8 +180,7 @@ class TestTPlusOne:
         """美股 T+0：买入当场可卖。"""
         account, broker = make_broker(100_000)
         account.mark_price("US:AAPL", 190.0)
-        broker.submit(Order(symbol="US:AAPL", side=Side.BUY, quantity=100,
-                            order_type=OrderType.MARKET))
+        broker.submit(Order(symbol="US:AAPL", side=Side.BUY, quantity=100, order_type=OrderType.MARKET))
         broker.on_bar(bar("US:AAPL", 2, open_=190.0))
         pos = account.get_position("US:AAPL")
         assert pos.available == pos.quantity
@@ -192,8 +193,14 @@ class TestOrderAgeLimit:
     def test_gtc_expires_and_releases_funds(self):
         account, broker = make_broker(100_000, age_days=5)
         account.mark_price("CN:600000", 10.0)
-        order = Order(symbol="CN:600000", side=Side.BUY, quantity=5_000,
-                      order_type=OrderType.LIMIT, limit_price=9.5, tif=TimeInForce.GTC)
+        order = Order(
+            symbol="CN:600000",
+            side=Side.BUY,
+            quantity=5_000,
+            order_type=OrderType.LIMIT,
+            limit_price=9.5,
+            tif=TimeInForce.GTC,
+        )
         order.created_at = datetime(2024, 1, 1)
         broker.submit(order)
         frozen_before = account.frozen_cash
@@ -213,8 +220,14 @@ class TestOrderAgeLimit:
     def test_day_order_expires_same_day(self):
         account, broker = make_broker(100_000)
         account.mark_price("CN:600000", 10.0)
-        order = Order(symbol="CN:600000", side=Side.BUY, quantity=1_000,
-                      order_type=OrderType.LIMIT, limit_price=9.5, tif=TimeInForce.DAY)
+        order = Order(
+            symbol="CN:600000",
+            side=Side.BUY,
+            quantity=1_000,
+            order_type=OrderType.LIMIT,
+            limit_price=9.5,
+            tif=TimeInForce.DAY,
+        )
         broker.submit(order)
         broker.on_bar(bar("CN:600000", 2, open_=10.0, high=10.5, low=10.0))
         broker.end_of_day(datetime(2024, 1, 2))
@@ -230,26 +243,37 @@ class TestNoPhantomLimitLock:
         """没有昨收（首日/数据缺失）时不应凭空判定一字板。"""
         account, broker = make_broker(100_000)
         account.mark_price("CN:600000", 10.0)
-        order = Order(symbol="CN:600000", side=Side.BUY, quantity=1_000,
-                      order_type=OrderType.MARKET)
+        order = Order(symbol="CN:600000", side=Side.BUY, quantity=1_000, order_type=OrderType.MARKET)
         broker.submit(order)
         # prev_close 为 None，limit_up/limit_down 也缺失
-        broker.on_bar(Bar(symbol="CN:600000", dt=datetime(2024, 1, 2), open=10.0,
-                          high=10.5, low=10.0, close=10.2, volume=1e7, amount=1e8))
+        broker.on_bar(
+            Bar(
+                symbol="CN:600000",
+                dt=datetime(2024, 1, 2),
+                open=10.0,
+                high=10.5,
+                low=10.0,
+                close=10.2,
+                volume=1e7,
+                amount=1e8,
+            )
+        )
         assert order.status.value == "filled", "无昨收数据时不应判为一字板"
 
     def test_adjust_day_detection(self):
         """价格跳变超过涨跌停限制的日子应被识别为疑似除权日。"""
         from quant.data.base import detect_adjust_days, normalize_frame
 
-        raw = pd.DataFrame({
-            "date": pd.date_range("2024-01-01", periods=4),
-            "open": [20.0, 20.0, 10.0, 10.1],
-            "high": [20.2, 20.2, 10.2, 10.3],
-            "low": [19.8, 19.8, 9.8, 10.0],
-            "close": [20.0, 20.0, 10.0, 10.1],
-            "volume": [1e6] * 4,
-        })
+        raw = pd.DataFrame(
+            {
+                "date": pd.date_range("2024-01-01", periods=4),
+                "open": [20.0, 20.0, 10.0, 10.1],
+                "high": [20.2, 20.2, 10.2, 10.3],
+                "low": [19.8, 19.8, 9.8, 10.0],
+                "close": [20.0, 20.0, 10.0, 10.1],
+                "volume": [1e6] * 4,
+            }
+        )
         frame = normalize_frame(raw, "CN:600000")
         days = detect_adjust_days(frame, "CN:600000")
         assert len(days) == 1
@@ -265,9 +289,7 @@ class TestMetricInvariants:
         from quant.metrics.performance import compute
 
         for n in (1, 2, 3, 4):
-            equity = pd.Series(
-                [100.0 + i for i in range(n)], index=pd.date_range("2024-01-01", periods=n)
-            )
+            equity = pd.Series([100.0 + i for i in range(n)], index=pd.date_range("2024-01-01", periods=n))
             report = compute(equity, initial_equity=100.0).to_dict()
             assert report["annual_return"] is None, f"{n} 个点不应产出年化收益"
 

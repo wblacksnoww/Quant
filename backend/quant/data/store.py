@@ -273,7 +273,6 @@ class DataStore:
                 continue
         return out
 
-
     def minute_bars(
         self,
         symbol: str,
@@ -354,7 +353,6 @@ class DataStore:
     def _freq_delta(freq: str) -> pd.Timedelta:
         minutes = {"1m": 1, "5m": 5, "15m": 15, "30m": 30, "60m": 60}[freq]
         return pd.Timedelta(minutes=minutes)
-
 
 
 class MarketDataService:

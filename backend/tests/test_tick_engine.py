@@ -99,9 +99,7 @@ class TestTickMechanics:
         assert sells and buys, "需要同时有买有卖才能比较费率"
         sell_ratio = np.mean([t["fee"] / (t["quantity"] * t["price"]) for t in sells])
         buy_ratio = np.mean([t["fee"] / (t["quantity"] * t["price"]) for t in buys])
-        assert sell_ratio > buy_ratio, (
-            f"卖出费率 {sell_ratio:.6f} 未高于买入 {buy_ratio:.6f}，印花税可能没计"
-        )
+        assert sell_ratio > buy_ratio, f"卖出费率 {sell_ratio:.6f} 未高于买入 {buy_ratio:.6f}，印花税可能没计"
 
     def test_t_plus_one(self, tick_run):
         """同一交易日内，卖出总量不得超过开盘前的持仓。"""
@@ -117,9 +115,7 @@ class TestTickMechanics:
             sold = sum(t["quantity"] for t in by_day[day] if t["side"] == "sell")
             if sold > available_at_open + 1e-6:
                 violations.append((day, sold, available_at_open))
-            net = sum(
-                t["quantity"] if t["side"] == "buy" else -t["quantity"] for t in by_day[day]
-            )
+            net = sum(t["quantity"] if t["side"] == "buy" else -t["quantity"] for t in by_day[day])
             carry += net
         assert not violations, f"{len(violations)} 天违反 T+1，例 {violations[:3]}"
 
@@ -249,9 +245,9 @@ class TestSyntheticProviderInputFormats:
         tf = self._fetch(frame, stamps[0].date(), stamps[-1].date())
         assert tf.size == 60, f"60 根分钟线应生成 60 个 tick，实际 {tf.size}"
         # 成交量必须守恒，不能放大
-        assert abs(tf.volume.sum() - frame["volume"].sum() / 2) <= 1e-6 * max(
-            1.0, frame["volume"].sum()
-        ), f"成交量未守恒：tick 合计 {tf.volume.sum()}，bar 合计 {frame['volume'].sum()}"
+        assert abs(tf.volume.sum() - frame["volume"].sum() / 2) <= 1e-6 * max(1.0, frame["volume"].sum()), (
+            f"成交量未守恒：tick 合计 {tf.volume.sum()}，bar 合计 {frame['volume'].sum()}"
+        )
 
     def test_daily_bars_expand_to_full_sessions(self):
         """日线仍应展开成全天两个时段（这是它的意义所在）。"""
@@ -261,7 +257,6 @@ class TestSyntheticProviderInputFormats:
 
     def test_invalid_bar_rows_skipped(self):
         """停牌 / 未上市的 NaN 或缺价 bar 不能污染插值路径。"""
-        import pandas as pd
 
         frame = self._bars(4)
         frame.loc[frame.index[1], ["open", "close"]] = np.nan

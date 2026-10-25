@@ -127,9 +127,6 @@ def native_status() -> dict[str, object]:
         "python_version": platform.python_version(),
         "strategies": sorted(NATIVE_STRATEGIES),
         "hint": (
-            ""
-            if HAS_NATIVE
-            else "回测走 Python 路径，结果一致但慢 10~70 倍；"
-            "重新编译扩展见 backend/setup.py"
+            "" if HAS_NATIVE else "回测走 Python 路径，结果一致但慢 10~70 倍；重新编译扩展见 backend/setup.py"
         ),
     }

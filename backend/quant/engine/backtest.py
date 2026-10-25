@@ -28,6 +28,7 @@ from ..strategy.base import Strategy
 from ..strategy.custom_fields import NEWS_FIELDS
 from ..strategy.registry import get_strategy
 from .base import BaseEngine, EngineConfig, EngineResult
+from .session import TradingSession, bar_from_frame
 
 
 def _uses_news_field(operand: object) -> bool:
@@ -61,7 +62,13 @@ def _strip_news_conditions(spec: dict[str, Any]) -> dict[str, Any]:
     ]
     # 全被剥光时保留一条恒真条件，避免 C++ 侧拿到空 entry 数组报错
     if not kept:
-        kept = [{"type": "gt", "left": {"kind": "field", "field": "close"}, "right": {"kind": "const", "value": 0.0}}]
+        kept = [
+            {
+                "type": "gt",
+                "left": {"kind": "field", "field": "close"},
+                "right": {"kind": "const", "value": 0.0},
+            }
+        ]
     out = dict(spec)
     out["entry"] = kept
     return out
@@ -89,7 +96,7 @@ def _align_benchmark(
         index=pd.to_datetime(frame["date"]),
     )
     return prices.reindex(index, method="ffill").dropna()
-from .session import TradingSession, bar_from_frame
+
 
 log = logging.getLogger(__name__)
 
@@ -411,7 +418,9 @@ class BacktestEngine(BaseEngine):
             extras.append({})
 
         progress = self._make_progress_cb()
-        cost_model = cfg.cost_model() if hasattr(cfg, "cost_model") else CostModel.for_market(cfg.market, cfg.cost)
+        cost_model = (
+            cfg.cost_model() if hasattr(cfg, "cost_model") else CostModel.for_market(cfg.market, cfg.cost)
+        )
         raw_result = core_native._native.run_backtest(
             symbols,
             cfg.bar_interval,
@@ -508,9 +517,7 @@ class BacktestEngine(BaseEngine):
         cfg = self.config
         cost = cfg.cost_model() if hasattr(cfg, "cost_model") else CostModel.for_market(cfg.market, cfg.cost)
         account = Account(cfg.initial_cash, name=cfg.run_id)
-        matching = MatchingEngine(
-            cost, volume_limit_pct=cfg.volume_limit_pct, impact_coef=cfg.impact_coef
-        )
+        matching = MatchingEngine(cost, volume_limit_pct=cfg.volume_limit_pct, impact_coef=cfg.impact_coef)
 
         # 用首日前的收盘价初始化重估价格，避免第一天空仓时净值为 0
         for symbol, frame in frames.items():

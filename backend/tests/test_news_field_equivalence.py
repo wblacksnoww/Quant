@@ -140,9 +140,7 @@ class TestNewsAsOfAndWindow:
 
     def test_requests_1d_window_for_suffixed_field(self, context):
         news = RecordingNewsSource()
-        result = _run(
-            context, "news_win_1d", news=news, spec=_spec_with_news("news_sentiment_1d")
-        )
+        result = _run(context, "news_win_1d", news=news, spec=_spec_with_news("news_sentiment_1d"))
         assert result.status == "finished", result.error
         assert news.windows == {"1d"}, f"news_sentiment_1d 应只请求 1d，实际 {news.windows}"
 
@@ -153,9 +151,7 @@ class TestNewsAsOfAndWindow:
         assert result.status == "finished", result.error
         lo, hi = date(2023, 1, 1), date(2024, 6, 28)
         out_of_range = [a for a in news.as_ofs if not (lo <= a.date() <= hi)]
-        assert not out_of_range, (
-            f"{len(out_of_range)} 次 as_of 落在回测区间外，例 {out_of_range[:3]}"
-        )
+        assert not out_of_range, f"{len(out_of_range)} 次 as_of 落在回测区间外，例 {out_of_range[:3]}"
         assert len(news.as_ofs) >= 100, f"只问了 {len(news.as_ofs)} 次，覆盖不足"
 
     def test_as_of_is_pit_not_lookahead(self, context):
@@ -196,7 +192,9 @@ class TestNewsPresenceChangesDecisions:
         """门槛提到不可能达到时，应当零成交 —— 证明条件真的在拦。"""
         # sentiment 落在 (0,1)；门槛 1.5 恒不成立
         result = _run(
-            context, "news_strict", news=RecordingNewsSource(),
+            context,
+            "news_strict",
+            news=RecordingNewsSource(),
             spec=_spec_with_news("news_sentiment", threshold=1.5),
         )
         assert result.status == "finished", result.error
@@ -205,7 +203,9 @@ class TestNewsPresenceChangesDecisions:
     def test_loose_threshold_allows_entries(self, context):
         """门槛放到 -1（恒成立）时，应等价于纯技术条件。"""
         loose = _run(
-            context, "news_loose", news=RecordingNewsSource(),
+            context,
+            "news_loose",
+            news=RecordingNewsSource(),
             spec=_spec_with_news("news_sentiment", threshold=-1.0),
         )
         assert loose.status == "finished", loose.error
@@ -262,8 +262,7 @@ class TestNewsDualMaNative:
         ]
         news_in_entry = [f for f in entry_fields if isinstance(f, str) and f.startswith("news_")]
         assert news_in_entry, (
-            "build_spec() 生成的入场条件里没有 news_* 字段 —— "
-            "spec 退化成纯双均线，新闻因子形同没接"
+            "build_spec() 生成的入场条件里没有 news_* 字段 —— spec 退化成纯双均线，新闻因子形同没接"
         )
 
     def test_default_params_still_use_news(self):

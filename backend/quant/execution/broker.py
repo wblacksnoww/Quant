@@ -280,9 +280,7 @@ class SimBroker(Broker):
         # 跳空缩减过的单：剩余数量在当前价位本来就买不起，继续挂只会白占冻结额度，
         # 直接终止（已成交部分保留）。不这样做的话，剩余资金会一直锁到日终。
         if outcome.cash_capped and order.is_open:
-            order.expire(
-                f"跳空保护：剩余 {order.remaining:.0f} 股按当前价已无力买入，本单终止"
-            )
+            order.expire(f"跳空保护：剩余 {order.remaining:.0f} 股按当前价已无力买入，本单终止")
             self._release_reservation(order)
 
         self._fills.append(fill)
