@@ -22,7 +22,7 @@ cryptography==50.0.2
 curl_cffi==0.16.3
 decorator==5.3.1
 et_xmlfile==2.0.0
-fastapi==0.148.0
+fastapi==0.160.0
 frozenlist==1.8.0
 h11==0.16.0
 html5lib==1.1
