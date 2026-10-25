@@ -114,6 +114,43 @@ TickProvider.fetch()            │
 **所以"拼装策略最终形成的也是 C++"这个目标已经达成** ——
 用户拼出来的东西最终是 `CompiledSpec`，在 C++ 里跑，Python 一行求值代码都没有。
 
+### 3.4 研究通道：用 Python 写算子做快速验证
+
+生产路径是 C++，但**试新想法**时改 C++ 太慢（改代码 → 重编译 → 重启，几分钟）。
+所以留了一条明确划界的快捷通道：
+
+```
+你想试一个新指标
+      │
+      ▼  用 Python 写（一行装饰器）
+@register_operator("zscore", period=("int", 20))
+def _zscore(frame, period=20):
+    close = frame["close"]
+    return (close - close.rolling(period).mean()) / close.rolling(period).std()
+      │
+      ▼  在 spec 里当字段用
+{"kind": "field", "field": "op:zscore(period=20)"}
+      │
+      ▼  引擎全序列预计算 → extras 列 → 喂给 C++
+C++ 主循环一行都不用改（Columns::at() 本来就从 extras 按列名取值）
+```
+
+**关键在于 C++ 完全不需要改动。** 新闻字段走的就是这条路，
+算子只是把"Python 算好一列数据"这个机制用到指标上。
+
+用法与边界见 `backend/quant/strategy/operators.py` 的文件头注释。三条纪律：
+
+| 纪律 | 为什么 |
+|---|---|
+| 算子必须**因果**（第 i 个输出只用 `src[0..i]`） | 无法自动强制，用 `assert_causal()` 抽查拦截最常见几类（`shift(-1)`、全样本标准化） |
+| warmup 段返回 **NaN 而非 0** | C++ 里 `NaN > x` 为 false（条件不成立），而 `0 > x` 可能为 true（假信号） |
+| 跑出来必须**标注是研究通道** | 进生产要在 `cpp/indicators.cpp` 重写并过等价性测试，两者结果不可混用 |
+
+引擎会在 `result.logs` 里显式记录两类信息：
+用了哪些算子（info）、哪些算子不可用及原因（error）。
+不可用算子的列全为 NaN，**回测会跑完但零成交** —— 这个提示必须让用户看到，
+否则使用者会以为"策略失效"，实际是算子没接上。
+
 ---
 
 ## 4. 什么时候需要碰 C++
@@ -137,22 +174,34 @@ TickProvider.fetch()            │
 - 换条件组合：纯数据
 - 新增策略（用现有的指标和条件类型）：纯数据
 - 改风控阈值：`EngineConfig` 字段
+- **试一个新指标**：用 `@register_operator` 写 Python 算子，见 §3.4
+
+最后一项是刻意的例外：研究阶段"试一个新指标"的频率远高于其它改动，
+为了不让编译拖慢迭代，指标可以先用 Python 写、作为 extras 列进 C++。
+**验证有效的算子仍需在 C++ 重写一遍**才算进生产 —— 这是效率与可信度的交换。
 
 ---
 
-## 5. 已做的下沉（本轮）
+## 5. 已做的下沉
 
 | 缺口 | 之前 | 现在 |
 |---|---|---|
 | benchmark | 有 benchmark 就整条降级 Python | C++ 内对齐 + 算 Beta/Alpha/TE/IR |
 | news_dual_ma | 整个策略在 Python | `build_spec()` 生成含新闻条件的 spec，走 C++ |
 | tick 级 | 不存在 | `cpp/tick.{hpp,cpp}` 整段下沉 |
+| 自定义指标 | 必须改 C++ 重编译 | Python 算子 → extras 列（研究通道） |
 
 `native_ready()` 现在不再因 benchmark 返回 False；`NATIVE_STRATEGIES` 6 个策略全部可用。
 
 ---
 
 ## 6. 保留 Python 的部分及理由
+
+### 研究通道（Python 算子）
+
+见 §3.4。这是**刻意保留**的能力，不是还没下沉干净的残留：
+试新想法的迭代速度比运行速度更重要，而研究阶段的数据量小到 Python 完全够用。
+把它和"生产路径"分开标注，是为了避免研究结论被误当成生产结论。
 
 ### 纸盘 / 实盘 step 调度
 信号求值已经走 C++（`SpecState::step`），但**逐 bar 推进的循环**留在 Python。

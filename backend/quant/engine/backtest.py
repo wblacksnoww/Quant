@@ -336,14 +336,77 @@ class BacktestEngine(BaseEngine):
                 before = len(spec.get("entry", []))
                 spec = _strip_news_conditions(spec)
                 removed = before - len(spec.get("entry", []))
-                log.warning(
-                    "回测 %s 引用了新闻字段 %s，但本次运行没有新闻数据源；"
-                    "已剥掉 %d 条新闻入场条件，策略退化为纯技术信号。"
-                    "如需新闻过滤，请在「新闻」页录入数据，或传入 news=NewsFactorProvider。",
-                    cfg.run_id,
-                    news_fields,
-                    removed,
+                message = (
+                    f"回测引用了新闻字段 {news_fields}，但本次运行没有新闻数据源；"
+                    f"已剥掉 {removed} 条新闻入场条件，策略退化为纯技术信号。"
+                    f"如需新闻过滤，请在「新闻」页录入数据，或传入 news=NewsFactorProvider。"
                 )
+                log.warning(message)
+                # 只写 log 是不够的：日志文件用户看不到，结果里也没有痕迹，
+                # 于是"新闻过滤没生效"这件事对使用者完全不可见。必须同时
+                # 落进 result.logs（进 API 响应与前端运行日志面板）。
+                result.logs.append(
+                    {
+                        "ts": datetime.now().isoformat(),
+                        "level": "warning",
+                        "message": message,
+                    }
+                )
+        # --- Python 算子列（研究通道）------------------------------------- #
+        #
+        # 算子用 Python 写、全序列预计算、作为 extras 列喂给 C++。C++ 主循环
+        # 不需要任何改动：它从 Columns::at() 按列名取值，取不到返回 NaN。
+        # 这样"试一个新指标"不必改 C++、重编译、重启 —— 研究阶段最频繁的动作
+        # 从几分钟降到秒级。代价是只有 Python 通道能算，进生产要重写成 C++。
+        if spec is not None:
+            from ..strategy.operators import (
+                compute_operator,
+                operator_fields_in_spec,
+                registered,
+                resolve_operator,
+            )
+
+            op_fields = operator_fields_in_spec(spec)
+            if op_fields:
+                # 先整体体检，再统一告警。逐个算的时候各自打 log 用户看不到，
+                # 结果是"策略不成交但不知道为什么"。
+                problems = {f: resolve_operator(f) for f in op_fields}
+                problems = {f: why for f, why in problems.items() if why}
+
+                for s_idx, s in enumerate(symbols):
+                    while len(extras) <= s_idx:
+                        extras.append({})
+                    for field_name in op_fields:
+                        if field_name in problems:
+                            # 问题算子留空列（等价于全 NaN），不阻断其它算子
+                            continue
+                        extras[s_idx][field_name] = compute_operator(frames[s], field_name)
+
+                if problems:
+                    detail = "；".join(f"{f} → {why}" for f, why in problems.items())
+                    message = (
+                        f"spec 引用了 {len(problems)} 个不可用的 Python 算子字段：{detail}。"
+                        f"这些字段全为 NaN，相关条件恒不成立，回测可能零成交。"
+                        f"可用算子：{sorted(registered())}。"
+                    )
+                    log.warning(message)
+                    result.logs.append(
+                        {"ts": datetime.now().isoformat(), "level": "error", "message": message}
+                    )
+
+                usable = [f for f in op_fields if f not in problems]
+                if usable:
+                    result.logs.append(
+                        {
+                            "ts": datetime.now().isoformat(),
+                            "level": "info",
+                            "message": (
+                                f"使用 {len(usable)} 个 Python 算子字段：{usable}。"
+                                f"研究通道产物 —— 进生产需在 C++ 重写并过等价性测试。"
+                            ),
+                        }
+                    )
+
         while len(extras) < len(symbols):
             extras.append({})
 
@@ -382,7 +445,10 @@ class BacktestEngine(BaseEngine):
         result.trades = raw_result.get("trades", [])
         result.orders = raw_result.get("orders", [])
         result.positions = raw_result.get("positions", [])
-        result.logs = raw_result.get("logs", [])
+        # C++ 引擎的日志之外，还要保留 Python 侧在调用前记的告警
+        # （例如"新闻字段被剥掉"）—— 否则这些提示会被整体覆盖掉，
+        # 用户在运行日志里看不到"策略已退化"这件事。
+        result.logs = list(raw_result.get("logs", [])) + list(result.logs)
         # metrics 仍由 Python 计算（与 Python 路径同一实现）
         curve = pd.DataFrame(result.equity_curve)
         if len(curve):

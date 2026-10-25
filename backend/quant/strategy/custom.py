@@ -167,8 +167,19 @@ def _parse_operand(raw: Any, *, path: str) -> Operand:
 
     if kind == "field":
         field = raw.get("field")
+        # Python 算子字段（op:name(k=v)）是研究通道的动态字段，
+        # 不在静态白名单里；格式与注册状态由 operators 模块自己校验。
+        from .operators import is_operator_field, parse_operator_field
+
+        if is_operator_field(str(field)):
+            try:
+                parse_operator_field(str(field))
+            except ValueError as exc:
+                _fail(f"{path}.field {exc}")
+            return Operand(kind="field", field=str(field))
+
         if field not in _FIELDS:
-            _fail(f"{path}.field 只支持 {_FIELDS}")
+            _fail(f"{path}.field 只支持 {_FIELDS}，或 op:name(k=v) 形式的算子字段")
         return Operand(kind="field", field=str(field))
 
     if kind == "indicator":
