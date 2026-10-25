@@ -73,6 +73,7 @@ TYPES: dict[str, str] = {
 SCOPES: frozenset[str] = frozenset(
     {
         "api",  # 后端路由 / schemas
+        "alembic",  # 数据库迁移
         "engine",  # 回测 / 纸盘 / 实盘引擎
         "strategy",  # 策略、spec、算子
         "cpp",  # C++ 核心（quant._core）
