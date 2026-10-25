@@ -32,9 +32,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("index_code", "symbol", "start_date", name="uq_index_member_entry"),
     )
-    op.create_index(
-        op.f("ix_index_membership_index_code"), "index_membership", ["index_code"], unique=False
-    )
+    op.create_index(op.f("ix_index_membership_index_code"), "index_membership", ["index_code"], unique=False)
     op.create_index(op.f("ix_index_membership_symbol"), "index_membership", ["symbol"], unique=False)
     op.create_index(
         "ix_index_membership_lookup",
