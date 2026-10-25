@@ -40,7 +40,8 @@
 - **C++ 交易网关（完整）**：独立 `quant-gateway` 进程——策略层全部 C++：OKX 公共/私有 WS、
   tick→bar 聚合、网格/突破/动量三个纯 tick 策略、风控前置、WS 下单（clOrdId 幂等）、
   启动恢复（REST 拉余额/持仓）与 JSONL 审计。Python 业务层管生命周期/密钥/事件
-  （GatewayManager + /api/gateway/*），前端「网关」页启停与实时事件流。
+  （GatewayManager + /api/gateway/*），前端「网关」页启停与实时事件流；
+  策略可选网格/突破/tick 动量，或**直接从策略库挑你拼的蓝图**（`bar_spec`）。
 - **C++ 加速核心**：回测热路径（撮合、账本、指标、拼装策略解释器、主循环）用 C++17 实现
   （`backend/cpp/`，pybind11 编译为 `quant._core`），与 Python 引擎逐点等价
   （等价性测试把门）；回测提速约 10~70 倍。无编译器环境自动回退 Python，功能无损。

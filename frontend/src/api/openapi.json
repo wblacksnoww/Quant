@@ -1365,7 +1365,8 @@
             "enum": [
               "grid",
               "breakout",
-              "tick_momentum"
+              "tick_momentum",
+              "bar_spec"
             ],
             "title": "Strategy Type",
             "type": "string"

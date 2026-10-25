@@ -133,3 +133,57 @@ def test_gateway_manager_live_needs_confirm_and_credential(context):
             raise AssertionError("非 CRYPTO 标的应被拒绝")
     finally:
         manager.shutdown()
+
+
+def test_gateway_bar_spec_requires_valid_spec(client):
+    """拼装策略进网关：需要合法 spec + order_qty（走与回测同一份白名单校验）。"""
+    headers = login_headers(client)
+    base = {
+        "strategy_type": "bar_spec",
+        "symbols": ["CRYPTO:BTC/USDT"],
+        "sandbox": True,
+    }
+    # 缺 spec
+    resp = client.post("/api/gateway/start", json={**base, "params": {"order_qty": 0.001}}, headers=headers)
+    assert resp.status_code == 422
+    assert "spec" in resp.json()["message"]
+
+    # 非法 spec（未知条件类型）
+    bad_spec = {
+        "entry": [
+            {"type": "nope", "left": {"kind": "const", "value": 1}, "right": {"kind": "const", "value": 1}}
+        ],
+        "exit": [],
+    }
+    resp = client.post(
+        "/api/gateway/start",
+        json={**base, "params": {"order_qty": 0.001, "spec": bad_spec}},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+    assert "spec 无效" in resp.json()["message"]
+
+    # spec 合法但缺 order_qty
+    good_spec = {
+        "entry": [
+            {
+                "type": "gt",
+                "left": {"kind": "field", "field": "close"},
+                "right": {"kind": "const", "value": 0},
+            }
+        ],
+        "exit": [
+            {
+                "type": "lt",
+                "left": {"kind": "field", "field": "close"},
+                "right": {"kind": "const", "value": 0},
+            }
+        ],
+    }
+    resp = client.post(
+        "/api/gateway/start",
+        json={**base, "params": {"spec": good_spec}},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+    assert "order_qty" in resp.json()["message"]

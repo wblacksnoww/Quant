@@ -799,7 +799,7 @@ class UserApprovalRequest(BaseModel):
 
 
 class GatewayStartRequest(BaseModel):
-    strategy_type: Literal["grid", "breakout", "tick_momentum"]
+    strategy_type: Literal["grid", "breakout", "tick_momentum", "bar_spec"]
     params: dict[str, Any] = Field(default_factory=dict)
     symbols: list[str] = Field(min_length=1, max_length=10)
     bar_interval_sec: int = Field(default=60, ge=1, le=86400)

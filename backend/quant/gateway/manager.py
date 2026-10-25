@@ -22,7 +22,7 @@ from typing import Any
 from ..core.errors import ConflictError, InvalidRequest, NotFoundError
 from ..storage.repositories.credentials import CredentialRepository
 
-STRATEGY_TYPES = ("grid", "breakout", "tick_momentum")
+STRATEGY_TYPES = ("grid", "breakout", "tick_momentum", "bar_spec")
 GATEWAY_BIN = os.environ.get("QUANT_GATEWAY_BIN", "quant-gateway")
 LISTEN_PORT = int(os.environ.get("QUANT_GATEWAY_PORT", "8790"))
 
@@ -78,6 +78,8 @@ class GatewayManager:
                 raise ConflictError("网关已在运行，请先停止")
             if strategy_type not in STRATEGY_TYPES:
                 raise InvalidRequest(f"策略类型只支持 {STRATEGY_TYPES}")
+            if strategy_type == "bar_spec":
+                self._validate_bar_spec(params)
 
             symbols_ex = _normalize_symbols(symbols)
             if not symbols_ex:
@@ -152,6 +154,21 @@ class GatewayManager:
             self._reader_thread = threading.Thread(target=self._read_loop, daemon=True)
             self._reader_thread.start()
             return {"mode": config["mode"], "symbols": symbols_ex, "strategy": strategy_type}
+
+    @staticmethod
+    def _validate_bar_spec(params: dict[str, Any]) -> None:
+        """拼装策略进网关前先过白名单校验（与回测/模拟盘同一份 parse_spec）。"""
+        from ..strategy.custom import parse_spec
+
+        spec = params.get("spec")
+        if not isinstance(spec, dict):
+            raise InvalidRequest("bar_spec 需要 params.spec（在策略库拼好的蓝图/条件 spec）")
+        try:
+            parse_spec(spec)
+        except (ValueError, TypeError) as exc:
+            raise InvalidRequest(f"拼装策略 spec 无效：{exc}") from exc
+        if float(params.get("order_qty") or 0) <= 0:
+            raise InvalidRequest("bar_spec 需要 params.order_qty（每次入场数量）")
 
     def stop(self) -> dict[str, Any]:
         with self.lock:

@@ -2129,7 +2129,7 @@ export interface components {
              * Strategy Type
              * @enum {string}
              */
-            strategy_type: "grid" | "breakout" | "tick_momentum";
+            strategy_type: "grid" | "breakout" | "tick_momentum" | "bar_spec";
             /** Symbols */
             symbols: string[];
         };

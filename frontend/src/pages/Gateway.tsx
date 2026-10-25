@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { credentialApi, gatewayApi } from '../api/client'
-import type { Credential, GatewayStatus } from '../api/types'
+import { credentialApi, gatewayApi, strategyApi } from '../api/client'
+import type { Credential, CustomStrategy, GatewayStatus } from '../api/types'
 import { notify } from '../store/toast'
 import { Badge, Banner, Button, Card, Empty, Field, Loading, Stat } from '../components/ui'
 import { fmtDateTime } from '../utils/format'
@@ -12,12 +12,18 @@ const STRATEGY_TYPES = [
   { value: 'grid', label: '网格交易', hint: '价格每跌一格买入、涨一格卖出，震荡市持续吃波动' },
   { value: 'breakout', label: '突破触发器', hint: '上破买入 / 下破清仓，冷却期防反复' },
   { value: 'tick_momentum', label: 'tick 动量', hint: '窗口动量顺势开仓，反向/回撤平仓' },
+  {
+    value: 'bar_spec',
+    label: '拼装策略（蓝图）',
+    hint: '策略库里拼好的条件/蓝图：bar 收盘求 entry/exit，全程 C++',
+  },
 ] as const
 
-const DEFAULT_PARAMS: Record<string, Record<string, number>> = {
+const DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
   grid: { step_pct: 0.01, order_qty: 0.001, max_inventory: 0.01 },
   breakout: { upper: 0, lower: 0, order_qty: 0.001, cooldown_s: 60 },
   tick_momentum: { window_s: 30, entry_threshold: 0.003, order_qty: 0.001, cooldown_s: 30 },
+  bar_spec: { order_qty: 0.001 },
 }
 
 export function GatewayPage() {
@@ -34,6 +40,8 @@ export function GatewayPage() {
   const [confirmLive, setConfirmLive] = useState(false)
   const [credentials, setCredentials] = useState<Credential[]>([])
   const [credentialId, setCredentialId] = useState<number | null>(null)
+  const [customStrategies, setCustomStrategies] = useState<CustomStrategy[]>([])
+  const [customId, setCustomId] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -52,6 +60,10 @@ export function GatewayPage() {
       .list()
       .then(setCredentials)
       .catch(() => undefined)
+    void strategyApi
+      .custom()
+      .then(setCustomStrategies)
+      .catch(() => undefined)
   }, [load])
 
   useEffect(() => {
@@ -60,6 +72,19 @@ export function GatewayPage() {
       return () => window.clearInterval(timer)
     }
   }, [status?.running, load])
+
+  const pickCustom = (id: number) => {
+    setCustomId(id)
+    const item = customStrategies.find((s) => s.id === id)
+    if (!item) return
+    let orderQty = 0.001
+    try {
+      orderQty = (JSON.parse(paramsText) as { order_qty?: number }).order_qty ?? 0.001
+    } catch {
+      // 参数框里是非法 JSON：保留默认
+    }
+    setParamsText(JSON.stringify({ order_qty: orderQty, spec: item.spec }, null, 2))
+  }
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -188,6 +213,24 @@ export function GatewayPage() {
                 />
               </Field>
             </div>
+
+            {strategyType === 'bar_spec' && (
+              <Field label="从策略库选择" hint="选中后把该策略的 spec 填入下方参数">
+                <select
+                  className="select"
+                  value={customId ?? ''}
+                  onChange={(event) => pickCustom(Number(event.target.value))}
+                >
+                  <option value="">— 请选择拼装策略 —</option>
+                  {customStrategies.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                      {item.version > 1 ? ` (v${item.version})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
 
             <Field label="策略参数（JSON）">
               <textarea
