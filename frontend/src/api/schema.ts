@@ -3206,6 +3206,10 @@ export interface components {
             env: string;
             /** Name */
             name: string;
+            /** Native */
+            native?: {
+                [key: string]: unknown;
+            };
             /** Paper Running */
             paper_running: boolean;
             /** Python */
