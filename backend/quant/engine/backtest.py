@@ -28,6 +28,67 @@ from ..strategy.base import Strategy
 from ..strategy.custom_fields import NEWS_FIELDS
 from ..strategy.registry import get_strategy
 from .base import BaseEngine, EngineConfig, EngineResult
+
+
+def _uses_news_field(operand: object) -> bool:
+    """该操作数是否引用了新闻因子字段。"""
+    if not isinstance(operand, dict):
+        return False
+    field = operand.get("field")
+    if isinstance(field, str) and field.startswith("news_"):
+        return True
+    # v2 蓝图里新闻节点直接用 type 表示
+    kind = operand.get("type")
+    return isinstance(kind, str) and kind.startswith("news_")
+
+
+def _strip_news_conditions(spec: dict[str, Any]) -> dict[str, Any]:
+    """剥掉 spec 里所有引用新闻字段的入场条件。
+
+    只在「本次运行没有新闻数据源」时调用。缺列会让 C++ 侧读到 NaN，
+    而 NaN 参与比较恒为 false —— 结果就是零成交，且没有任何报错。
+    剥掉之后策略退化为纯技术信号，"新闻过滤没生效"这件事由告警负责说明。
+
+    出场条件不剥：出场被剥会导致该清仓时不清仓，比不进场危险得多。
+    """
+    entry = spec.get("entry")
+    if not isinstance(entry, list):
+        return spec
+    kept = [
+        cond
+        for cond in entry
+        if not (_uses_news_field(cond.get("left")) or _uses_news_field(cond.get("right")))
+    ]
+    # 全被剥光时保留一条恒真条件，避免 C++ 侧拿到空 entry 数组报错
+    if not kept:
+        kept = [{"type": "gt", "left": {"kind": "field", "field": "close"}, "right": {"kind": "const", "value": 0.0}}]
+    out = dict(spec)
+    out["entry"] = kept
+    return out
+
+
+def _align_benchmark(
+    symbol: str | None,
+    frames: dict[str, pd.DataFrame],
+    index: pd.Index,
+) -> pd.Series | None:
+    """把基准标的收盘价对齐到权益曲线时间轴（前向填充）。
+
+    benchmark **不参与回测循环**：它只是另一只标的的价格序列，用来算 Beta/Alpha/
+    跟踪误差。所以它既不需要进 C++，也不构成"降级回 Python"的理由 —— 之前
+    ``native_ready()`` 遇到 benchmark 就返回 False 是历史遗留的判断，
+    现在两条路径都能算基准，C++ 主循环不必感知它的存在。
+    """
+    if not symbol or symbol not in frames:
+        return None
+    frame = frames[symbol]
+    if "close" not in frame.columns or "date" not in frame.columns or not len(frame):
+        return None
+    prices = pd.Series(
+        pd.to_numeric(frame["close"], errors="coerce").to_numpy(dtype="float64"),
+        index=pd.to_datetime(frame["date"]),
+    )
+    return prices.reindex(index, method="ffill").dropna()
 from .session import TradingSession, bar_from_frame
 
 log = logging.getLogger(__name__)
@@ -228,15 +289,8 @@ class BacktestEngine(BaseEngine):
 
         arrays = [cols_of(frames[s]) for s in symbols]
         extras: list[dict[str, np.ndarray]] = []
-        spec = None
-        if self.config.strategy_id == "custom_rule":
-            raw = cfg.params.get("spec")
-            if isinstance(raw, dict):
-                spec = raw
-            elif isinstance(raw, str):
-                import json
-
-                spec = json.loads(raw)
+        # 需要 spec 的策略（custom_rule / news_dual_ma）统一走这里生成
+        spec = core_native.spec_for_strategy(cfg.strategy_id, dict(cfg.params))
         if spec is not None:
             news_fields = sorted(
                 {
@@ -260,16 +314,41 @@ class BacktestEngine(BaseEngine):
                     extra: dict[str, np.ndarray] = {}
                     for field in news_fields:
                         metric, window = NEWS_FIELDS[field]
+                        # NewsFactorProvider 的接口是 factor()；早期这里误写成
+                        # news_factor_at()（那是 Strategy 基类的方法），导致
+                        # 拼装策略一旦用到新闻字段、走 C++ 路径就 AttributeError。
                         values = [
-                            self.news.news_factor_at(s, as_of=row.to_pydatetime(), window=window)
+                            self.news.factor(s, as_of=row.to_pydatetime(), window=window)
                             for row in pd.to_datetime(frame["date"])
                         ]
                         extra[field] = np.array([getattr(f, metric) for f in values], dtype="float64")
                     extras.append(extra)
+            elif news_fields:
+                # spec 引用了新闻字段但这次运行没有新闻数据源。
+                #
+                # 不能就这么把 spec 交给 C++：缺列时 Columns::at() 返回 NaN，
+                # 而 NaN 参与任何比较都是 false —— 新闻条件恒不成立，回测
+                # "跑通但零成交"，看起来像策略失效，实际是数据缺失。
+                # （neutral 因子是 sentiment=0/confidence=0，与缺列不是一回事。）
+                #
+                # 正确做法：显式剥掉新闻条件，让策略退化成纯技术信号，
+                # 并把"新闻过滤未生效"这个事实明确告警出来。
+                before = len(spec.get("entry", []))
+                spec = _strip_news_conditions(spec)
+                removed = before - len(spec.get("entry", []))
+                log.warning(
+                    "回测 %s 引用了新闻字段 %s，但本次运行没有新闻数据源；"
+                    "已剥掉 %d 条新闻入场条件，策略退化为纯技术信号。"
+                    "如需新闻过滤，请在「新闻」页录入数据，或传入 news=NewsFactorProvider。",
+                    cfg.run_id,
+                    news_fields,
+                    removed,
+                )
         while len(extras) < len(symbols):
             extras.append({})
 
         progress = self._make_progress_cb()
+        cost_model = cfg.cost_model() if hasattr(cfg, "cost_model") else CostModel.for_market(cfg.market, cfg.cost)
         raw_result = core_native._native.run_backtest(
             symbols,
             cfg.bar_interval,
@@ -277,8 +356,8 @@ class BacktestEngine(BaseEngine):
             end_ns,
             cfg.initial_cash,
             cfg.risk_free_rate,
-            CostModel.for_market(cfg.market, cfg.cost).to_dict(),
-            bool(CostModel.for_market(cfg.market, cfg.cost).stamp_both_sides),
+            cost_model.to_dict(),
+            bool(cost_model.stamp_both_sides),
             cfg.volume_limit_pct,
             cfg.risk if cfg.risk is not None else DEFAULT_RULES,
             cfg.strategy_id,
@@ -295,6 +374,7 @@ class BacktestEngine(BaseEngine):
             [arr["limit_down"] for arr in arrays],
             extras,
             progress,
+            int(cfg.max_order_age_days),
         )
 
         result.status = raw_result.get("status", "finished")
@@ -315,6 +395,7 @@ class BacktestEngine(BaseEngine):
                 trades=fills,
                 initial_equity=cfg.initial_cash,
                 rf_annual=cfg.risk_free_rate,
+                benchmark=_align_benchmark(cfg.benchmark, frames, equity.index),
             )
         if self.recorder is not None:
             self.recorder.finalize(result)
@@ -359,16 +440,23 @@ class BacktestEngine(BaseEngine):
 
     def _build_session(self, frames: dict[str, pd.DataFrame]) -> TradingSession:
         cfg = self.config
-        cost = CostModel.for_market(cfg.market, cfg.cost)
+        cost = cfg.cost_model() if hasattr(cfg, "cost_model") else CostModel.for_market(cfg.market, cfg.cost)
         account = Account(cfg.initial_cash, name=cfg.run_id)
-        matching = MatchingEngine(cost, volume_limit_pct=cfg.volume_limit_pct)
+        matching = MatchingEngine(
+            cost, volume_limit_pct=cfg.volume_limit_pct, impact_coef=cfg.impact_coef
+        )
 
         # 用首日前的收盘价初始化重估价格，避免第一天空仓时净值为 0
         for symbol, frame in frames.items():
             account.mark_price(symbol, float(frame["close"].iloc[0]))
 
         broker = SimBroker(
-            account, self.bus, matching=matching, match_on_submit=False, name=f"backtest:{cfg.run_id}"
+            account,
+            self.bus,
+            matching=matching,
+            match_on_submit=False,
+            name=f"backtest:{cfg.run_id}",
+            max_order_age_days=cfg.max_order_age_days,
         )
         risk = RiskManager.from_config(cfg.risk, bus=self.bus)
         strategy_cls: type[Strategy] = get_strategy(cfg.strategy_id)
@@ -403,11 +491,7 @@ class BacktestEngine(BaseEngine):
         equity = pd.Series(curve["total_equity"].to_numpy(), index=pd.to_datetime(curve["dt"]))
         trades = session.fills
 
-        benchmark_curve = None
-        if cfg.benchmark and cfg.benchmark in frames:
-            bench_frame = frames[cfg.benchmark]
-            bench = pd.Series(bench_frame["close"].to_numpy(), index=pd.to_datetime(bench_frame["date"]))
-            benchmark_curve = bench.reindex(equity.index, method="ffill").dropna()
+        benchmark_curve = _align_benchmark(cfg.benchmark, frames, equity.index)
 
         result.metrics = compute(
             equity,

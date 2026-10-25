@@ -38,8 +38,11 @@ struct Engine {
   std::vector<std::optional<SpecState>> spec_states;
 
   Engine(const std::vector<std::string>& syms, double cash, const CostModel& cost, double vol_pct,
-         StrategyKind k)
-      : symbols(syms), acct(cash), broker(acct, cost, vol_pct, 0), kind(k) {
+         StrategyKind k, int max_order_age_days = 30)
+      : symbols(syms),
+        acct(cash),
+        broker(acct, cost, vol_pct, 0, max_order_age_days),
+        kind(k) {
     for (size_t i = 0; i < syms.size(); ++i) symbol_idx[syms[i]] = i;
     rules.resize(syms.size());
     for (auto& r : rules) r = SymbolRules{};  // 占位，引擎稍后填
@@ -349,11 +352,11 @@ py::dict run_backtest_native(
     std::vector<py::array_t<double, py::array::c_style | py::array::forcecast>> limit_ups,
     std::vector<py::array_t<double, py::array::c_style | py::array::forcecast>> limit_downs,
     std::vector<std::map<std::string, py::array_t<double, py::array::c_style | py::array::forcecast>>> extras,
-    py::function progress) {
+    py::function progress, int max_order_age_days) {
   StrategyKind kind = strategy_kind(strategy_id);
   CostModel cost = cost_from_dict(cost_dict, stamp_both_sides);
 
-  Engine eng(symbols, initial_cash, cost, volume_limit_pct, kind);
+  Engine eng(symbols, initial_cash, cost, volume_limit_pct, kind, max_order_age_days);
   eng.strategy_name = strategy_id;
   // 参数
   auto getf = [&](const char* k, double def) {

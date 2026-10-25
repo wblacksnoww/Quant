@@ -35,7 +35,11 @@ class CostModel:
     min_commission: float = 5.0  # 单笔最低佣金（元）
     stamp_tax_rate: float = 5e-4  # 印花税 0.05%，仅卖出（stamp_both_sides=True 时双边）
     transfer_fee_rate: float = 1e-5  # 过户费 0.001%，双向
-    slippage_bps: float = 0.0  # 滑点（基点，1bp = 0.01%）
+    # 滑点（基点，1bp = 0.01%）。
+    # 默认 0 保持历史回测可复现，但**零滑点意味着策略永远按理论价成交**，
+    # 是最乐观的假设。可用环境变量 QUANT_DEFAULT_SLIPPAGE_BPS 设一个保守默认值
+    # （A 股建议 5、小盘股 10），或在前端成本设置里显式填写。
+    slippage_bps: float = 0.0
     stamp_both_sides: bool = False  # 港股印花税买卖双边
 
     # ------------------------------------------------------------------ #

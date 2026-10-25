@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 import pandas as pd
 
 from ..core.errors import DataNotFound
+from ..core.markets import rules_for
 from ..core.types import Bar
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -136,21 +137,73 @@ def normalize_frame(df: pd.DataFrame, symbol: str | None = None) -> pd.DataFrame
     out = out.reset_index(drop=True)
 
     # 推导 prev_close / 涨跌停
+    #
+    # 口径纪律（这一块直接决定撮合的真实性）：
+    # * ``prev_close`` 优先用数据源给的真值（前复权行情里它同样是前复权口径，自洽）；
+    #   数据源没给才用 ``close.shift(1)`` 推算。
+    # * ``limit_up/limit_down`` **优先用数据源给的真实涨跌停价**。自己按
+    #   ``prev_close × (1 ± pct)`` 推算只在数据源缺失时兜底——因为前复权数据在除权日
+    #   附近的 ``close/prev_close`` 比例未必等于 1，推算出来的涨跌停会把正常日误判成
+    #   「一字板买不进/卖不出」，静默吞掉策略信号。
     if "prev_close" not in out.columns or out["prev_close"].isna().all():
         out["prev_close"] = out["close"].shift(1)
     else:
         out["prev_close"] = pd.to_numeric(out["prev_close"], errors="coerce")
         out["prev_close"] = out["prev_close"].fillna(out["close"].shift(1))
 
-    if "limit_up" not in out.columns:
-        out["limit_up"] = None
-    if "limit_down" not in out.columns:
-        out["limit_down"] = None
+    for col in ("limit_up", "limit_down"):
+        if col not in out.columns:
+            out[col] = None
+        else:
+            out[col] = pd.to_numeric(out[col], errors="coerce")
+            # 数据源偶尔用 0 表示"无涨跌停"，统一成 NaN 让下游走推算/不判定
+            out[col] = out[col].where(out[col] > 0, None)
 
     if symbol and "symbol" in out.columns:
         out = out.drop(columns=["symbol"])
 
     return out[[*OHLCV_COLUMNS, *EXTRA_COLUMNS]]
+
+
+def detect_adjust_days(
+    df: pd.DataFrame,
+    symbol: str,
+    *,
+    tolerance: float = 1.5,
+) -> list[dict[str, Any]]:
+    """找出「疑似除权除息日」——价格跳变幅度超过涨跌停限制的日子。
+
+    前复权数据理论上不会出现这种跳变，但混用口径、数据源复权算法差异、
+    漏拉分红送股都会造成。这些日子里的涨跌停判定不可信，因此单独列出，
+    由回测结果告知用户（而不是静默地当成"一字板"处理）。
+
+    :param tolerance: 允许的跳变倍数，1.5 表示超出 1.5 倍涨跌停幅度才算异常。
+    """
+    if len(df) < 2 or "prev_close" not in df.columns:
+        return []
+    board = rules_for(symbol)
+    limit_pct = board.limit_pct
+    if limit_pct <= 0:
+        return []  # 无涨跌停市场不做此检查
+
+    out: list[dict[str, Any]] = []
+    prev = pd.to_numeric(df["prev_close"], errors="coerce")
+    close = pd.to_numeric(df["close"], errors="coerce")
+    ratio = close / prev.where(prev > 0)
+    jump = (ratio - 1.0).abs()
+    threshold = limit_pct * tolerance
+    for idx in df.index[jump > threshold]:
+        out.append(
+            {
+                "symbol": symbol,
+                "date": pd.Timestamp(df.at[idx, "date"]).date().isoformat(),
+                "prev_close": float(prev.at[idx]),
+                "close": float(close.at[idx]),
+                "move_pct": float(ratio.at[idx] - 1.0),
+                "limit_pct": limit_pct,
+            }
+        )
+    return out
 
 
 def frame_to_bars(df: pd.DataFrame, symbol: str, freq: str = "1d") -> list[Bar]:

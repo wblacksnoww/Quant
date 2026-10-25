@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ...core_native import native_status
 from ...data.base import available_providers
 from ...security.password import algorithm as password_algorithm
 from ...storage.models import User
@@ -75,6 +76,7 @@ def info(
         paper_running=ctx.paper.running(user.id),
         strategies=strategy_ids(),
         warnings=ctx.warnings,
+        native=native_status(),
     )
 
 

@@ -121,8 +121,12 @@ class RiskRule(ABC):
 
 class MaxPositionPct(RiskRule):
     rule_id = "max_position_pct"
-    display_name = "单票仓位上限"
-    description = "单只标的市值不得超过总权益的指定比例。"
+    display_name = "单票仓位护栏"
+    description = (
+        "单只标的市值占权益比例的**上限护栏**（不是建议仓位）。"
+        "默认 0.98 只用于拦「策略写错导致下单超过权益」这类事故；"
+        "要真正控制集中度，请在界面上调到 0.2~0.3。"
+    )
 
     def check(self, order: Order, state: RiskState) -> RiskDecision:
         if order.side is Side.SELL or state.equity <= 0:

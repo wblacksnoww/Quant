@@ -78,10 +78,10 @@ std::string iso_from_ns(ClockNs ns) {
   y += (m <= 2);
   char buf[48];
   if (millis != 0)
-    std::snprintf(buf, sizeof(buf), "%04lld-%02lld-%02dT%02d:%02d:%02d.%03d000",
+    std::snprintf(buf, sizeof(buf), "%04lld-%02lld-%02lldT%02d:%02d:%02d.%03d000",
                   static_cast<long long>(y), static_cast<long long>(m), static_cast<long long>(d), hh, mm, ss, millis);
   else
-    std::snprintf(buf, sizeof(buf), "%04lld-%02lld-%02dT%02d:%02d:%02d",
+    std::snprintf(buf, sizeof(buf), "%04lld-%02lld-%02lldT%02d:%02d:%02d",
                   static_cast<long long>(y), static_cast<long long>(m), static_cast<long long>(d), hh, mm, ss);
   return buf;
 }
@@ -239,6 +239,15 @@ void Account::apply_fill(const Fill& fill) {
   double gross = std::abs(fill.price * fill.quantity);
   double fees_total = fill.fees.total();
   if (fill.buy) {
+    double cost = gross + fees_total;
+    // 最后一道闸门：现金不允许变负（撮合层已按可用资金缩减，此处兜底）
+    if (cost > available_cash() + 1e-6) {
+      char buf[192];
+      std::snprintf(buf, sizeof(buf),
+                    "成交需要 %.2f，可用资金 %.2f；撮合层应已缩减数量，此处出现说明漏检",
+                    cost, available_cash());
+      throw std::runtime_error(buf);
+    }
     double new_qty = pos.quantity + fill.quantity;
     double new_cost = pos.cost_value() + gross + fees_total;
     pos.avg_cost = new_cost / new_qty;
@@ -274,7 +283,7 @@ int Account::holding_count() const {
 // ------------------------------------------------------------------ //
 // 撮合
 // ------------------------------------------------------------------ //
-MatchOutcome Matcher::match(const Order& order, const BarView& bar) const {
+MatchOutcome Matcher::match(const Order& order, const BarView& bar, double available_cash) const {
   SymbolRules rules = rules_for(*bar.symbol);
   if (!is_nan(bar.volume) && bar.volume <= 0)
     return {false, 0, 0, "suspended", "当日无成交（停牌）"};
@@ -326,7 +335,8 @@ MatchOutcome Matcher::match(const Order& order, const BarView& bar) const {
 
   double price = cost.slippage_price(order.buy, base_price);
 
-  double qty = order.remaining();
+  double requested = order.remaining();
+  double qty = requested;
   if (volume_limit_pct > 0 && bar.volume > 0) {
     double capacity = bar.volume * volume_limit_pct;
     if (capacity <= 0) {
@@ -338,8 +348,51 @@ MatchOutcome Matcher::match(const Order& order, const BarView& bar) const {
   }
   int lot = rules.lot_size;
   if (lot > 1 && order.buy) qty = std::floor(qty / lot) * lot;
-  if (qty <= 0) return {false, 0, 0, "no_liquidity", "不足一个交易单位"};
-  return {true, price, qty, "", ""};
+
+  // 跳空保护：可用现金不足以按成交价买入原数量时缩减（镜像 Python match）
+  bool cash_capped = false;
+  MatchOutcome out;
+  out.requested = requested;
+  if (order.buy && available_cash >= 0) {
+    double affordable = affordable_quantity(available_cash, price, static_cast<double>(lot));
+    if (affordable < qty) {
+      cash_capped = true;
+      qty = affordable;
+    }
+  }
+  if (qty <= 0) {
+    if (cash_capped || (order.buy && available_cash >= 0 && requested > 0)) {
+      char buf[160];
+      std::snprintf(buf, sizeof(buf),
+                    "可用资金 %.2f 不足以成交一手，成交价 %.2f 高于下单时估价（跳空）",
+                    available_cash >= 0 ? available_cash : 0.0, price);
+      return {false, 0, 0, "insufficient_cash", buf, false, requested};
+    }
+    return {false, 0, 0, "no_liquidity", "不足一个交易单位"};
+  }
+  out.filled = true;
+  out.price = price;
+  out.qty = qty;
+  out.cash_capped = cash_capped;
+  return out;
+}
+
+double Matcher::affordable_quantity(double cash, double price, double lot) const {
+  if (cash <= 0 || price <= 0) return 0.0;
+  if (lot > 1) {
+    double q = std::floor(cash / price / lot) * lot;
+    while (q > 0 && cost.estimate_buy_cost(price, q) > cash) q -= lot;
+    return std::max(0.0, q);
+  }
+  double lo = 0.0, hi = cash / price;
+  for (int k = 0; k < 64; ++k) {
+    double mid = (lo + hi) / 2.0;
+    if (cost.estimate_buy_cost(price, mid) <= cash)
+      lo = mid;
+    else
+      hi = mid;
+  }
+  return lo;
 }
 
 FeeBreakdown Matcher::fees(const Order& order, double price, double qty, double base_price) const {
@@ -353,8 +406,11 @@ FeeBreakdown Matcher::fees(const Order& order, double price, double qty, double 
 // ------------------------------------------------------------------ //
 // 券商
 // ------------------------------------------------------------------ //
-Broker::Broker(Account& a, const CostModel& cost, double vol_pct, ClockNs t0)
-    : acct(a), matcher{cost, vol_pct}, now_ns_(t0) {}
+Broker::Broker(Account& a, const CostModel& cost, double vol_pct, ClockNs t0, int max_order_age_days)
+    : acct(a),
+      matcher{cost, vol_pct},
+      now_ns_(t0),
+      max_order_age_days_(max_order_age_days < 0 ? 0 : max_order_age_days) {}
 
 std::string Broker::next_id(const char* prefix) {
   char buf[32];
@@ -507,15 +563,27 @@ void Broker::on_bar(const BarView& bar) {
 
 bool Broker::try_match(Order& o, const BarView& bar) {
   if (!o.is_open() || o.symbol != *bar.symbol) return false;
-  MatchOutcome out = matcher.match(o, bar);
+  // 买入单：本单已冻结资金 + 剩余可用现金，一起交给撮合器做跳空保护
+  double cash_for_fill = -1.0;
+  if (o.buy) cash_for_fill = acct.available_cash() + o.frozen_cash;
+  MatchOutcome out = matcher.match(o, bar, cash_for_fill);
   if (!out.filled) {
-    if (out.reason == "suspended" || out.reason == "limit_up" || out.reason == "limit_down") {
+    if (out.reason == "suspended" || out.reason == "limit_up" || out.reason == "limit_down" ||
+        out.reason == "insufficient_cash") {
       o.last_block = out.reason;
       o.last_block_detail = out.detail;
     }
     return false;
   }
   double qty = out.qty;
+  // 跳空缩减：记录到订单上，便于审计与前端解释
+  if (out.cash_capped) {
+    o.cash_capped = true;
+    char buf[160];
+    std::snprintf(buf, sizeof(buf), "跳空保护：原计划 %.0f 股，按可用资金缩减为 %.0f 股",
+                  out.requested, out.qty);
+    o.cash_capped_detail = buf;
+  }
   auto it = acct.positions.find(o.symbol);
   double pos_qty = it != acct.positions.end() ? it->second.quantity : 0.0;
   if (!o.buy && qty > pos_qty) qty = pos_qty;
@@ -558,10 +626,24 @@ bool Broker::try_match(Order& o, const BarView& bar) {
 
 void Broker::end_of_day(ClockNs now) {
   now_ns_ = now;
+  constexpr ClockNs kNsPerDay = 86400000000000LL;
   for (size_t k = 0; k < live.size(); ) {
     Order& o = orders.at(live[k]);
-    if (o.is_open() && o.tif_day) {
-      o.expire_order("当日未成交", now);
+    bool expire_day = o.is_open() && o.tif_day;
+    bool expire_age = false;
+    // GTC 挂单寿命：超期撤销，避免资金被永久冻结（镜像 Python end_of_day）
+    if (o.is_open() && !o.tif_day && max_order_age_days_ > 0 && o.created_ns > 0) {
+      ClockNs age_days = (now - o.created_ns) / kNsPerDay;
+      expire_age = age_days >= static_cast<ClockNs>(max_order_age_days_);
+    }
+    if (expire_day || expire_age) {
+      if (expire_day) {
+        o.expire_order("当日未成交", now);
+      } else {
+        char buf[96];
+        std::snprintf(buf, sizeof(buf), "挂单超过 %d 天未成交", max_order_age_days_);
+        o.expire_order(buf, now);
+      }
       release_reservation(o);
       drop(o.id);
     } else {

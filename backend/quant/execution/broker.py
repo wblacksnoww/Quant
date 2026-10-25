@@ -18,10 +18,11 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from datetime import datetime
 
 from ..core.events import EventBus
 from ..core.portfolio import Account
-from ..core.types import Bar, Fill, Order, OrderType, Side, TimeInForce
+from ..core.types import Bar, Fill, Order, OrderType, Side, TimeInForce, utcnow
 from .matching import BlockReason, MatchingEngine
 from .rules import is_valid_lot, round_down_lot, rules_for
 
@@ -98,15 +99,20 @@ class SimBroker(Broker):
         matching: MatchingEngine | None = None,
         match_on_submit: bool = False,
         name: str = "sim",
+        max_order_age_days: int = 30,
     ) -> None:
         super().__init__(account, bus, name=name)
         self.matching = matching or MatchingEngine()
         self.cost_model = self.matching.cost_model
         self.match_on_submit = match_on_submit
+        # GTC 挂单寿命（自然日）。真实券商的 GTC 也有期限，无限挂单会永久冻结资金，
+        # 策略只会看到"莫名资金不足"。0 表示不限期（不推荐，仅兼容旧行为）。
+        self.max_order_age_days = max(0, int(max_order_age_days))
         self._queued: list[Order] = []  # 本根 bar 期间下的单，下一根 bar 才能撮合
         self._live: list[Order] = []  # 已进入撮合队列的挂单
         self._last_bars: dict[str, Bar] = {}
         self._fills: list[Fill] = []
+        self._expired_by_age = 0
 
     # ------------------------------------------------------------------ #
     # 提交与撤销
@@ -192,13 +198,45 @@ class SimBroker(Broker):
         if not order.is_open or order.symbol != bar.symbol:
             return None
 
-        outcome = self.matching.match(order, bar)
+        # 买入单必须把「本单已冻结的资金 + 剩余可用现金」一起告诉撮合器：
+        # 冻结额按昨收估算，成交价按今开，跳空时原数量买不起 → 撮合器会缩减数量。
+        cash_for_fill = None
+        if order.side is Side.BUY:
+            cash_for_fill = self.account.available_cash + float(order.meta.get("frozen_cash", 0.0) or 0.0)
+        outcome = self.matching.match(order, bar, available_cash=cash_for_fill)
 
         if not outcome.filled:
-            if outcome.reason in (BlockReason.SUSPENDED, BlockReason.LIMIT_UP, BlockReason.LIMIT_DOWN):
+            if outcome.reason in (
+                BlockReason.SUSPENDED,
+                BlockReason.LIMIT_UP,
+                BlockReason.LIMIT_DOWN,
+                BlockReason.INSUFFICIENT_CASH,
+            ):
                 order.meta["last_block"] = outcome.reason.value
                 order.meta["last_block_detail"] = outcome.detail
+            # 资金不足属于「这一单不可能成交」，继续挂着只会白占额度，立即终止。
+            # 停牌/一字板则保留挂单（明天可能就能成交），交由日终或后续 bar 处理。
+            if outcome.reason is BlockReason.INSUFFICIENT_CASH:
+                order.expire(outcome.detail)
+                self._release_reservation(order)
+                self._drop(order)
+                self._emit_order(order)
             return None
+
+        if outcome.cash_capped:
+            # 跳空导致买不起原数量：记录下来，前端可解释"为什么只成交了部分"
+            order.meta["cash_capped"] = True
+            order.meta["cash_capped_detail"] = (
+                f"跳空保护：原计划 {outcome.requested:.0f} 股，按可用资金缩减为 {outcome.quantity:.0f} 股"
+            )
+            log.warning(
+                "跳空缩减成交 %s %s: 计划 %.0f → 实际 %.0f（成交价 %.2f）",
+                order.symbol,
+                order.id,
+                outcome.requested,
+                outcome.quantity,
+                outcome.fill_price,
+            )
 
         quantity = outcome.quantity
         if order.side is Side.SELL and quantity > self.account.get_position(order.symbol).quantity:
@@ -239,6 +277,14 @@ class SimBroker(Broker):
         if order.is_open and order.side is Side.SELL:
             order.meta["frozen_qty"] = order.remaining
 
+        # 跳空缩减过的单：剩余数量在当前价位本来就买不起，继续挂只会白占冻结额度，
+        # 直接终止（已成交部分保留）。不这样做的话，剩余资金会一直锁到日终。
+        if outcome.cash_capped and order.is_open:
+            order.expire(
+                f"跳空保护：剩余 {order.remaining:.0f} 股按当前价已无力买入，本单终止"
+            )
+            self._release_reservation(order)
+
         self._fills.append(fill)
         self._emit_fill(fill)
         if order.is_final:
@@ -248,13 +294,50 @@ class SimBroker(Broker):
     # ------------------------------------------------------------------ #
     # 日终：未成交的 DAY 单过期（GTC 保留到下一次日终）
     # ------------------------------------------------------------------ #
-    def end_of_day(self) -> None:
+    def end_of_day(self, now: datetime | None = None) -> None:
+        """日终清理：DAY 单过期；GTC 单超过 ``max_order_age_days`` 也过期。
+
+        ``now`` 是行情时钟的当日时刻（回测用），不传时用墙钟（纸盘兼容）。
+        """
+        moment = now or utcnow()
         for order in list(self._live):
-            if order.is_open and order.tif is TimeInForce.DAY:
+            if not order.is_open:
+                continue
+            if order.tif is TimeInForce.DAY:
                 order.expire("当日未成交")
                 self._release_reservation(order)
                 self._drop(order)
                 self._emit_order(order)
+                continue
+            if self.max_order_age_days > 0:
+                placed = order.created_at or moment
+                if (moment - placed).days >= self.max_order_age_days:
+                    order.expire(f"挂单超过 {self.max_order_age_days} 天未成交")
+                    self._release_reservation(order)
+                    self._drop(order)
+                    self._emit_order(order)
+                    self._expired_by_age += 1
+                    log.info("GTC 挂单超龄撤销 %s %s", order.symbol, order.id)
+
+    @property
+    def frozen_summary(self) -> dict:
+        """冻结资金的可观测快照：多少被锁、被几张单锁的、最长挂了多久。"""
+        by_symbol: dict[str, float] = {}
+        oldest_days = 0
+        for order in self.open_orders:
+            frozen = float(order.meta.get("frozen_cash", 0.0) or 0.0)
+            if frozen:
+                by_symbol[order.symbol] = by_symbol.get(order.symbol, 0.0) + frozen
+            if order.created_at:
+                oldest_days = max(oldest_days, (utcnow() - order.created_at).days)
+        return {
+            "frozen_cash": round(self.account.frozen_cash, 2),
+            "available_cash": round(self.account.available_cash, 2),
+            "open_orders": len(self.open_orders),
+            "by_symbol": {k: round(v, 2) for k, v in by_symbol.items()},
+            "oldest_order_days": oldest_days,
+            "expired_by_age": self._expired_by_age,
+        }
 
     # ------------------------------------------------------------------ #
     # 内部工具
@@ -272,7 +355,10 @@ class SimBroker(Broker):
         ):
             return f"买入数量须为 {rules.lot_size} 股的整数倍"
         pos = self.account.get_position(order.symbol)
-        full_exit = order.side is Side.SELL and abs(order.quantity - pos.quantity) <= 1e-9
+        # 只有「这一单把可卖仓位全卖光」才算完整平仓，才允许零股尾巴。
+        # 用 pos.available 而非 pos.quantity：T+1 市场里当日买入的股份不可卖，
+        # 拿 quantity 判断会让"卖出可卖部分"被误判为清仓而放行非法零股。
+        full_exit = order.side is Side.SELL and abs(order.quantity - pos.available) <= 1e-9
         if not is_valid_lot(order.quantity, order.symbol, is_full_exit=full_exit):
             return "委托数量不合法"
 

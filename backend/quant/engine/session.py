@@ -230,7 +230,13 @@ class TradingSession:
 
         # 4) 日终清理（实时模式由引擎在真正跨日时调用，避免每轮轮询撤掉当日挂单）
         if self.auto_end_of_day:
-            self.broker.end_of_day()
+            # 传行情时刻：回测几秒内跑完几年，用墙钟会让 GTC 寿命判断完全失真
+            eod = getattr(self.broker, "end_of_day", None)
+            if callable(eod):
+                try:
+                    eod(moment)
+                except TypeError:  # 兼容不接受参数的实现（如 LiveBroker）
+                    eod()
         self._notify_orders()
         self._sync_stats()
         if self.recorder is not None:

@@ -117,11 +117,25 @@ class Account:
         return (price - pos.avg_cost) * quantity - fees_total
 
     def apply_fill(self, fill: Fill) -> float:
-        """结算一笔成交，返回该笔的已实现盈亏（仅卖出非零）。"""
+        """结算一笔成交，返回该笔的已实现盈亏（仅卖出非零）。
+
+        买入前会校验现金充足性。**账户现金不允许为负**——负现金意味着策略用了
+        不存在的杠杆，之后所有权益曲线都是假的。撮合层已经按可用资金缩减数量
+        （见 ``MatchingEngine.match(available_cash=...)``），这里是最后一道闸门：
+        万一上游漏了，宁可抛错让回测失败，也不能静默产生一个负数账户。
+        """
         pos = self.get_position(fill.symbol)
         now = fill.dt or utcnow()
 
         if fill.side is Side.BUY:
+            cost = fill.gross + fill.fees.total
+            if cost > self.available_cash + 1e-6:
+                raise InsufficientCash(
+                    f"{fill.symbol} 成交需要 {cost:.2f}，可用资金 {self.available_cash:.2f}；"
+                    "撮合层应已按可用资金缩减数量，此处出现说明存在跳空/费用漏检",
+                    required=cost,
+                    available=self.available_cash,
+                )
             new_qty = pos.quantity + fill.quantity
             # 成本 = 原有成本 + 本次买入金额 + 本次费用（费用摊进成本）
             new_cost_value = pos.cost_value + fill.gross + fill.fees.total
@@ -131,7 +145,7 @@ class Account:
             if not rules_for(fill.symbol).t_plus_1:
                 pos.available += fill.quantity
             pos.opened_at = pos.opened_at or now
-            self.cash -= fill.gross + fill.fees.total
+            self.cash -= cost
             realized = 0.0
         else:
             if fill.quantity > pos.quantity:

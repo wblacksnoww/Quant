@@ -77,6 +77,9 @@ struct Order {
   double frozen_cash = 0.0;
   bool has_frozen_qty = false;
   std::string last_block, last_block_detail;
+  // 跳空保护：因可用资金不足被缩减过成交数量（镜像 Python order.meta["cash_capped"]）
+  bool cash_capped = false;
+  std::string cash_capped_detail;
 
   bool is_open() const;
   bool is_final() const;
@@ -140,6 +143,8 @@ struct MatchOutcome {
   bool filled = false;
   double price = 0.0, qty = 0.0;
   std::string reason, detail;  // 非空 = blocked
+  bool cash_capped = false;    // qty 因可用资金不足被缩减（跳空保护）
+  double requested = 0.0;      // 缩减前的撮合数量
 };
 
 struct BarView {  // 某只标在时间轴 i 上的行情视图
@@ -153,7 +158,9 @@ class Matcher {
   CostModel cost;
   double volume_limit_pct = 0.10;
 
-  MatchOutcome match(const Order& order, const BarView& bar) const;
+  MatchOutcome match(const Order& order, const BarView& bar, double available_cash = -1.0) const;
+  // 在 cash 内按 price 能买的最大数量（含费用与整手约束），保证成交后现金不为负
+  double affordable_quantity(double cash, double price, double lot) const;
   FeeBreakdown fees(const Order& order, double price, double qty, double base_price) const;
 };
 
@@ -169,7 +176,8 @@ class Broker {
   std::vector<std::string> queued, live;  // order ids（保持插入序）
   std::vector<Fill> fills;
 
-  Broker(Account& a, const CostModel& cost, double vol_pct, ClockNs t0);
+  Broker(Account& a, const CostModel& cost, double vol_pct, ClockNs t0,
+         int max_order_age_days = 30);
   Order& record(Order o);
   void submit(Order o);           // 不含风控（风控在引擎层）
   bool cancel(const std::string& id, ClockNs now);
@@ -182,6 +190,7 @@ class Broker {
  private:
   ClockNs now_ns_ = 0;
   int id_seq_ = 0;
+  int max_order_age_days_ = 30;  // GTC 挂单寿命，0 = 不限期
   std::string next_id(const char* prefix);
   std::optional<std::string> validate(const Order& o);
   double estimate_cash(const Order& o) const;

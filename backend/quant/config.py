@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     legacy_cache_dir: str = "data/cache"
     default_symbols: list[str] = Field(default_factory=lambda: ["600519", "000001", "300059"])
     default_start: str = "2020-01-01"
+    # 回测默认滑点（基点）。0 = 不加滑点（最乐观假设，仅用于与历史结果对比）。
+    # 建议 A 股设 5、小盘股 10，让回测结论更保守。
+    default_slippage_bps: float = 0.0
+    # 回测默认量价冲击系数（0 = 不建模）。吃掉 bar 成交量却按开盘价成交在物理上不自洽。
+    default_impact_coef: float = 0.0
 
     # -- 安全 -------------------------------------------------------------- #
     master_key: str | None = None

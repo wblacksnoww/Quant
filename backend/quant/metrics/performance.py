@@ -47,35 +47,57 @@ class PerformanceReport:
     final_equity: float = 0.0
     benchmark_return: float | None = None
     excess_return: float | None = None
+    # 基准对比（补全"策略到底靠什么赚钱"这个问题）
+    benchmark_annual_return: float | None = None
+    annual_excess_return: float | None = None
+    beta: float | None = None
+    alpha: float | None = None
+    information_ratio: float | None = None
+    tracking_error: float | None = None
     monthly_returns: dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
+        def num(value: float | None, digits: int) -> float | None:
+            """NaN/inf 一律转 None（JSON 里就是 null），前端显示 "—" 或 "∞"。"""
+            if value is None:
+                return None
+            value = float(value)
+            if not np.isfinite(value):
+                return None
+            return round(value, digits)
+
         return {
-            "total_return": round(self.total_return, 6),
-            "annual_return": round(self.annual_return, 6),
-            "volatility": round(self.volatility, 6),
-            "sharpe": round(self.sharpe, 4),
-            "sortino": round(self.sortino, 4),
-            "max_drawdown": round(self.max_drawdown, 6),
+            "total_return": num(self.total_return, 6),
+            "annual_return": num(self.annual_return, 6),
+            "volatility": num(self.volatility, 6),
+            "sharpe": num(self.sharpe, 4),
+            "sortino": num(self.sortino, 4),
+            "max_drawdown": num(self.max_drawdown, 6),
             "max_drawdown_days": self.max_drawdown_days,
-            "calmar": round(self.calmar, 4),
-            "win_rate": round(self.win_rate, 6),
-            "profit_factor": round(self.profit_factor, 4),
+            "calmar": num(self.calmar, 4),
+            "win_rate": num(self.win_rate, 6),
+            "profit_factor": num(self.profit_factor, 4),
             "trade_count": self.trade_count,
             "win_count": self.win_count,
             "loss_count": self.loss_count,
-            "avg_win": round(self.avg_win, 2),
-            "avg_loss": round(self.avg_loss, 2),
-            "expectancy": round(self.expectancy, 2),
-            "total_fees": round(self.total_fees, 2),
-            "turnover": round(self.turnover, 2),
-            "exposure": round(self.exposure, 6),
+            "avg_win": num(self.avg_win, 2),
+            "avg_loss": num(self.avg_loss, 2),
+            "expectancy": num(self.expectancy, 2),
+            "total_fees": num(self.total_fees, 2),
+            "turnover": num(self.turnover, 2),
+            "exposure": num(self.exposure, 6),
             "start": self.start,
             "end": self.end,
-            "initial_equity": round(self.initial_equity, 2),
-            "final_equity": round(self.final_equity, 2),
-            "benchmark_return": None if self.benchmark_return is None else round(self.benchmark_return, 6),
-            "excess_return": None if self.excess_return is None else round(self.excess_return, 6),
+            "initial_equity": num(self.initial_equity, 2),
+            "final_equity": num(self.final_equity, 2),
+            "benchmark_return": num(self.benchmark_return, 6),
+            "excess_return": num(self.excess_return, 6),
+            "benchmark_annual_return": num(self.benchmark_annual_return, 6),
+            "annual_excess_return": num(self.annual_excess_return, 6),
+            "beta": num(self.beta, 4),
+            "alpha": num(self.alpha, 6),
+            "information_ratio": num(self.information_ratio, 4),
+            "tracking_error": num(self.tracking_error, 6),
             "monthly_returns": {k: round(v, 6) for k, v in self.monthly_returns.items()},
         }
 
@@ -168,6 +190,49 @@ def trade_stats(trades: Sequence[Any]) -> dict[str, float]:
     }
 
 
+def benchmark_analysis(
+    returns: pd.Series,
+    bench_returns: pd.Series,
+    rf_annual: float = 0.0,
+    periods: int = TRADING_DAYS,
+) -> dict[str, float | None]:
+    """策略相对基准的分解：Beta / Alpha / 超额 / 信息比率 / 跟踪误差。
+
+    只回答一个问题：**这个策略是在赚市场，还是在赚别的？**
+
+    * ``beta > 1`` 且 ``alpha ≈ 0``：本质上就是加杠杆买指数，不是策略。
+    * ``alpha`` 显著为正：有真实选股/择时能力。
+    * ``information_ratio`` 衡量超额收益的稳定性（越高越不是撞运气）。
+    """
+    joined = pd.concat([returns, bench_returns], axis=1, join="inner").dropna()
+    if len(joined) < 2:
+        return {}
+    r = joined.iloc[:, 0]
+    b = joined.iloc[:, 1]
+
+    var_b = float(b.var(ddof=0))
+    beta = float(r.cov(b) / var_b) if var_b > 0 else None
+
+    # 年化 Alpha（Jensen's alpha，日频口径）
+    rf_daily = rf_annual / periods
+    if beta is not None:
+        alpha_daily = float(r.mean() - rf_daily - beta * (b.mean() - rf_daily))
+        alpha = alpha_daily * periods
+    else:
+        alpha = None
+
+    diff = r - b
+    te = float(diff.std(ddof=0) * np.sqrt(periods))
+    ir = float(diff.mean() / diff.std(ddof=0) * np.sqrt(periods)) if diff.std(ddof=0) > 0 else None
+
+    return {
+        "beta": beta,
+        "alpha": alpha,
+        "tracking_error": te,
+        "information_ratio": ir,
+    }
+
+
 # --------------------------------------------------------------------------- #
 # 主入口
 # --------------------------------------------------------------------------- #
@@ -209,15 +274,23 @@ def compute(
     report.volatility = float(returns.std(ddof=0) * np.sqrt(periods)) if len(returns) > 1 else 0.0
 
     years = len(series) / periods
-    if years > 0 and start_equity > 0 and final_equity > 0:
+    # 区间过短时年化没有意义：2 个数据点会把 10% 的涨幅放大成 16 万倍年化。
+    # 少于 5 个交易日直接留 NaN，由展示层显示"—"而不是一个荒唐的数字。
+    MIN_ANNUAL_POINTS = 5
+    if len(series) >= MIN_ANNUAL_POINTS and years > 0 and start_equity > 0 and final_equity > 0:
         report.annual_return = float((final_equity / start_equity) ** (1 / years) - 1.0)
+        if not np.isfinite(report.annual_return):
+            report.annual_return = float("nan")
+    else:
+        report.annual_return = float("nan")
 
     report.sharpe = sharpe_ratio(returns, rf_annual, periods) if len(returns) > 1 else 0.0
     sortino = sortino_ratio(returns, rf_annual, periods) if len(returns) > 1 else 0.0
     report.sortino = sortino if np.isfinite(sortino) else 0.0
 
     report.max_drawdown, report.max_drawdown_days = max_drawdown(series)
-    if report.max_drawdown > 0:
+    # 年化不可得（区间过短）时卡玛无意义
+    if report.max_drawdown > 0 and not np.isnan(report.annual_return):
         report.calmar = report.annual_return / report.max_drawdown
     else:
         report.calmar = 0.0
@@ -228,7 +301,9 @@ def compute(
     report.loss_count = int(stats["loss_count"])
     report.win_rate = stats["win_rate"]
     pf = stats["profit_factor"]
-    report.profit_factor = pf if np.isfinite(pf) else 999.0
+    # 没有亏损笔时盈亏比是无穷大，用 999 会被当成真实值参与排序；
+    # 统一返回 NaN，展示层显示 "∞"。
+    report.profit_factor = pf if np.isfinite(pf) else float("nan")
     report.avg_win = stats["avg_win"]
     report.avg_loss = stats["avg_loss"]
     report.expectancy = stats["expectancy"]
@@ -245,7 +320,22 @@ def compute(
         bench = benchmark.astype(float).dropna()
         if len(bench) > 1 and bench.iloc[0] > 0:
             report.benchmark_return = float(bench.iloc[-1] / bench.iloc[0] - 1.0)
-            report.excess_return = report.total_return - report.benchmark_return
+            # 几何超额：长区间下算术相减会失真（200% vs 100% 真实超额 50%，算术差 100%）
+            report.excess_return = (1.0 + report.total_return) / (1.0 + report.benchmark_return) - 1.0
+
+            bench_years = len(bench) / periods
+            if bench_years > 0:
+                report.benchmark_annual_return = float(
+                    (bench.iloc[-1] / bench.iloc[0]) ** (1 / bench_years) - 1.0
+                )
+                if not np.isnan(report.annual_return):
+                    report.annual_excess_return = report.annual_return - report.benchmark_annual_return
+
+            analysis = benchmark_analysis(returns, bench.pct_change(), rf_annual, periods)
+            report.beta = analysis.get("beta")
+            report.alpha = analysis.get("alpha")
+            report.tracking_error = analysis.get("tracking_error")
+            report.information_ratio = analysis.get("information_ratio")
 
     return report
 

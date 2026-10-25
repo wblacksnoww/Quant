@@ -165,16 +165,21 @@ class AkShareProvider(DataProvider):
                         f"{inst.id} 日线获取失败：akshare({primary})；腾讯({backup})；新浪({fallback})"
                     ) from fallback
 
-        # A 股涨跌停用前一交易日收盘推算，数据源不直接提供
+        # A 股涨跌停价：数据源若已给出真值就**保留真值**（前复权口径下自己推算的
+        # 涨跌停会在除权日附近失真，把正常日误判成一字板）；缺失时才按前收推算，
+        # 且在「疑似除权日」上推算是不可信的，置为 NaN 交给撮合层跳过一字板判定。
         from ...execution.rules import price_limits
+        from ..base import detect_adjust_days
 
-        ups, downs = [], []
-        for prev_close in frame["prev_close"].tolist():
-            up, down = price_limits(prev_close or 0.0, inst.id)
-            ups.append(up)
-            downs.append(down)
-        frame["limit_up"] = ups
-        frame["limit_down"] = downs
+        frame = _fill_price_limits(frame, inst.id, price_limits)
+        adjust_days = detect_adjust_days(frame, inst.id)
+        if adjust_days:
+            log.warning(
+                "%s 检测到 %d 个疑似除权日，这些日子的涨跌停推算已禁用：%s",
+                inst.id,
+                len(adjust_days),
+                ", ".join(d["date"] for d in adjust_days[:5]),
+            )
         return frame
 
     def _daily_overseas(self, inst, start: date, end: date, *, adjust: str) -> pd.DataFrame:
@@ -297,6 +302,43 @@ class AkShareProvider(DataProvider):
         if node is None:
             raise NotImplementedError(f"akshare 不支持 {market} 的排行榜")
         return _sina_ranking(key, node, sort=sort, order=order, limit=limit)
+
+
+def _fill_price_limits(frame: pd.DataFrame, symbol: str, price_limits_fn) -> pd.DataFrame:
+    """补齐 ``limit_up/limit_down``：已有真值保留，缺失的才按前收推算。
+
+    **除权日禁推算**——那一天的 ``close/prev_close`` 跳变来自分红送股而非涨跌，
+    按它推算出的涨跌停会把正常交易日误判成「一字板买不进/卖不出」。
+    这些日子把涨跌停置为 NaN，撮合层看到 NaN 就跳过一字板判定（宁可成交，
+    也好过静默吞掉策略信号）。
+    """
+    from ..base import detect_adjust_days
+
+    prev_col = frame["prev_close"].tolist() if "prev_close" in frame.columns else []
+    ups, downs = [], []
+    for prev_close in prev_col:
+        up, down = price_limits_fn(prev_close or 0.0, symbol)
+        ups.append(up)
+        downs.append(down)
+    guess_up = pd.Series(ups, index=frame.index, dtype="float64")
+    guess_down = pd.Series(downs, index=frame.index, dtype="float64")
+
+    if "limit_up" in frame.columns:
+        frame["limit_up"] = frame["limit_up"].where(frame["limit_up"].notna(), guess_up)
+    else:
+        frame["limit_up"] = guess_up
+    if "limit_down" in frame.columns:
+        frame["limit_down"] = frame["limit_down"].where(frame["limit_down"].notna(), guess_down)
+    else:
+        frame["limit_down"] = guess_down
+
+    # 疑似除权日：推算值不可信 → 置空
+    bad_dates = {d["date"] for d in detect_adjust_days(frame, symbol)}
+    if bad_dates:
+        dates = pd.to_datetime(frame["date"]).dt.date.astype(str)
+        mask = dates.isin(bad_dates)
+        frame.loc[mask, ["limit_up", "limit_down"]] = None
+    return frame
 
 
 def _to_float(value: Any) -> float | None:

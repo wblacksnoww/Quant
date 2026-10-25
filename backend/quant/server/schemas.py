@@ -610,6 +610,8 @@ class SystemInfo(BaseModel):
     paper_running: bool
     strategies: list[str]
     warnings: list[str] = Field(default_factory=list)
+    # C++ 加速核心状态：available=False 时回测走 Python 路径（慢 10~70 倍）
+    native: dict[str, Any] = Field(default_factory=dict)
 
 
 class AuditOut(BaseModel):

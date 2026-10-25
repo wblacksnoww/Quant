@@ -34,12 +34,34 @@ class EngineConfig:
     benchmark: str | None = None
     adjust: str = "qfq"
     volume_limit_pct: float = 0.10
+    # GTC 挂单寿命（自然日）：超期自动撤销并解冻资金，0 表示不限期
+    max_order_age_days: int = 30
+    # 量价冲击系数：price *= (1 ± coef*sqrt(成交占比))，0 表示不建模
+    impact_coef: float = 0.0
     risk_free_rate: float = 0.0
     market: str = "CN"  # 由 symbols 推断（同一运行不允许混市场）
     run_id: str = field(default_factory=lambda: f"run_{uuid.uuid4().hex[:16]}")
     user_id: int | None = None
     # bar 周期：1d（默认，日线）或 1m/5m/15m/30m/60m（分钟级，仅虚拟货币支持历史回测）
     bar_interval: str = "1d"
+
+    def cost_model(self) -> "object":
+        """按市场取成本模型，并把默认滑点/冲击注入（用户未显式指定时）。"""
+        from ..execution.cost import CostModel
+
+        overrides = dict(self.cost or {})
+        if "slippage_bps" not in overrides:
+            try:
+                from ..config import get_settings
+
+                configured = float(get_settings().default_slippage_bps)
+            except Exception:  # noqa: BLE001 - 配置不可用时退回 0
+                configured = 0.0
+            if configured > 0:
+                # 只在市场预设之上补一个滑点，其余费率仍用市场默认
+                base = CostModel.for_market(self.market)
+                overrides = {**base.to_dict(), "slippage_bps": configured}
+        return CostModel.for_market(self.market, overrides or None)
 
     def validate(self) -> None:
         if not self.symbols:

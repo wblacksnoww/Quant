@@ -30,6 +30,7 @@ class BlockReason(str, Enum):
     PRICE_NOT_TOUCHED = "price_not_touched"  # 限价未触及
     NO_LIQUIDITY = "no_liquidity"  # 量能不足
     NO_PRICE = "no_price"
+    INSUFFICIENT_CASH = "insufficient_cash"  # 跳空/费用导致可用资金不足，已缩减数量
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +42,10 @@ class MatchOutcome:
     quantity: float = 0.0
     reason: BlockReason = BlockReason.NONE
     detail: str = ""
+    # 因可用资金不足而缩减后的成交数量（原始撮合数量见 ``requested``）。
+    # 为 True 时 ``reason`` 仍是 NONE（确实成交了），但调用方应记录该降级原因。
+    cash_capped: bool = False
+    requested: float = 0.0
 
     @property
     def blocked(self) -> bool:
@@ -57,25 +62,47 @@ class MatchingEngine:
         volume_limit_pct: float = 0.10,
         allow_slippage: bool = True,
         is_st_map: dict[str, bool] | None = None,
+        impact_coef: float = 0.0,
     ) -> None:
         self.cost_model = cost_model or CostModel()
         self.volume_limit_pct = max(0.0, min(1.0, volume_limit_pct))
         self.allow_slippage = allow_slippage
         self.is_st_map = is_st_map or {}
+        # 量价冲击系数：price *= (1 + impact_coef * sqrt(成交占比))，0 表示不建模
+        self.impact_coef = max(0.0, float(impact_coef))
 
     # ------------------------------------------------------------------ #
     def rules(self, symbol: str) -> BoardRules:
         return rules_for(symbol, is_st=self.is_st_map.get(symbol, False))
 
     def limits_for(self, bar: Bar) -> tuple[float | None, float | None]:
-        """优先用数据里带的涨跌停，其次按前收推算。"""
+        """优先用数据里带的涨跌停，其次按前收推算。
+
+        数据源在「疑似除权日」会把涨跌停置空（推算值不可信），此时若回落到
+        ``price_limits(prev_close)`` 又等于把坏推算捡回来，所以这里显式区分：
+        数据带字段就**只信字段**，字段为空表示"本日无可信涨跌停"，返回 (None, None)。
+        """
         if bar.limit_up is not None or bar.limit_down is not None:
             return bar.limit_up, bar.limit_down
-        return price_limits(bar.prev_close or 0.0, bar.symbol, board=self.rules(bar.symbol))
+        if not bar.prev_close or bar.prev_close <= 0:
+            return None, None
+        return price_limits(bar.prev_close, bar.symbol, board=self.rules(bar.symbol))
 
     # ------------------------------------------------------------------ #
-    def match(self, order: Order, bar: Bar) -> MatchOutcome:
-        """撮合一张订单。返回 :class:`MatchOutcome`，由 Broker 决定后续。"""
+    def match(
+        self,
+        order: Order,
+        bar: Bar,
+        *,
+        available_cash: float | None = None,
+    ) -> MatchOutcome:
+        """撮合一张订单。返回 :class:`MatchOutcome`，由 Broker 决定后续。
+
+        ``available_cash`` 传入时（买入单必传），成交数量会被可用现金上限约束。
+        这是**跳空保护**：下单时按昨收冻结，但市价单按次日开盘价成交，
+        跳空高开会让原数量买不起。真实券商会拒单或部分成交，绝不会让账户变负，
+        所以这里按「能买得起多少就成交多少」缩减，并打上 ``cash_capped`` 标记。
+        """
         symbol = bar.symbol
         rules = self.rules(symbol)
 
@@ -128,7 +155,8 @@ class MatchingEngine:
         price = self.cost_model.slippage_price(side, base_price) if self.allow_slippage else base_price
 
         # --- 成交量约束 -------------------------------------------------- #
-        quantity = order.remaining
+        requested = order.remaining
+        quantity = requested
         if self.volume_limit_pct > 0 and bar.volume > 0:
             capacity = bar.volume * self.volume_limit_pct
             if capacity <= 0:
@@ -137,14 +165,64 @@ class MatchingEngine:
                 )
             quantity = min(quantity, capacity)
 
+        # --- 量价冲击（可选）--------------------------------------------- #
+        # 吃掉 bar 的 volume_limit_pct 却按开盘价成交在物理上不自洽，
+        # impact_coef > 0 时按 sqrt(参与率) 抬高/压低成交价。默认 0 保持历史行为。
+        if self.impact_coef > 0 and bar.volume > 0 and quantity > 0:
+            participation = min(1.0, quantity / bar.volume)
+            shock = self.impact_coef * math.sqrt(participation)
+            price = price * (1.0 + shock) if side is Side.BUY else price * (1.0 - shock)
+
         # 买入按整手；卖出允许零股清仓
         lot = rules.lot_size
         if lot > 1 and side is Side.BUY:
             quantity = math.floor(quantity / lot) * lot
+
+        # --- 可用现金约束（跳空保护）------------------------------------- #
+        cash_capped = False
+        if side is Side.BUY and available_cash is not None:
+            affordable = self.affordable_quantity(available_cash, price, lot)
+            if affordable < quantity:
+                cash_capped = True
+                quantity = affordable
         if quantity <= 0:
+            # 有量能但一分钱也买不起：明确告知原因，别伪装成"不足一手"
+            if cash_capped or (side is Side.BUY and available_cash is not None and requested > 0):
+                return MatchOutcome(
+                    False,
+                    reason=BlockReason.INSUFFICIENT_CASH,
+                    detail=f"可用资金 {available_cash or 0:.2f} 不足以成交一手，"
+                    f"成交价 {price:.2f} 高于下单时估价（跳空）",
+                    requested=requested,
+                )
             return MatchOutcome(False, reason=BlockReason.NO_LIQUIDITY, detail="不足一个交易单位")
 
-        return MatchOutcome(True, fill_price=price, quantity=quantity)
+        return MatchOutcome(
+            True, fill_price=price, quantity=quantity, cash_capped=cash_capped, requested=requested
+        )
+
+    def affordable_quantity(self, cash: float, price: float, lot: float) -> float:
+        """在 ``cash`` 内、按 ``price`` 成交价能买的最大数量（含手续费与整手约束）。
+
+        整手市场向下取整；小数市场二分逼近。返回值保证 ``买入成本 <= cash``，
+        因此成交后账户现金不会变负。
+        """
+        if cash <= 0 or price <= 0:
+            return 0.0
+        if lot > 1:
+            qty = math.floor(cash / price / lot) * lot
+            # 价格含费用后可能刚好超一点，逐手下调（通常 0~2 次）
+            while qty > 0 and self.cost_model.estimate_buy_cost(price, qty) > cash:
+                qty -= lot
+            return float(max(0.0, qty))
+        lo, hi = 0.0, cash / price
+        for _ in range(64):
+            mid = (lo + hi) / 2.0
+            if self.cost_model.estimate_buy_cost(price, mid) <= cash:
+                lo = mid
+            else:
+                hi = mid
+        return lo
 
     # ------------------------------------------------------------------ #
     def fees(
