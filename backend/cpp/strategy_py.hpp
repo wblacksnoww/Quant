@@ -14,14 +14,15 @@ CompiledSpec compile_spec_py(const py::dict& spec);
 
 class SpecEvaluator {
  public:
-  explicit SpecEvaluator(const py::dict& spec) : spec_(compile_spec_py(spec)), state_(spec_) {}
-
-  std::pair<bool, bool> step(size_t cursor, const Columns& cols) {
-    return state_.step_idempotent(cursor, cols);
+  explicit SpecEvaluator(const py::dict& spec)
+      : spec_(compile_spec_py(spec)), state_(spec_) {
+    // 校验：至少存在 entry/exit（v1）或 nodes/edges/outputs（v2）；
+    // 结构非法时 compile_spec 内部抛出，由 pybind 转 Python 异常
   }
 
   // 窗口重喂：reset 后评估 [cursor-window+1, cursor]，与 Python
-  // history(symbol, min_rows) 滑窗口径完全一致（ewm 类指标需要）。
+  // history(symbol, min_rows) 滑窗口径完全一致（ewm 类指标需要）；
+  // 每次 reset+重喂天然幂等（同 bar 重复求值一致）。
   std::pair<bool, bool> evaluate_window(size_t cursor, size_t window, const Columns& cols) {
     state_.reset();
     size_t begin = window > cursor ? 0 : cursor - window + 1;

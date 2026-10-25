@@ -58,21 +58,6 @@ PYBIND11_MODULE(_core, m) {
   py::class_<SpecEvaluator>(m, "SpecEvaluator")
       .def(py::init([](const py::dict& spec) { return new SpecEvaluator(spec); }))
       .def(
-          "step",
-          [](SpecEvaluator& self, size_t cursor, size_t n,
-             const py::array_t<double, py::array::c_style | py::array::forcecast>& open,
-             const py::array_t<double, py::array::c_style | py::array::forcecast>& high,
-             const py::array_t<double, py::array::c_style | py::array::forcecast>& low,
-             const py::array_t<double, py::array::c_style | py::array::forcecast>& close,
-             const py::array_t<double, py::array::c_style | py::array::forcecast>& volume,
-             const py::array_t<double, py::array::c_style | py::array::forcecast>& amount,
-             const py::dict& extras) {
-            Columns cols = columns_from_py(n, open, high, low, close, volume, amount, extras);
-            return self.step(cursor, cols);
-          },
-          py::arg("cursor"), py::arg("n"), py::arg("open"), py::arg("high"), py::arg("low"),
-          py::arg("close"), py::arg("volume"), py::arg("amount"), py::arg("extras") = py::dict())
-        .def(
             "evaluate_window",
             [](SpecEvaluator& self, size_t cursor, size_t window, size_t n,
                const py::array_t<double, py::array::c_style | py::array::forcecast>& open,

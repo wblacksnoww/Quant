@@ -137,10 +137,12 @@ Python 业务层 + C++ 策略层的混合架构（策略热路径已 C++ 化）�
 | C++ 交易网关 | **C++**（`bar_spec` 类型，bar 收盘触发） | 尚未接入 | **C++** | **C++**（网格/突破/动量，每 tick） |
 
 - **拼装策略（你在前端拼的）在所有场景的信号计算都走 C++**：回测走 C++ 主循环，
-  模拟盘/实盘走 `_core.SpecEvaluator`（同 bar 重复求值幂等，支持新闻因子列），
-  网关用 `bar_spec` 类型。C++ 不可用时自动回退 Python 解释器，功能无损。
-- 内置策略在模拟盘/实盘仍是 Python（这几个是示例代码，主推拼装与 tick 策略）。
-- C++ / Python 两套实现由**等价性测试**保证逐点一致（成交序列与权益曲线）。
+  模拟盘/实盘走 `_core.SpecEvaluator`（窗口重喂，与 Python `history(n)` 滑窗口径一致，
+  支持新闻因子列），网关用 `bar_spec` 类型。
+- **没有 Python 回退**：拼装策略与已移植的内置策略缺失 C++ 扩展时直接报错，
+  不会静默降级到解释器（Docker/CI 构建保证扩展存在）。
+- 仍在 Python 引擎路径的只有：`news_dual_ma`（新闻策略尚未移植）与带 benchmark 的回测。
+- 引擎级等价性由测试保证：内置策略「Python 引擎 vs 全 C++ 引擎」成交序列与权益曲线逐点一致。
 
 更详细的分层、事件顺序与扩展点见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)；
 框架目录地图与结构审查清单见 [`docs/PROJECT_MAP.md`](docs/PROJECT_MAP.md)；

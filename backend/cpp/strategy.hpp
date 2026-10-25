@@ -61,12 +61,9 @@ class SpecState {
   // 返回 (entry_signal, exit_signal)
   std::pair<bool, bool> step(size_t cursor, const Columns& cols);
 
-  // 回到初始状态（窗口重喂用：与 Python history(n) 滑窗口径一致）
+  // 回到初始状态（窗口重喂用：与 Python history(n) 滑窗口径一致；
+  // 每次 reset+重喂天然幂等，同 bar 重复求值结果一致）
   void reset();
-
-  // ---- live 幂等：同一根 bar 被重复 step（实时模式每秒更新今日 bar）时，
-  // 先回滚到该 bar 首次求值前的状态再推进，保证结果一致。
-  std::pair<bool, bool> step_idempotent(size_t cursor, const Columns& cols);
 
  private:
   struct NodeState {
@@ -74,14 +71,10 @@ class SpecState {
     bool bval = false;
     std::unique_ptr<Indicator> ind;
   };
-  std::vector<NodeState> clone_states() const;
-  void restore_states(std::vector<NodeState> snapshot);
 
   const CompiledSpec& spec_;
   std::vector<NodeState> st_;
   bool inited_ = false;
-  std::vector<NodeState> snapshot_;
-  size_t snap_cursor_ = static_cast<size_t>(-1);
 };
 
 

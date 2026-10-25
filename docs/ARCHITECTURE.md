@@ -537,3 +537,16 @@ src/
 - API：`GET /api/gateway/status`、`POST /api/gateway/start|stop`；真实资金复用三重闸门
   （总开关 + confirm_live + broker 凭据）。前端「网关」页：策略/参数/标的/周期配置、
   启停、实时事件流（订单/成交/日志）。
+
+
+## C++ 策略层的边界（无 Python 回退）
+
+- 拼装策略（spec v1/v2）与已移植内置策略（dual_ma / momentum_rotation / rsi_reversion /
+  buy_hold）的**回测只走 C++**；`quant._core` 缺失时抛 `RuntimeError` 并给出构建提示，
+  不再静默降级。
+- 模拟盘/实盘引擎仍是 Python `TradingSession`（撮合/记账），但拼装策略的信号计算
+  统一调 `_core.SpecEvaluator.evaluate_window`（窗口重喂，与 Python `history(n)` 同口径，
+  同 bar 重复求值天然幂等）。
+- 仍走 Python 的只有：`news_dual_ma`（新闻策略未移植）与带 benchmark 的回测。
+- C++ 侧不再有快照回滚机制（窗口重喂已保证幂等），spec 解释器只有一份 nlohmann::json
+  实现，回测 / 模拟盘 / 网关三处共用。

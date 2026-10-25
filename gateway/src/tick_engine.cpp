@@ -225,7 +225,14 @@ std::vector<OrderIntent> BarSpecStrategy::on_tick(const Tick& tick, const Strate
 
   auto& state = states_[tick.symbol];
   if (!state) state = std::make_unique<SpecState>(spec_);
-  auto [entry, exit] = state->step_idempotent(cursor, cols);
+  // reset + 窗口重喂：同 bar 内 tick 反复更新天然幂等
+  state->reset();
+  size_t win_begin = cursor > static_cast<size_t>(spec_.lookback) + 1
+                          ? cursor - (spec_.lookback + 1)
+                          : 0;
+  std::pair<bool, bool> sig{false, false};
+  for (size_t k = win_begin; k <= cursor; ++k) sig = state->step(k, cols);
+  auto [entry, exit] = sig;
 
   std::vector<OrderIntent> intents;
   bool flat = ctx.position_qty <= 0;

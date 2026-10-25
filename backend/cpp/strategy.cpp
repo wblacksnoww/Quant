@@ -46,6 +46,13 @@ bool is_indicator(const std::string& name) {
   }
 }
 
+// 安全取字符串：缺失或非字符串（数字/对象等非法 spec）返回默认值，由上层校验兜住
+std::string jstr(const json& j, const char* key, const std::string& def = "") {
+  auto it = j.find(key);
+  if (it == j.end() || !it->is_string()) return def;
+  return it->get<std::string>();
+}
+
 int as_int(const json& j, int def) {
   if (j.is_null()) return def;
   return static_cast<int>(j.get<double>());
@@ -77,7 +84,7 @@ int add_node(CompiledSpec& spec, SpecNode node) {
 
 int operand_node(CompiledSpec& spec, const json& d, int close_idx,
                  std::map<std::string, int>& cache) {
-  std::string kind = d.value("kind", "");
+  std::string kind = jstr(d, "kind");
   if (kind == "const") {
     double value = d.value("value", 0.0);
     std::string key = "const:" + std::to_string(value);
@@ -91,7 +98,7 @@ int operand_node(CompiledSpec& spec, const json& d, int close_idx,
     return idx;
   }
   if (kind == "field") {
-    std::string field = d.value("field", "");
+    std::string field = jstr(d, "field");
     std::string key = "field:" + field;
     auto it = cache.find(key);
     if (it != cache.end()) return it->second;
@@ -102,7 +109,7 @@ int operand_node(CompiledSpec& spec, const json& d, int close_idx,
     cache[key] = idx;
     return idx;
   }
-  std::string name = d.value("name", "");
+  std::string name = jstr(d, "name");
   json params = d.contains("params") ? d["params"] : json::object();
   std::string key = name + ":" + params.dump();
   auto it = cache.find(key);
@@ -147,7 +154,7 @@ CompiledSpec compile_spec(const json& spec) {
       std::vector<Condition> conds;
       for (const auto& d : list) {
         Condition cond;
-        cond.type = d.value("type", "");
+        cond.type = jstr(d, "type");
         cond.left = operand_node(out, d["left"], close_idx, cache);
         cond.right = operand_node(out, d["right"], close_idx, cache);
         conds.push_back(cond);
@@ -178,12 +185,12 @@ CompiledSpec compile_spec(const json& spec) {
   std::vector<Raw> raws;
   std::map<std::string, std::vector<std::pair<std::string, std::string>>> inputs;  // to → (port, from)
   for (const auto& d : spec["nodes"]) {
-    raws.push_back({d.value("id", ""), d.value("type", ""), d});
+    raws.push_back({jstr(d, "id"), jstr(d, "type"), d});
   }
   for (const auto& d : spec["edges"]) {
-    std::string from = d.value("from", "");
-    std::string to = d.value("to", "");
-    std::string port = d.contains("to_port") && !d["to_port"].is_null() ? d.value("to_port", "in") : "in";
+    std::string from = jstr(d, "from");
+    std::string to = jstr(d, "to");
+    std::string port = jstr(d, "to_port", "in");
     inputs[to].emplace_back(port, from);
   }
   // Kahn 拓扑（就绪队列按原始插入序，保证确定性）
@@ -215,7 +222,7 @@ CompiledSpec compile_spec(const json& spec) {
     for (auto& r : raws)
       if (r.id == id) { d = r.d; break; }
     SpecNode node;
-    std::string type = d.value("type", "");
+    std::string type = jstr(d, "type");
     if (type == "const") {
       node.type = "const";
       node.const_value = d.contains("value") ? as_double(d["value"], 0.0) : 0.0;
@@ -242,8 +249,8 @@ CompiledSpec compile_spec(const json& spec) {
     for (auto& [port, from] : list) out.nodes[idx].inputs.push_back(by_id[from]);
   }
   const json& outputs = spec["outputs"];
-  out.entry_idx = by_id[outputs.value("entry", "")];
-  out.exit_idx = by_id[outputs.value("exit", "")];
+  out.entry_idx = by_id.at(jstr(outputs, "entry"));
+  out.exit_idx = by_id.at(jstr(outputs, "exit"));
   out.lookback = 0;
   for (const auto& node : out.nodes) {
     try {
@@ -278,6 +285,11 @@ bool cross_signal(const std::string& type, double l, double r, double l_prev, do
 }
 
 }  // namespace
+
+void SpecState::reset() {
+  st_.clear();
+  inited_ = false;
+}
 
 std::pair<bool, bool> SpecState::step(size_t cursor, const Columns& cols) {
   if (!inited_) {
@@ -350,56 +362,6 @@ std::pair<bool, bool> SpecState::step(size_t cursor, const Columns& cols) {
   bool exit = false;
   for (const auto& c : spec_.exit) exit = exit || cond_ok(c);
   return {entry, exit};
-}
-
-// ------------------------------------------------------------------ //
-// live 幂等：同一根 bar 重复 step 时回滚重算
-// ------------------------------------------------------------------ //
-std::vector<SpecState::NodeState> SpecState::clone_states() const {
-  std::vector<NodeState> out;
-  out.reserve(st_.size());
-  for (const auto& s : st_) {
-    NodeState copy;
-    copy.val = s.val;
-    copy.prev = s.prev;
-    copy.bval = s.bval;
-    if (s.ind) copy.ind = std::make_unique<Indicator>(*s.ind);
-    out.push_back(std::move(copy));
-  }
-  return out;
-}
-
-void SpecState::restore_states(std::vector<NodeState> snapshot) { st_ = std::move(snapshot); }
-
-void SpecState::reset() {
-  st_.clear();
-  inited_ = false;
-  snapshot_.clear();
-  snap_cursor_ = static_cast<size_t>(-1);
-}
-
-std::pair<bool, bool> SpecState::step_idempotent(size_t cursor, const Columns& cols) {
-  auto deep_copy = [](const std::vector<NodeState>& src) {
-    std::vector<NodeState> out;
-    out.reserve(src.size());
-    for (const auto& s : src) {
-      NodeState copy;
-      copy.val = s.val;
-      copy.prev = s.prev;
-      copy.bval = s.bval;
-      if (s.ind) copy.ind = std::make_unique<Indicator>(*s.ind);
-      out.push_back(std::move(copy));
-    }
-    return out;
-  };
-  if (cursor == snap_cursor_) {
-    // 同一根 bar 的重复求值（实时模式今日 bar 更新）：回滚到该 bar 推进前
-    restore_states(deep_copy(snapshot_));
-  } else {
-    snapshot_ = deep_copy(st_);
-    snap_cursor_ = cursor;
-  }
-  return step(cursor, cols);
 }
 
 }  // namespace qcore

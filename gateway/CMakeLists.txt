@@ -13,8 +13,7 @@ find_package(Boost 1.74 REQUIRED)  # Beast header-only；asio 自 1.69 起不强
 
 set(GW_INCLUDES
   ${CMAKE_CURRENT_SOURCE_DIR}/src
-  ${CMAKE_CURRENT_SOURCE_DIR}/third_party
-  ${CMAKE_CURRENT_SOURCE_DIR}/../backend/cpp)
+  ${CMAKE_CURRENT_SOURCE_DIR}/../backend/cpp)  # qcore + nlohmann/json.hpp（单一份拷贝）
 
 add_executable(quant-gateway
   src/main.cpp

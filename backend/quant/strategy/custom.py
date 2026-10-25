@@ -9,6 +9,9 @@
 * spec 在保存（CRUD）与提交运行两条路径上都会经 :func:`parse_spec` 校验；
 * spec 大小与条件数量有硬上限，防止构造超大 payload。
 
+信号求值由 C++ ``quant._core.SpecEvaluator`` 完成（窗口重喂，与
+``history(min_rows)`` 滑窗口径一致）；本文件只负责 spec 的解析、校验与订单纪律。
+
 spec 结构（v1）::
 
     {
@@ -46,7 +49,6 @@ from .custom_graph import (
     MAX_GRAPH_SPEC_BYTES,
     GraphSpec,
     graph_lookback,
-    graph_signals,
     parse_graph_spec,
 )
 
@@ -62,7 +64,7 @@ from .indicators import (
 )
 from .registry import register_strategy
 
-try:  # C++ 拼装策略求值器（不可用时回退 Python 解释器）
+try:  # C++ 拼装策略求值器（必需：构建产物由 Docker/CI 保证）
     from .. import core_native as _core_native
 except Exception:  # pragma: no cover
     _core_native = None
@@ -370,38 +372,6 @@ def _series_for_operand(frame: pd.DataFrame, op: Operand):
     _fail(f"未知指标 {name!r}")  # pragma: no cover - 白名单已挡
 
 
-def _truthy(series: pd.Series) -> pd.Series:
-    return series.fillna(False).astype(bool)
-
-
-def _condition_series(frame: pd.DataFrame, cond: Condition, cache: dict) -> pd.Series:
-    """条件的逐 bar 布尔序列。NaN（数据不足）一律视为 False。"""
-    key = cond.op, cond.left, cond.right
-    if key in cache:
-        return cache[key]
-
-    if cond.op in _CROSS_OPS:
-        left = _series_for_operand(frame, cond.left)
-        right = _series_for_operand(frame, cond.right)
-        cross = ta.crossover(left, right)
-        out = cross.eq(1.0) if cond.op == "cross_above" else cross.eq(-1.0)
-    else:
-        left = _series_for_operand(frame, cond.left)
-        right = _series_for_operand(frame, cond.right)
-        if cond.op == "gt":
-            out = left > right
-        elif cond.op == "gte":
-            out = left >= right
-        elif cond.op == "lt":
-            out = left < right
-        else:
-            out = left <= right
-
-    result = _truthy(out)
-    cache[key] = result
-    return result
-
-
 # --------------------------------------------------------------------------- #
 # 解释器策略
 # --------------------------------------------------------------------------- #
@@ -430,14 +400,14 @@ class CustomRuleStrategy(Strategy):
         self._is_graph = isinstance(self.spec, GraphSpec)
         self._news_fields = self._news_fields_used()
         self._uses_news = bool(self._news_fields)
-        # 信号计算优先走 C++（与回测同源的解释器）；不可用回退 Python
-        self._native = None
-        if _core_native is not None and _core_native.HAS_NATIVE:
-            try:
-                raw = params.get("spec") if isinstance(params, Mapping) else None
-                self._native = _core_native._native.SpecEvaluator(raw)
-            except Exception:  # noqa: BLE001 - spec 结构不支持的组合走 Python
-                self._native = None
+        # 信号计算只走 C++ SpecEvaluator（与回测/网关同一份解释器）。
+        # 构建产物由 Docker/CI 保证存在；这里缺失即视为环境损坏，直接报错。
+        if _core_native is None or not _core_native.HAS_NATIVE:
+            raise RuntimeError(
+                f"拼装策略需要 C++ 核心（quant._core）：{_core_native.NATIVE_ERROR if _core_native else '未构建'}"
+            )
+        raw = params.get("spec") if isinstance(params, Mapping) else None
+        self._native = _core_native._native.SpecEvaluator(raw)
         self._native_cache: dict[str, Any] = {}  # symbol → numpy 列缓存（避免每 bar 重建）
         if self._is_graph:
             self._min_rows = graph_lookback(self.spec)
@@ -534,7 +504,6 @@ class CustomRuleStrategy(Strategy):
             return
 
         pos = self.position(bar.symbol)
-        cache: dict = {}
 
         # --- 先管持仓：止损 / 止盈 ------------------------------------- #
         if not pos.is_flat and pos.available > 0 and pos.avg_cost > 0:
@@ -548,15 +517,8 @@ class CustomRuleStrategy(Strategy):
                 self.close(bar.symbol, tag="take_profit")
                 return
 
-        # --- 信号：优先 C++ SpecEvaluator（与回测同源），回退 Python ---------- #
-        entry_signal = exit_signal = False
-        if self._native is not None:
-            entry_signal, exit_signal = self._native_signals(bar.symbol, frame)
-        elif self._is_graph:
-            entry_signal, exit_signal = graph_signals(frame, self.spec)
-        else:
-            entry_signal = all(_condition_series(frame, c, cache).iloc[-1] for c in self.spec.entry)
-            exit_signal = any(_condition_series(frame, c, cache).iloc[-1] for c in self.spec.exit)
+        # --- 信号：C++ SpecEvaluator（与回测/网关同一份解释器） ---------- #
+        entry_signal, exit_signal = self._native_signals(bar.symbol, frame)
 
         if pos.is_flat:
             if entry_signal:

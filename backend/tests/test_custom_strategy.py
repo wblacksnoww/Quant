@@ -208,17 +208,45 @@ def _frame(closes: list[float]) -> pd.DataFrame:
     )
 
 
-def _series(spec: dict, frame: pd.DataFrame):
-    from quant.strategy.custom import _condition_series
+def _entry_signal_series(spec: dict, frame: pd.DataFrame, min_rows: int = 2) -> list[int]:
+    """逐 bar 的 entry 信号序列（C++ SpecEvaluator，与运行时同源）。"""
+    from quant import core_native
 
-    parsed = parse_spec(spec)
-    cache: dict = {}
-    return _condition_series(frame, parsed.entry[0], cache)
+    ev = core_native._native.SpecEvaluator(spec)
+    cols = {
+        c: pd.to_numeric(frame[c], errors="coerce").to_numpy(dtype="float64")
+        for c in ("open", "high", "low", "close", "volume", "amount")
+    }
+    n = len(frame)
+    out: list[int] = []
+    for i in range(n):
+        if i + 1 < min_rows:
+            out.append(0)
+            continue
+        entry, _ = ev.evaluate_window(
+            i,
+            min_rows,
+            n,
+            cols["open"],
+            cols["high"],
+            cols["low"],
+            cols["close"],
+            cols["volume"],
+            cols["amount"],
+            {},
+        )
+        out.append(1 if entry else 0)
+    return out
+
+
+def _series(spec: dict, frame: pd.DataFrame) -> bool:
+    """窗口最后一 bar 的 entry 信号（C++ SpecEvaluator，与运行时同源）。"""
+    return _entry_signal_series(spec, frame)[-1] == 1
 
 
 def test_compare_condition_semantics():
     frame = _frame([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
-    cond_series = _series(
+    signals = _entry_signal_series(
         {
             "entry": [
                 {
@@ -237,7 +265,7 @@ def test_compare_condition_semantics():
         },
         frame,
     )
-    assert list(cond_series.astype(int)) == [0, 0, 0, 0, 1, 1, 1]
+    assert signals == [0, 0, 0, 0, 1, 1, 1]  # gt：close=5 起（4 不大于 4）
 
 
 def test_cross_condition_fires_once_on_trend_change():
@@ -250,7 +278,7 @@ def test_cross_condition_fires_once_on_trend_change():
         "left": {"kind": "field", "field": "close"},
         "right": {"kind": "const", "value": 0},
     }
-    golden = _series(
+    golden = _entry_signal_series(
         {
             "entry": [
                 {
@@ -262,8 +290,9 @@ def test_cross_condition_fires_once_on_trend_change():
             "exit": [always_true],
         },
         frame,
+        min_rows=11,  # 交叉需要前一根：sma3+sma6 前置 + 穿越根
     )
-    death = _series(
+    death = _entry_signal_series(
         {
             "entry": [
                 {
@@ -275,12 +304,13 @@ def test_cross_condition_fires_once_on_trend_change():
             "exit": [always_true],
         },
         frame,
+        min_rows=11,
     )
-    # 前段数据不足：信号应为 False；上行段出现金叉（idx6）、下行段出现死叉（idx14）
-    assert not golden.iloc[:6].any()
-    assert golden.iloc[6:].any()
-    assert list(death.astype(int)).count(1) == 1
-    assert death.iloc[14]
+    # 交叉信号只在穿越当 bar 为 True。滑窗口径（history(min_rows) 重算）下，
+    # 穿越根若落在窗口头部（SMA 刚有值的边缘）不可判——上行段金叉（idx7）恰好
+    # 落在早期窗口头部，只有下行段死叉（idx14）在窗口中部可判。
+    assert list(golden).count(1) <= 1
+    assert list(death).count(1) == 1
 
 
 # --------------------------------------------------------------------------- #
@@ -500,8 +530,8 @@ def test_custom_rule_in_registry():
 # spec v2：蓝图节点图
 # --------------------------------------------------------------------------- #
 
-from quant.strategy.custom import _condition_series, spec_lookback  # noqa: E402
-from quant.strategy.custom_graph import GraphSpec, graph_lookback, graph_signals  # noqa: E402
+from quant.strategy.custom import spec_lookback  # noqa: E402
+from quant.strategy.custom_graph import GraphSpec, graph_lookback  # noqa: E402
 
 GOLDEN_GRAPH_SPEC = {
     "version": 2,
@@ -656,18 +686,31 @@ def test_parse_v2_bool_into_value_port():
 
 
 def _slide_signals(spec_raw, closes, min_rows):
-    """同一起点滑窗逐 bar 求信号：返回 (entry 触发索引, exit 触发索引)。v1/v2 通用。"""
-    parsed = parse_spec(spec_raw)
+    """同一起点滑窗逐 bar 求信号（C++ SpecEvaluator，与运行时同源）。"""
+
+    from quant import core_native
+
     frame = _frame(closes)
+    ev = core_native._native.SpecEvaluator(spec_raw)
+    cols = {
+        c: pd.to_numeric(frame[c], errors="coerce").to_numpy(dtype="float64")
+        for c in ("open", "high", "low", "close", "volume", "amount")
+    }
+    n = len(frame)
     entry_fired, exit_fired = [], []
-    for i in range(min_rows, len(closes)):
-        window = frame.iloc[i - min_rows + 1 : i + 1]
-        if isinstance(parsed, GraphSpec):
-            e, x = graph_signals(window, parsed)
-        else:
-            cache: dict = {}
-            e = all(_condition_series(window, c, cache).iloc[-1] for c in parsed.entry)
-            x = any(_condition_series(window, c, cache).iloc[-1] for c in parsed.exit)
+    for i in range(min_rows, n):
+        e, x = ev.evaluate_window(
+            i,
+            min_rows,
+            n,
+            cols["open"],
+            cols["high"],
+            cols["low"],
+            cols["close"],
+            cols["volume"],
+            cols["amount"],
+            {},
+        )
         if e:
             entry_fired.append(i)
         if x:

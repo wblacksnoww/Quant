@@ -79,11 +79,8 @@ class BacktestEngine(BaseEngine):
 
             from .. import core_native
 
-            if core_native.HAS_NATIVE and core_native.native_ready(cfg.strategy_id, benchmark=cfg.benchmark):
-                try:
-                    return self._run_native(frames, result)
-                except Exception:  # noqa: BLE001 - 原生路径故障自动回退 Python
-                    log.exception("C++ 快速路径失败，回退 Python 引擎 run_id=%s", cfg.run_id)
+            if core_native.native_ready(cfg.strategy_id, benchmark=cfg.benchmark):
+                return self._run_native(frames, result)
 
             self._report(0.12, "准备策略与账户")
             session = self._build_session(frames)
@@ -188,6 +185,14 @@ class BacktestEngine(BaseEngine):
         import numpy as np
 
         from .. import core_native
+        from ..strategy.custom import validate_spec
+
+        # 拼装策略：C++ 编译前先过 Python 白名单校验（错误文案与 Python 路径一致）
+        if self.config.strategy_id == "custom_rule":
+            try:
+                validate_spec(self.config.params.get("spec"))
+            except (ValueError, TypeError) as exc:
+                raise ValueError(f"拼装策略 spec 无效：{exc}") from exc
 
         cfg = self.config
         symbols = [s for s in cfg.symbols if s in frames and len(frames[s])]
@@ -224,7 +229,7 @@ class BacktestEngine(BaseEngine):
         arrays = [cols_of(frames[s]) for s in symbols]
         extras: list[dict[str, np.ndarray]] = []
         spec = None
-        if cfg.strategy_id == "custom_rule":
+        if self.config.strategy_id == "custom_rule":
             raw = cfg.params.get("spec")
             if isinstance(raw, dict):
                 spec = raw

@@ -32,9 +32,6 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-import pandas as pd
-
-from . import indicators as ta
 from .custom_fields import ALL_FIELDS
 
 # 指标白名单唯一来源：v1 条件与 v2 蓝图共用（参数边界随之同源）
@@ -426,94 +423,6 @@ def parse_graph_spec(raw: Any) -> GraphSpec:
 # --------------------------------------------------------------------------- #
 
 
-def _series_for(frame: pd.DataFrame, node: GraphNode, values: dict[str, Any], index) -> Any:
-    """按拓扑序求值单个节点。返回 pd.Series 或标量。"""
-    if node.type == "const":
-        return pd.Series(node.const_value, index=index)
-    if node.type in _SOURCES:
-        return frame[node.type]
-
-    def arg(port: str):
-        return values[node.inputs[port]]
-
-    if node.type in _INDICATORS:
-        params = dict(node.attrs)
-        price: pd.Series = arg("in")
-        name = node.type
-        if name == "sma":
-            return ta.sma(price, int(params["period"]))
-        if name == "ema":
-            return ta.ema(price, int(params["period"]))
-        if name == "rsi":
-            return ta.rsi(price, int(params["period"]))
-        if name == "std":
-            return ta.std(price, int(params["period"]))
-        if name == "rolling_high":
-            return ta.rolling_high(price, int(params["period"]))
-        if name == "rolling_low":
-            return ta.rolling_low(price, int(params["period"]))
-        if name == "momentum":
-            return ta.momentum(price, int(params["period"]))
-        if name == "atr":
-            return ta.atr(frame["high"], frame["low"], frame["close"], int(params["period"]))
-        if name in ("boll_lower", "boll_mid", "boll_upper"):
-            lower, mid, upper = ta.bollinger(price, int(params["period"]), float(params.get("width", 2.0)))
-            return {"boll_lower": lower, "boll_mid": mid, "boll_upper": upper}[name]
-        if name in _MACD_TUP:
-            dif, dea, hist = ta.macd(
-                price, int(params.get("fast", 12)), int(params.get("slow", 26)), int(params.get("signal", 9))
-            )
-            return {"macd_dif": dif, "macd_dea": dea, "macd_hist": hist}[name]
-
-    if node.type in _ARITH:
-        left, right = arg("left"), arg("right")
-        if node.type == "add":
-            return left + right
-        if node.type == "sub":
-            return left - right
-        if node.type == "mul":
-            return left * right
-        if isinstance(right, pd.Series):
-            return left / right.mask(right.eq(0.0))  # 除零 → NaN → 布尔端判 False
-        if right == 0:
-            return left * float("nan")
-        return left / right
-
-    if node.type in _COMPARE:
-        left, right = arg("left"), arg("right")
-        if node.type in ("cross_above", "cross_below"):
-            cross = ta.crossover(left, right)
-            out = cross.eq(1.0) if node.type == "cross_above" else cross.eq(-1.0)
-        elif node.type == "gt":
-            out = left > right
-        elif node.type == "gte":
-            out = left >= right
-        elif node.type == "lt":
-            out = left < right
-        else:
-            out = left <= right
-        return out.fillna(False).astype(bool)
-
-    if node.type in _LOGIC_1:
-        return ~arg("in").fillna(False).astype(bool)
-    if node.type in _LOGIC_2:
-        left, right = arg("left"), arg("right")
-        return (left & right) if node.type == "and" else (left | right)
-
-    _fail(f"未知节点类型 {node.type!r}")  # pragma: no cover - 白名单已挡
-
-
-def graph_signals(frame: pd.DataFrame, spec: GraphSpec) -> tuple[bool, bool]:
-    """在 frame（history 窗口）上求值，返回 (entry_last, exit_last)。"""
-    values: dict[str, Any] = {}
-    for nid in spec.topological:
-        node = spec.node(nid)
-        values[nid] = _series_for(frame, node, values, frame.index)
-    entry = values[spec.entry_id].iloc[-1]
-    exit_ = values[spec.exit_id].iloc[-1]
-    return bool(entry), bool(exit_)
-
-
 def graph_lookback(spec: GraphSpec) -> int:
     """最少历史行数：lookback（交叉自身已含 +1）再加 1 根与 v1 条件路径对齐。"""
     return spec.lookback + 1
@@ -524,6 +433,5 @@ __all__ = [
     "GraphSpec",
     "GraphNode",
     "graph_lookback",
-    "graph_signals",
     "parse_graph_spec",
 ]

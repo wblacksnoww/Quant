@@ -16,6 +16,9 @@ class FakeNews:
     def factor(self, symbol: str, *, as_of, window: str = "1h", half_life_hours: float = 24.0):
         return self._factor
 
+    def news_factor_at(self, symbol: str, *, as_of, window: str = "1h", half_life_hours: float = 24.0):
+        return self._factor
+
 
 def _config(strategy: str, run_id: str, **params) -> EngineConfig:
     return EngineConfig(
