@@ -4,71 +4,171 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch: # 支持手动重跑，便于排查 flaky
+
+# 同一分支/PR 再次推送时取消上一次运行。
+# 多人协作时这条能省下大量 CI 额度：一个 PR 反复推 10 次，只跑最后一次。
+# push 到 main 不取消（要保证每个合并都有完整记录）。
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# 默认最小权限。需要写权限的 job 单独声明，避免一个 job 被投毒影响全部。
+permissions:
+  contents: read
+
+env:
+  # 测试数据源固定为合成数据：CI 里不访问外部行情 API（不稳定且限流）
+  QUANT_ENV: test
+  QUANT_DATA_PROVIDER: synthetic
 
 jobs:
-  test:
+  # ==========================================================================
+  # 提交信息规范：最快的一条，失败得越早越省时间
+  # ==========================================================================
+  commit-messages:
+    name: commit messages
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 需要完整历史才能按 base sha 算区间
+          fetch-depth: 0
+          # 关键：checkout 真实的 PR head，而不是 GitHub 默认生成的"合并提交"。
+          # 用合并提交会让 HEAD 的祖先包含 main，区间计算容易算进不该算的提交。
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check commit messages (Conventional Commits)
+        env:
+          # 用 base.sha 而不是 origin/main：分支落后时 origin/main 会包含
+          # 合并后才进入 main 的提交，导致误报
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "校验区间：$BASE_SHA..HEAD"
+            python scripts/check_commit_msg.py --range "$BASE_SHA..HEAD"
+          else
+            # push 到 main：只校验最新一条。
+            # 历史提交已推送，rebase 重写会破坏其他人的本地副本，不做追溯。
+            python scripts/check_commit_msg.py --message "$(git log -1 --format=%B)"
+          fi
+
+  # ==========================================================================
+  # 后端：ruff + pytest + OpenAPI 契约漂移
+  # ==========================================================================
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: |
+            deploy/requirements.lock.txt
+            backend/pyproject.toml
+
       - name: Install backend (locked runtime + dev tools)
         run: |
           pip install -r deploy/requirements.lock.txt
           pip install setuptools wheel pybind11
           pip install -e "backend" --no-deps --no-build-isolation
           pip install pytest pytest-asyncio pytest-cov ruff mypy respx
+
       - name: C++ core built
-        run: python -c "from quant import core_native; assert core_native.HAS_NATIVE, core_native.NATIVE_ERROR"
-      - name: Ruff
-        run: ruff check backend
+        run: |
+          python -c "from quant import core_native; assert core_native.HAS_NATIVE, core_native.NATIVE_ERROR"
+          # 打印一次状态，便于排查"静默回退 Python 路径"
+          python -c "from quant import core_native; print(core_native.native_status())"
+
+      - name: Ruff (lint + format)
+        run: |
+          ruff check backend
+          ruff format --check backend
 
       - name: Pytest
         working-directory: backend
-        env:
-          QUANT_ENV: test
-          QUANT_DATA_PROVIDER: synthetic
         run: pytest -q
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      # OpenAPI 漂移检查需要 node（用 npx 调 openapi-typescript），所以放这里
+      - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install frontend deps
+      - name: Install frontend deps (for type generation)
         working-directory: frontend
         run: npm ci
-
-      - name: Frontend lint + format
-        working-directory: frontend
-        run: npm run lint && npm run format:check
 
       - name: OpenAPI types are up to date
         run: |
           ./scripts/gen-api-types.sh
           git diff --exit-code -- frontend/src/api/openapi.json frontend/src/api/schema.ts
 
-  gateway:
+  # ==========================================================================
+  # 前端：lint + 格式
+  # ==========================================================================
+  frontend:
+    name: frontend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint + format check
+        working-directory: frontend
+        run: npm run lint && npm run format:check
+
+      - name: Build (type-check + bundle)
+        working-directory: frontend
+        # 与 deploy/frontend.Dockerfile 的 `RUN npm run build` 同一条命令，
+        # 放到 PR 阶段跑是为了早发现构建问题，不用等合并后镜像构建才报错
+        run: npm run build
+
+  # ==========================================================================
+  # C++ 交易网关
+  # ==========================================================================
+  gateway:
+    name: gateway
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Install toolchain
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake libboost-dev libssl-dev
+
       - name: Build gateway
         run: |
           cmake -S gateway -B gateway/build -DCMAKE_BUILD_TYPE=Release
           cmake --build gateway/build -j
+
       - name: Gateway tests
         run: gateway/build/gateway-tests
 
+  # ==========================================================================
+  # 镜像：只在 main 上构建并推送到 GHCR
+  # ==========================================================================
   images:
-    needs: [test, gateway]
+    name: images
+    needs: [commit-messages, backend, frontend, gateway]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -76,21 +176,29 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+
       - name: Compute lowercase image prefix
         run: |
           PREFIX="ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/quant-trading"
           echo "PREFIX=$PREFIX" >> "$GITHUB_ENV"
+
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
       - name: Build & push backend
         uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/backend.Dockerfile
           push: true
+          # 复用上一次的层，多人频繁合并时能显著缩短构建
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
           build-args: |
             PYTHON_IMAGE=python:3.12-slim
             BUILDER_IMAGE=python:3.12
@@ -98,12 +206,15 @@ jobs:
           tags: |
             ${{ env.PREFIX }}-backend:${{ github.sha }}
             ${{ env.PREFIX }}-backend:latest
+
       - name: Build & push frontend
         uses: docker/build-push-action@v6
         with:
           context: .
           file: deploy/frontend.Dockerfile
           push: true
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
           build-args: |
             NODE_IMAGE=node:20-alpine
             NGINX_IMAGE=nginx:1.27-alpine

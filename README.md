@@ -266,6 +266,26 @@ QUANT_ENV=development QUANT_DATA_PROVIDER=csv ../.venv/bin/python -m quant.cli s
 
 首次启动自动生成开发主密钥 `data/master.key`，并创建管理员（未配置 `QUANT_ADMIN_PASSWORD` 时随机生成，见日志）。
 
+### 参与开发前先读
+
+| 文档 | 内容 |
+|---|---|
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 分支命名、提交规范、PR 流程、测试门槛、C++ 改动的特别要求 |
+| [docs/COLLABORATION.md](docs/COLLABORATION.md) | 分支保护、required checks、标签体系、权限（这些只能网页/API 配） |
+| [docs/COMPUTE_BOUNDARY.md](docs/COMPUTE_BOUNDARY.md) | 哪些在 C++、哪些在 Python，改什么需要碰 C++ |
+
+一次装好本地质量门（提交时自动 lint + 校验提交信息）：
+
+```bash
+pip install pre-commit
+pre-commit install --install-hooks
+pre-commit install --hook-type commit-msg
+```
+
+> 编译 C++ 核心后务必确认真的用上了新产物：
+> `cd backend && python setup.py build_ext --inplace && python -c "from quant import core_native; print(core_native.native_status())"`
+> ABI 不匹配时 `ImportError` 会被捕获并**静默回退 Python 路径**——测试照样全绿，但测的是另一条腿。
+
 ## 常用 CLI
 
 ```bash

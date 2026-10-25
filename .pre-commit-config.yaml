@@ -1,17 +1,59 @@
-# 本地质量门：ruff（后端）+ eslint/prettier（前端）
-# 安装：pip install pre-commit && pre-commit install
+# 本地质量门：ruff（后端）+ eslint/prettier（前端）+ 提交信息规范
+#
+# 安装（每台开发机一次）：
+#   pip install pre-commit
+#   pre-commit install --install-hooks
+#   pre-commit install --hook-type commit-msg    # 提交信息校验依赖这一步
+#
+# 手动全量检查：pre-commit run --all-files
 repos:
+  # --- Python 代码风格 ---------------------------------------------------
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.13.2
     hooks:
       - id: ruff
-        args: [--fix]
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^backend/
       - id: ruff-format
+        files: ^backend/
+
+  # --- 通用文件卫生 -----------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      # .gitignore 只防"不小心 add"，这个才是真拦截：私钥/大文件直接拒绝提交
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: ["--maxkb=512"]
+      # 语法错误留到 CI 才发现太浪费时间，本地就挡住
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-json
+        exclude: ^frontend/(package-lock\.json|src/api/openapi\.json)$
+      - id: check-toml
+      - id: check-merge-conflict
+      # 文件末尾/行尾多余空白：跨编辑器协作最常见的无意义 diff
+      - id: end-of-file-fixer
+        exclude: ^(data/cache/|frontend/public/icons/)
+      - id: trailing-whitespace
+        exclude: ^(data/cache/|frontend/public/icons/)
+
   - repo: local
     hooks:
+      # --- 前端 ---------------------------------------------------------
       - id: frontend-lint
         name: frontend lint + format check
         entry: bash -c 'cd frontend && npm run lint && npm run format:check'
         language: system
         pass_filenames: false
         files: ^frontend/src/
+
+      # --- 提交信息规范（commit-msg 阶段）------------------------------
+      # 与 CI 复用同一个脚本，避免"本地过、CI 挂"的两套规则漂移。
+      # commit-msg 阶段 pre-commit 会把提交信息文件路径作为参数传入，
+      # 所以这里不能设 pass_filenames: false。
+      - id: commit-msg-convention
+        name: commit message follows Conventional Commits
+        entry: python3 scripts/check_commit_msg.py --file
+        language: system
+        stages: [commit-msg]

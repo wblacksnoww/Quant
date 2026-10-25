@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 部署与运维问题
+    url: https://github.com/wblacksnoww/Quant/blob/main/docs/DEPLOY.md
+    about: 起不来、镜像、反向代理、HTTPS、备份恢复，先看部署文档
+  - name: 实盘接入
+    url: https://github.com/wblacksnoww/Quant/blob/main/docs/LIVE_TRADING.md
+    about: 券商/交易所凭据配置、测试网、风控开关，先看实盘文档
+  - name: 协同与开发流程
+    url: https://github.com/wblacksnoww/Quant/blob/main/CONTRIBUTING.md
+    about: 分支命名、提交规范、PR 流程、测试门槛
+  - name: 安全问题
+    url: https://github.com/wblacksnoww/Quant/blob/main/docs/SECURITY.md
+    about: 请不要用公开 Issue 报告安全漏洞，按安全文档说明的私下渠道联系

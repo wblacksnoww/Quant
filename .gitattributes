@@ -1,0 +1,112 @@
+# ============================================================================
+# 换行符与文件属性
+#
+# 多人协作时最常见的一类"假冲突"：Windows 同事检出后换行符变成 CRLF，
+# 提交回来时整文件 diff，Review 里看不出真实改动。这里统一约定：
+#   - 仓库内一律存 LF
+#   - 检出时一律 LF（部署目标是 Linux/Docker，不允许 CRLF 混进来）
+#
+# 注意 `eol=lf` 对全平台生效，Windows 开发者需要让编辑器按 LF 保存；
+# 这比"各自平台各自换行"更安全 —— 因为 shell 脚本带 CRLF 会在容器里
+# 报 `bash: $'\r': command not found`，这类问题极难排查。
+# ============================================================================
+* text=auto eol=lf
+
+# --- 源码与配置：必须 LF ------------------------------------------------
+*.py      text eol=lf
+*.pyi     text eol=lf
+*.cpp     text eol=lf
+*.hpp     text eol=lf
+*.cc      text eol=lf
+*.h       text eol=lf
+*.c       text eol=lf
+*.ts      text eol=lf
+*.tsx     text eol=lf
+*.js      text eol=lf
+*.jsx     text eol=lf
+*.json    text eol=lf
+*.yaml    text eol=lf
+*.yml     text eol=lf
+*.toml    text eol=lf
+*.ini     text eol=lf
+*.cfg     text eol=lf
+*.md      text eol=lf
+*.mako    text eol=lf
+*.html    text eol=lf
+*.css     text eol=lf
+*.txt     text eol=lf
+*.csv     text eol=lf
+*.webmanifest text eol=lf
+
+# --- Shell 脚本：CRLF 会让脚本在容器里直接报错 -------------------------
+*.sh      text eol=lf
+*.bash    text eol=lf
+# 无扩展名的脚本也要保证 LF（scripts/ 下都是 bash）
+scripts/*  text eol=lf
+
+# --- Dockerfile / nginx 配置 -------------------------------------------
+Dockerfile*     text eol=lf
+*.Dockerfile    text eol=lf
+*.conf          text eol=lf
+
+# --- 显式声明为二进制（禁止换行符转换、禁止 diff 输出） ----------------
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.ico     binary
+*.webp    binary
+*.woff    binary
+*.woff2   binary
+*.ttf     binary
+*.otf     binary
+*.eot     binary
+*.pdf     binary
+*.zip     binary
+*.gz      binary
+*.tar     binary
+*.so      binary
+*.pyd     binary
+*.o       binary
+*.a       binary
+*.db      binary
+*.db-wal  binary
+*.db-shm  binary
+*.pem     binary
+
+# ============================================================================
+# GitHub linguist：语言统计
+#
+# 语言统计会直接影响"这个项目主要是什么语言"的判断。以下几类不该计入：
+#   - 第三方 vendored 代码（nlohmann/json.hpp 是单头库，1.5 万行会淹没 C++ 统计）
+#   - 自动生成的 lock 文件与类型定义
+#   - 测试用的行情种子数据
+# ============================================================================
+
+# 第三方单头库：不计入自身代码量，但仍参与 diff
+backend/cpp/nlohmann/json.hpp  linguist-vendored
+
+# 自动生成/锁定的文件：折叠 diff 噪音
+frontend/package-lock.json           linguist-generated
+deploy/requirements.lock.txt         linguist-generated
+frontend/src/api/schema.ts           linguist-generated
+frontend/src/api/openapi.json        linguist-generated
+
+# 行情种子数据：是测试夹具，不是项目源码
+data/cache/*.csv  linguist-documentation
+
+# 文档：单独归类，避免与代码混淆
+docs/*            linguist-documentation
+*.md              linguist-documentation
+
+# ============================================================================
+# diff 行为
+# ============================================================================
+# 生成文件在 PR 里默认折叠（GitHub 会显示 "Load diff"）
+frontend/package-lock.json      -diff
+deploy/requirements.lock.txt    -diff
+frontend/src/api/schema.ts      -diff
+
+# 二进制文件不尝试文本 diff
+*.png   -diff
+*.woff2 -diff

@@ -1,0 +1,117 @@
+# Dependabot：依赖升级的自动化提案
+#
+# 设计原则：**这个项目的依赖不能用"自动合并"方式升级**。
+# 原因：pandas / numpy / pybind11 的升级会改变数值行为 ——
+# 同样的策略代码，升级后回测收益可能变化。这不是"坏了个功能"，
+# 而是"结论悄悄变了而没人发现"，比崩溃危险得多。
+#
+# 所以这里只让 Dependabot **开 PR**，全部走人工审查 + CI 全绿 + 人工比对回测结果。
+# 建议在仓库设置里关闭 Dependabot 的 auto-merge。
+
+version: 2
+updates:
+  # -------------------------------------------------------------------------
+  # GitHub Actions：最安全的一类，但仍然人工看
+  # -------------------------------------------------------------------------
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 3
+    labels: ["deps", "ci"]
+    commit-message:
+      prefix: "ci"
+      include: scope
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # -------------------------------------------------------------------------
+  # 前端：npm
+  # -------------------------------------------------------------------------
+  - package-ecosystem: npm
+    directory: "/frontend"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 3
+    labels: ["deps", "frontend"]
+    commit-message:
+      prefix: "build"
+      include: scope
+    groups:
+      # 补丁与次要版本合成一个 PR，减少审查次数
+      frontend-minor:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # React 大版本升级会连带影响所有组件，必须单独排期
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+
+  # -------------------------------------------------------------------------
+  # 后端：pip（锁定文件在 deploy/requirements.lock.txt）
+  #
+  # 注意：Dependabot 只会改 lock 文件里的版本号，**不会重新生成完整锁**。
+  # 升级后必须本地跑 scripts/lock-deps.sh 重新锁定，否则可能引入
+  # 传递依赖不一致 —— 这样镜像里装的和你以为的不是同一套。
+  # -------------------------------------------------------------------------
+  - package-ecosystem: pip
+    directory: "/deploy"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 3
+    labels: ["deps", "backend"]
+    commit-message:
+      prefix: "build"
+      include: scope
+    groups:
+      backend-patch:
+        patterns: ["*"]
+        update-types: ["patch"]
+    ignore:
+      # --- 数值与 ABI 相关：只走人工升级 ---
+      # 这几项的版本变化会改变回测数值或 .so ABI，
+      # 自动 PR 容易被"CI 绿了就合"，而 CI 只验证不崩、不验证结论没变。
+      - dependency-name: "pandas"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "numpy"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "pyarrow"
+        update-types: ["version-update:semver-major"]
+      # pybind11 决定扩展的 C++ 标准与绑定行为，升级需重编译验证
+      - dependency-name: "pybind11"
+        update-types: ["version-update:semver-major"]
+
+  # -------------------------------------------------------------------------
+  # Docker：基础镜像
+  # -------------------------------------------------------------------------
+  - package-ecosystem: docker
+    directory: "/deploy"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 2
+    labels: ["deps", "deploy"]
+    commit-message:
+      prefix: "build"
+      include: scope
+    ignore:
+      # Python 镜像大版本升级会改变 .so 的 ABI（cpython-312 → 其他），
+      # 必须同时重编译扩展并重跑等价性测试，不能自动提。
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
