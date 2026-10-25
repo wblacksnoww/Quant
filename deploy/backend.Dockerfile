@@ -62,9 +62,11 @@ COPY backend /app/backend
 # C++ 原生扩展：builder 里编译好的 _core*.so 放进源码包
 COPY --from=builder /usr/local/lib/python3.12/site-packages/quant/_core*.so /app/backend/quant/
 
-# 原生扩展自检：缺失时启动仍可运行（自动回退 Python），但这里显式失败以尽早暴露
+# 启动自检：原生扩展 + CLI 模块入口（CMD 用的是 python -m quant.cli）
 RUN cd /app/backend \
-    && python -c "from quant import core_native; assert core_native.HAS_NATIVE, core_native.NATIVE_ERROR"
+    && python -c "from quant import core_native; assert core_native.HAS_NATIVE, core_native.NATIVE_ERROR" \
+    && python -c "import quant.cli" \
+    && quant-gateway 2>&1 | head -1
 
 # 非 root 运行；数据目录归 quant 所有，命名卷首次挂载会继承该权限
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin quant \
@@ -80,4 +82,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -fsS http://127.0.0.1:8000/healthz || exit 1
 
-CMD ["quant", "serve", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+# 用模块入口而不是 quant 控制台脚本：运行时阶段只拷源码树，未执行 pip install
+CMD ["python", "-m", "quant.cli", "serve", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
