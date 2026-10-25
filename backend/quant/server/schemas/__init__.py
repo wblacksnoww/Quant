@@ -54,6 +54,15 @@ from .optimize import (
     OptimizeStartRequest,
     WalkForwardOptions,
 )
+from .portfolio import (
+    IndexMemberOut,
+    IndexSnapshotIn,
+    IndexSnapshotOut,
+    IndexSummaryOut,
+    PortfolioMethodOut,
+    PortfolioOptimizeOut,
+    PortfolioOptimizeRequest,
+)
 from .risk import RiskRuleOut
 from .runs import (
     BacktestRequest,
@@ -113,7 +122,11 @@ __all__ = [
     "GatewayStartRequest",
     "GatewayStatusOut",
     "HealthOut",
+    "IndexMemberOut",
     "IndexQuoteOut",
+    "IndexSnapshotIn",
+    "IndexSnapshotOut",
+    "IndexSummaryOut",
     "InstrumentOut",
     "LiveAdapterOut",
     "LiveStartRequest",
@@ -131,6 +144,9 @@ __all__ = [
     "PaperStartRequest",
     "PaperStateOut",
     "ParamOut",
+    "PortfolioMethodOut",
+    "PortfolioOptimizeOut",
+    "PortfolioOptimizeRequest",
     "QuoteOut",
     "QuoteResponse",
     "RankingOut",

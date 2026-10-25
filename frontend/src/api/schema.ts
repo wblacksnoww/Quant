@@ -1305,6 +1305,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/portfolio/indexes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 已导入成分股的指数 */
+        get: operations["list_indexes_api_portfolio_indexes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portfolio/indexes/{index_code}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 某日成分股 */
+        get: operations["members_at_api_portfolio_indexes__index_code__members_get"];
+        put?: never;
+        /** 导入成分股快照 */
+        post: operations["import_snapshot_api_portfolio_indexes__index_code__members_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portfolio/methods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 可选优化方法 */
+        get: operations["list_methods_api_portfolio_methods_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portfolio/optimize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 计算组合权重 */
+        post: operations["optimize_api_portfolio_optimize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/risk/presets": {
         parameters: {
             query?: never;
@@ -2259,6 +2328,20 @@ export interface components {
             /** Version */
             version: string;
         };
+        /** IndexMemberOut */
+        IndexMemberOut: {
+            /** End Date */
+            end_date?: string | null;
+            /**
+             * Source
+             * @default manual
+             */
+            source: string;
+            /** Start Date */
+            start_date?: string | null;
+            /** Symbol */
+            symbol: string;
+        };
         /**
          * IndexQuoteOut
          * @description 指数卡片：点数 + 涨跌（不可交易，独立于 MARKET:CODE 体系）。
@@ -2280,6 +2363,52 @@ export interface components {
             prev_close?: number | null;
             /** Price */
             price: number;
+        };
+        /**
+         * IndexSnapshotIn
+         * @description 导入某一天的成分股快照。
+         */
+        IndexSnapshotIn: {
+            /**
+             * As Of
+             * Format: date
+             */
+            as_of: string;
+            /**
+             * Source
+             * @default manual
+             */
+            source: string;
+            /** Symbols */
+            symbols: string[];
+        };
+        /** IndexSnapshotOut */
+        IndexSnapshotOut: {
+            /** Active */
+            active: number;
+            /** Added */
+            added: number;
+            /** As Of */
+            as_of: string;
+            /** Index Code */
+            index_code: string;
+            /** Kept */
+            kept: number;
+            /** Removed */
+            removed: number;
+        };
+        /** IndexSummaryOut */
+        IndexSummaryOut: {
+            /** Active */
+            active: number;
+            /** Earliest */
+            earliest?: string | null;
+            /** Entries */
+            entries: number;
+            /** Index Code */
+            index_code: string;
+            /** Sources */
+            sources?: string[];
         };
         /**
          * InstrumentOut
@@ -3014,6 +3143,94 @@ export interface components {
             step?: number | null;
             /** Type */
             type: string;
+        };
+        /** PortfolioMethodOut */
+        PortfolioMethodOut: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+        };
+        /** PortfolioOptimizeOut */
+        PortfolioOptimizeOut: {
+            /** Diagnostics */
+            diagnostics?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Diversification
+             * @default 0
+             */
+            diversification: number;
+            /**
+             * Expected Return
+             * @default 0
+             */
+            expected_return: number;
+            /** Method */
+            method: string;
+            /** Method Label */
+            method_label: string;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Price End */
+            price_end?: string | null;
+            /** Price Start */
+            price_start?: string | null;
+            /**
+             * Sharpe
+             * @default 0
+             */
+            sharpe: number;
+            /**
+             * Volatility
+             * @default 0
+             */
+            volatility: number;
+            /** Weights */
+            weights: {
+                [key: string]: number;
+            };
+        };
+        /** PortfolioOptimizeRequest */
+        PortfolioOptimizeRequest: {
+            /** End */
+            end?: string | null;
+            /**
+             * Lookback Days
+             * @description 未指定 start 时，回看的自然日数
+             * @default 365
+             */
+            lookback_days: number;
+            /**
+             * Max Weight
+             * @description 单标的上限；设为 0.2 即「不超过 20%」
+             * @default 1
+             */
+            max_weight: number;
+            /**
+             * Method
+             * @default risk_parity
+             * @enum {string}
+             */
+            method: "equal_weight" | "inverse_vol" | "risk_parity" | "min_variance" | "max_sharpe";
+            /**
+             * Min Weight
+             * @default 0
+             */
+            min_weight: number;
+            /**
+             * Risk Free Rate
+             * @default 0.02
+             */
+            risk_free_rate: number;
+            /** Start */
+            start?: string | null;
+            /** Symbols */
+            symbols: string[];
         };
         /** QuoteOut */
         QuoteOut: {
@@ -6127,6 +6344,148 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Message"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_indexes_api_portfolio_indexes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexSummaryOut"][];
+                };
+            };
+        };
+    };
+    members_at_api_portfolio_indexes__index_code__members_get: {
+        parameters: {
+            query?: {
+                /** @description 查询日期 */
+                as_of?: string;
+            };
+            header?: never;
+            path: {
+                index_code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexMemberOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_snapshot_api_portfolio_indexes__index_code__members_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                index_code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IndexSnapshotIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexSnapshotOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_methods_api_portfolio_methods_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioMethodOut"][];
+                };
+            };
+        };
+    };
+    optimize_api_portfolio_optimize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortfolioOptimizeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioOptimizeOut"];
                 };
             };
             /** @description Validation Error */

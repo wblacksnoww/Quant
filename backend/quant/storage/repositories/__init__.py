@@ -9,6 +9,7 @@ from .bootstrap import bootstrap
 from .credentials import CredentialRepository
 from .feedback import FeedbackRepository
 from .funds import FundTradeRepository
+from .index_membership import IndexMembershipRepository
 from .news import NewsRepository
 from .runs import RunRepository
 from .strategies import UserStrategyRepository
@@ -22,6 +23,7 @@ __all__ = [
     "CredentialRepository",
     "FeedbackRepository",
     "FundTradeRepository",
+    "IndexMembershipRepository",
     "NewsRepository",
     "RunRecorder",
     "RunRepository",

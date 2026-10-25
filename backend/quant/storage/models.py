@@ -13,12 +13,13 @@ from __future__ import annotations
 
 import json
 import zlib
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -564,4 +565,40 @@ class Feedback(Base):
             "status": self.status,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class IndexMembership(Base):
+    """指数成分股的**历史区间**（point-in-time）。
+
+    存成区间而不是"某次快照的名单"，是为了让回测问出"2021-06-01 那天这个
+    指数里有哪些股票"。用今天的名单回测三年前，等于只挑了活到今天的幸存者，
+    收益会被系统性高估（幸存者偏差）。
+
+    ``end_date`` 为空表示该标的目前仍在指数内；导入新快照时，掉出名单的
+    标的会被补上 ``end_date``，所以多次导入快照能自动拼出区间。
+    """
+
+    __tablename__ = "index_membership"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    index_code: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    symbol: Mapped[str] = mapped_column(String(40), index=True, nullable=False)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    source: Mapped[str] = mapped_column(String(32), default="manual", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow_naive, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("index_code", "symbol", "start_date", name="uq_index_member_entry"),
+        Index("ix_index_membership_lookup", "index_code", "start_date", "end_date"),
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "index_code": self.index_code,
+            "symbol": self.symbol,
+            "start_date": self.start_date.isoformat() if self.start_date else None,
+            "end_date": self.end_date.isoformat() if self.end_date else None,
+            "source": self.source,
         }

@@ -1510,6 +1510,46 @@
         "title": "HealthOut",
         "type": "object"
       },
+      "IndexMemberOut": {
+        "properties": {
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "source": {
+            "default": "manual",
+            "title": "Source",
+            "type": "string"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "symbol": {
+            "title": "Symbol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "symbol"
+        ],
+        "title": "IndexMemberOut",
+        "type": "object"
+      },
       "IndexQuoteOut": {
         "description": "指数卡片：点数 + 涨跌（不可交易，独立于 MARKET:CODE 体系）。",
         "properties": {
@@ -1575,6 +1615,116 @@
           "price"
         ],
         "title": "IndexQuoteOut",
+        "type": "object"
+      },
+      "IndexSnapshotIn": {
+        "description": "导入某一天的成分股快照。",
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "source": {
+            "default": "manual",
+            "maxLength": 32,
+            "title": "Source",
+            "type": "string"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 2000,
+            "minItems": 1,
+            "title": "Symbols",
+            "type": "array"
+          }
+        },
+        "required": [
+          "symbols",
+          "as_of"
+        ],
+        "title": "IndexSnapshotIn",
+        "type": "object"
+      },
+      "IndexSnapshotOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "integer"
+          },
+          "added": {
+            "title": "Added",
+            "type": "integer"
+          },
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "index_code": {
+            "title": "Index Code",
+            "type": "string"
+          },
+          "kept": {
+            "title": "Kept",
+            "type": "integer"
+          },
+          "removed": {
+            "title": "Removed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "index_code",
+          "added",
+          "removed",
+          "kept",
+          "active",
+          "as_of"
+        ],
+        "title": "IndexSnapshotOut",
+        "type": "object"
+      },
+      "IndexSummaryOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "integer"
+          },
+          "earliest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Earliest"
+          },
+          "entries": {
+            "title": "Entries",
+            "type": "integer"
+          },
+          "index_code": {
+            "title": "Index Code",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "index_code",
+          "entries",
+          "active"
+        ],
+        "title": "IndexSummaryOut",
         "type": "object"
       },
       "InstrumentOut": {
@@ -3120,6 +3270,186 @@
           "default"
         ],
         "title": "ParamOut",
+        "type": "object"
+      },
+      "PortfolioMethodOut": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "PortfolioMethodOut",
+        "type": "object"
+      },
+      "PortfolioOptimizeOut": {
+        "properties": {
+          "diagnostics": {
+            "additionalProperties": true,
+            "title": "Diagnostics",
+            "type": "object"
+          },
+          "diversification": {
+            "default": 0.0,
+            "title": "Diversification",
+            "type": "number"
+          },
+          "expected_return": {
+            "default": 0.0,
+            "title": "Expected Return",
+            "type": "number"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "method_label": {
+            "title": "Method Label",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "price_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price End"
+          },
+          "price_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Start"
+          },
+          "sharpe": {
+            "default": 0.0,
+            "title": "Sharpe",
+            "type": "number"
+          },
+          "volatility": {
+            "default": 0.0,
+            "title": "Volatility",
+            "type": "number"
+          },
+          "weights": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Weights",
+            "type": "object"
+          }
+        },
+        "required": [
+          "method",
+          "method_label",
+          "weights"
+        ],
+        "title": "PortfolioOptimizeOut",
+        "type": "object"
+      },
+      "PortfolioOptimizeRequest": {
+        "properties": {
+          "end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "lookback_days": {
+            "default": 365,
+            "description": "未指定 start 时，回看的自然日数",
+            "maximum": 3650.0,
+            "minimum": 60.0,
+            "title": "Lookback Days",
+            "type": "integer"
+          },
+          "max_weight": {
+            "default": 1.0,
+            "description": "单标的上限；设为 0.2 即「不超过 20%」",
+            "exclusiveMinimum": 0.0,
+            "maximum": 1.0,
+            "title": "Max Weight",
+            "type": "number"
+          },
+          "method": {
+            "default": "risk_parity",
+            "enum": [
+              "equal_weight",
+              "inverse_vol",
+              "risk_parity",
+              "min_variance",
+              "max_sharpe"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "min_weight": {
+            "default": 0.0,
+            "exclusiveMaximum": 1.0,
+            "minimum": 0.0,
+            "title": "Min Weight",
+            "type": "number"
+          },
+          "risk_free_rate": {
+            "default": 0.02,
+            "maximum": 0.5,
+            "minimum": -0.1,
+            "title": "Risk Free Rate",
+            "type": "number"
+          },
+          "start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 2,
+            "title": "Symbols",
+            "type": "array"
+          }
+        },
+        "required": [
+          "symbols"
+        ],
+        "title": "PortfolioOptimizeRequest",
         "type": "object"
       },
       "QuoteOut": {
@@ -8301,6 +8631,205 @@
         "summary": "切换运行中的策略（下一轮生效）",
         "tags": [
           "纸盘"
+        ]
+      }
+    },
+    "/api/portfolio/indexes": {
+      "get": {
+        "operationId": "list_indexes_api_portfolio_indexes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IndexSummaryOut"
+                  },
+                  "title": "Response List Indexes Api Portfolio Indexes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "已导入成分股的指数",
+        "tags": [
+          "组合"
+        ]
+      }
+    },
+    "/api/portfolio/indexes/{index_code}/members": {
+      "get": {
+        "operationId": "members_at_api_portfolio_indexes__index_code__members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "index_code",
+            "required": true,
+            "schema": {
+              "title": "Index Code",
+              "type": "string"
+            }
+          },
+          {
+            "description": "查询日期",
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "description": "查询日期",
+              "format": "date",
+              "title": "As Of",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IndexMemberOut"
+                  },
+                  "title": "Response Members At Api Portfolio Indexes  Index Code  Members Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "某日成分股",
+        "tags": [
+          "组合"
+        ]
+      },
+      "post": {
+        "operationId": "import_snapshot_api_portfolio_indexes__index_code__members_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "index_code",
+            "required": true,
+            "schema": {
+              "title": "Index Code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IndexSnapshotIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexSnapshotOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "导入成分股快照",
+        "tags": [
+          "组合"
+        ]
+      }
+    },
+    "/api/portfolio/methods": {
+      "get": {
+        "operationId": "list_methods_api_portfolio_methods_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PortfolioMethodOut"
+                  },
+                  "title": "Response List Methods Api Portfolio Methods Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "可选优化方法",
+        "tags": [
+          "组合"
+        ]
+      }
+    },
+    "/api/portfolio/optimize": {
+      "post": {
+        "operationId": "optimize_api_portfolio_optimize_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortfolioOptimizeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioOptimizeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "计算组合权重",
+        "tags": [
+          "组合"
         ]
       }
     },
