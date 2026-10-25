@@ -102,11 +102,17 @@ docs/*            linguist-documentation
 # ============================================================================
 # diff 行为
 # ============================================================================
-# 生成文件在 PR 里默认折叠（GitHub 会显示 "Load diff"）
-frontend/package-lock.json      -diff
-deploy/requirements.lock.txt    -diff
-frontend/src/api/schema.ts      -diff
-
-# 二进制文件不尝试文本 diff
+# 刻意**不给**生成文件加 `-diff`。
+#
+# `-diff` 会让 git 把文件当二进制，diff 只显示 "Binary files differ"，
+# 内容完全不可见。曾经给 schema.ts 加过，本意是折叠噪音，结果更糟：
+# 后端改了字段、前端类型没跟上（CI 里 `git diff --exit-code` 正是靠
+# 这个 diff 抓漂移），但评审时**看不到契约变了什么** —— 等于把最该
+# 被看见的证据藏起来了。
+#
+# 减少噪音的正确做法是 `linguist-generated`（上面已配）：GitHub 仍会
+# 默认折叠，但能点开看具体行。折叠 ≠ 隐藏。
+#
+# 二进制文件才用 -diff（它们本来就没有文本 diff 可看）
 *.png   -diff
 *.woff2 -diff

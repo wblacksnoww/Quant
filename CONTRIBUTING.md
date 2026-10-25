@@ -269,6 +269,28 @@ def test_result(...):
     assert result.metrics["total_return"] == pytest.approx(0.1834)
 ```
 
+### 改了后端 schema，必须重生成前端类型
+
+碰 `quant/server/schemas.py` 或任何 Pydantic 模型之后：
+
+```bash
+./scripts/gen-api-types.sh          # 重新生成 openapi.json + schema.ts
+git diff -- frontend/src/api/       # 确认 diff 就是你这次改的字段
+```
+
+CI 会重新生成一遍再 `git diff --exit-code`，**只要不一致就红**。这不是形式主义：`native` 字段加进 `HealthOut` 后没重生成，CI 就红在这一步——后端有字段、前端类型里没有，`tsc` 反而不会报错（因为它压根不知道这字段存在），最后表现成"界面上某个状态永远是 undefined"。
+
+**踩过一次的坑**：`frontend/src/api/schema.ts` 曾属主是 `root`（历史上以 root 身份生成过），普通用户跑生成脚本会报 `EACCES`，看起来像脚本坏了。修法是先删再生成：
+
+```bash
+rm -f frontend/src/api/schema.ts
+npx openapi-typescript src/api/openapi.json -o src/api/schema.ts
+```
+
+同理，`backend/quant/_core*.so` 也可能属 root，导致新编译产物覆盖失败（静默用着旧二进制）。
+
+**不要给这类生成文件加 `.gitattributes -diff`**。`-diff` 会让 git 当二进制处理，diff 只显示 "Binary files differ"——CI 那个 `git diff --exit-code` 确实还会红，但**评审时看不到契约到底变了什么**，等于把最该被看见的证据藏起来。要折叠噪音用 `linguist-generated`（GitHub 仍默认折叠，但能点开）。
+
 ---
 
 ## 七、C++ 改动的特别流程

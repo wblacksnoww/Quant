@@ -68,6 +68,18 @@ class TestCiWorkflow:
         steps_text = yaml.safe_dump(job)
         assert "scripts/check_commit_msg.py" in steps_text
 
+    def test_backend_verifies_openapi_types_in_sync(self, ci):
+        """后端 schema 改了但前端类型没重生成，必须红。
+
+        `tsc` 抓不到这种漂移——它按 schema.ts 检查，而后端新加的字段
+        在 schema.ts 里不存在，于是"字段永远 undefined"能一路绿灯到生产。
+        唯一有效的手段是重新生成再比对。
+        """
+        steps = ci["jobs"]["backend"]["steps"]
+        dumped = yaml.safe_dump(steps)
+        assert "gen-api-types.sh" in dumped, "backend job 缺少 OpenAPI 类型生成步骤"
+        assert "git diff --exit-code" in dumped, "生成后必须比对 diff，否则漂移不会被发现"
+
     def test_pr_checkout_uses_head_not_merge_commit(self, ci):
         """PR 事件默认 checkout 合并提交，会让提交区间算错。"""
         steps = ci["jobs"]["commit-messages"]["steps"]
@@ -193,6 +205,31 @@ class TestGitAttributes:
         text = (ROOT / ".gitattributes").read_text(encoding="utf-8")
         for ext in ("*.png", "*.so"):
             assert ext in text, f".gitattributes 未把 {ext} 标记为二进制"
+
+    def test_generated_files_keep_visible_diff(self):
+        """生成文件不能用 `-diff`。
+
+        `-diff` 让 git 把文件当二进制，diff 只显示 "Binary files differ"。
+        CI 的 `git diff --exit-code` 仍然会红，但**评审看不到契约变了什么**。
+
+        这曾经真的发生过：给 schema.ts 加 `-diff` 本意是折叠噪音，
+        结果后端改字段、前端类型没跟上时，PR 里一片 "Binary files differ"，
+        最该被看见的证据被藏起来了。折叠噪音应该用 `linguist-generated`。
+        """
+        text = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+        for generated in (
+            "frontend/src/api/schema.ts",
+            "frontend/src/api/openapi.json",
+            "frontend/package-lock.json",
+            "deploy/requirements.lock.txt",
+        ):
+            for line in text.splitlines():
+                stripped = line.strip()
+                if stripped.startswith("#") or not stripped.startswith(generated):
+                    continue
+                assert "-diff" not in stripped, (
+                    f"{generated} 被标了 `-diff`，生成内容的变更将不可审查；要折叠噪音请用 linguist-generated"
+                )
 
 
 class TestPreCommit:
