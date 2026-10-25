@@ -336,3 +336,32 @@ def test_graph_spec_accepts_news_data_node():
     }
     parsed = parse_graph_spec(spec)
     assert any(node.type == "news_sentiment" for node in parsed.nodes)
+
+
+def test_news_dual_ma_refuses_python_path(context):
+    """native 不可用时必须显式失败，而不是 finished + 0 成交。
+
+    这条测试守的是一个真实事故模式：``NewsDualMaStrategy`` 只负责把参数翻成
+    spec，信号求值全在 C++。早期版本没有覆盖 ``on_bar``，于是继承了基类的空
+    实现 —— 一旦 ``quant._core`` 不可用（ABI 不匹配 / 未编译），回测会走
+    Python 撮合路径，跑完一笔不交易，产出 ``status=finished`` 与
+    ``trade_count=0``。
+
+    用户看到的结果和"该区间确实没有信号"完全一样，无法区分。这比直接崩溃
+    危险得多，所以策略必须主动拒绝。
+    """
+    import quant.core_native as core_native
+
+    original = core_native.HAS_NATIVE
+    core_native.HAS_NATIVE = False
+    try:
+        result = BacktestEngine(
+            _config("news_dual_ma", "news_no_native", fast=5, slow=20),
+            context.data,
+            news=FakeNews(NewsFactor.neutral("CN:600519", datetime(2023, 1, 3))),
+        ).run()
+    finally:
+        core_native.HAS_NATIVE = original
+
+    assert result.status == "failed", "无 Python 腿的策略不该在 native 缺失时'成功'跑完"
+    assert "C++" in (result.error or ""), f"错误信息应指明需要 C++，实际：{result.error}"

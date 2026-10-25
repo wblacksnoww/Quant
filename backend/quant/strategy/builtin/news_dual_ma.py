@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...core.types import Bar
 from ..base import ParamSpec, Strategy
 from ..builtin.dual_ma import DualMaStrategy
 from ..registry import register_strategy
@@ -150,6 +151,30 @@ class NewsDualMaStrategy(Strategy):
             min_sentiment=float(self.params["min_sentiment"]),
             max_policy_risk=float(self.params["max_policy_risk"]),
             require_news=bool(self.params["require_news"]),
+        )
+
+    def on_bar(self, bar: Bar) -> None:
+        """本策略没有 Python 信号腿 —— 显式拒绝，而不是静默不交易。
+
+        早期实现只构造 spec 不覆盖 ``on_bar``，于是基类的空实现被继承：当
+        ``quant._core`` 不可用（ABI 不匹配 / 未编译）时，回测会走 Python 路径，
+        而这个策略一笔都不会下单，最终产出 ``status=finished`` + 0 成交。
+        用户看到的是一个"该区间没有信号"的正常结果 —— 实际上引擎根本没算。
+
+        这种"看起来成功"的失败比直接崩溃危险得多，所以这里主动抛错。
+        与 ``custom_rule``（``strategy/custom.py`` 构造时即校验）保持同一语义。
+        """
+        from ...core_native import HAS_NATIVE, NATIVE_ERROR
+
+        if not HAS_NATIVE:
+            raise NotImplementedError(
+                "news_dual_ma 只有 C++ 信号实现（spec 求值），没有 Python 腿；"
+                f"当前 quant._core 不可用：{NATIVE_ERROR or '未知原因'}。"
+                "请先编译扩展（cd backend && python setup.py build_ext --inplace）再回测。"
+            )
+        raise NotImplementedError(
+            "news_dual_ma 的信号必须由 C++ 引擎求值，当前却走到了 Python 撮合路径。"
+            "这通常是 core_native.native_ready() 判定异常，请检查该策略是否在 NATIVE_STRATEGIES 中。"
         )
 
 
