@@ -36,6 +36,10 @@ import type {
   NewsFetchStatus,
   NewsItem,
   NewsItemInput,
+  OptimizeJob,
+  OptimizeJobSummary,
+  OptimizeObjectiveOption,
+  OptimizeStartRequest,
   PaperStartRequest,
   PaperState,
   QuotesResponse,
@@ -479,4 +483,12 @@ export const gatewayApi = {
     credential_id?: number | null
   }) => request<GatewayStatus>('/gateway/start', { method: 'POST', body }),
   stop: () => request<Message>('/gateway/stop', { method: 'POST' }),
+}
+
+export const optimizeApi = {
+  objectives: () => request<OptimizeObjectiveOption[]>('/optimize/objectives'),
+  submit: (body: OptimizeStartRequest) => request<OptimizeJobSummary>('/optimize', { method: 'POST', body }),
+  get: (id: string, trials = 100) => request<OptimizeJob>(`/optimize/${id}`, { query: { trials } }),
+  list: (limit = 10) => request<OptimizeJobSummary[]>('/optimize', { query: { limit } }),
+  cancel: (id: string) => request<Message>(`/optimize/${id}/cancel`, { method: 'POST' }),
 }

@@ -750,3 +750,88 @@ export interface Feedback {
 // --------------------------------------------------------------------------- //
 
 export type GatewayStatus = Schemas['GatewayStatusOut']
+
+// --------------------------------------------------------------------------- //
+// 参数寻优
+// --------------------------------------------------------------------------- //
+
+export type OptimizeStatus = 'queued' | 'running' | 'finished' | 'failed' | 'cancelled'
+export type OptimizeMode = 'search' | 'walk_forward'
+export type OptimizeObjective =
+  'sharpe' | 'sortino' | 'calmar' | 'annual_return' | 'total_return' | 'win_rate' | 'profit_factor'
+
+/** 参数候选：枚举数组、等差区间，或直接给固定值。 */
+export type ParamCandidates = unknown[] | { start: number; stop: number; step?: number } | number | string
+
+export interface OptimizeStartRequest {
+  strategy_id: string
+  symbols: string[]
+  start: string
+  end: string
+  /** 参数名 → 候选值。固定值用 `{ position_pct: 0.95 }` 这种写法。 */
+  space: Record<string, ParamCandidates>
+  /** 不参与寻优的固定参数。 */
+  params?: Record<string, unknown>
+  objective?: OptimizeObjective
+  initial_cash?: number
+  cost?: Record<string, unknown> | null
+  risk?: Record<string, unknown>[] | null
+  benchmark?: string | null
+  /** 成交次数门槛：低于该值的组合不参与排名。 */
+  min_trades?: number
+  method?: 'grid' | 'random'
+  sample_size?: number | null
+  seed?: number | null
+  walk_forward?: boolean
+  walk_forward_options?: { train_days?: number; test_days?: number; step_days?: number | null }
+}
+
+export interface OptimizeJobSummary {
+  job_id: string
+  mode: OptimizeMode
+  status: OptimizeStatus
+  progress: number
+  message: string
+  created_at: string
+  finished_at?: string | null
+  error?: string | null
+}
+
+export interface OptimizeTrial {
+  index: number
+  params: Record<string, unknown>
+  status: 'ok' | 'failed' | 'skipped'
+  metrics: Record<string, number>
+  error?: string | null
+  run_id: string
+}
+
+export interface OptimizeFold {
+  fold: {
+    index: number
+    train_start: string
+    train_end: string
+    test_start: string
+    test_end: string
+    train_days: number
+    test_days: number
+  }
+  best_params: Record<string, unknown>
+  train_metrics: Record<string, number>
+  test_metrics: Record<string, number>
+  trial_count: number
+  error?: string | null
+}
+
+export interface OptimizeJob extends OptimizeJobSummary {
+  summary: Record<string, unknown>
+  best: OptimizeTrial | null
+  trials: OptimizeTrial[]
+  folds: OptimizeFold[]
+  total_trials: number
+}
+
+export interface OptimizeObjectiveOption {
+  key: OptimizeObjective
+  label: string
+}

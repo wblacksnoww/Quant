@@ -16,6 +16,7 @@ import {
   IconPlay,
   IconSettings,
   IconShield,
+  IconTarget,
   IconWifi,
 } from './icons'
 
@@ -33,6 +34,7 @@ const PAGES: Record<string, { title: string; sub: string }> = {
   '/strategies': { title: '策略库', sub: '内置策略与参数说明' },
   '/strategies/blueprint': { title: '蓝图编辑器', sub: '节点数据流图，编译为 spec v2' },
   '/backtest': { title: '回测', sub: '事件驱动引擎，下一根 K 线撮合，杜绝未来函数' },
+  '/optimize': { title: '参数寻优', sub: 'walk-forward 滚动验证：只在没参与选参的区间上给结论' },
   '/paper': { title: '模拟盘', sub: '与回测共用撮合与会话，仅时间驱动不同' },
   '/live': { title: '实盘', sub: '真实券商/交易所下单：测试网默认，真实资金二次确认' },
   '/gateway': { title: '交易网关', sub: 'C++ tick 级策略：网格/突破/动量，paper 默认' },
@@ -50,6 +52,7 @@ const NAV = [
       { to: '/news', label: '新闻', icon: IconNews },
       { to: '/strategies', label: '策略库', icon: IconLayers },
       { to: '/backtest', label: '回测', icon: IconFlask },
+      { to: '/optimize', label: '寻优', icon: IconTarget },
       { to: '/paper', label: '模拟盘', icon: IconPlay },
       { to: '/live', label: '实盘', icon: IconWifi },
       { to: '/gateway', label: '网关', icon: IconGateway },

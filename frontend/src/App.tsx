@@ -15,6 +15,7 @@ import { LivePage } from './pages/Live'
 import { Login } from './pages/Login'
 import { MarketPage } from './pages/Market'
 import { NewsPage } from './pages/News'
+import { OptimizePage } from './pages/Optimize'
 import { PaperPage } from './pages/Paper'
 import { RiskPage } from './pages/Risk'
 import { SettingsPage } from './pages/Settings'
@@ -72,6 +73,7 @@ export default function App() {
           <Route path="/strategies" element={<StrategiesPage />} />
           <Route path="/strategies/blueprint" element={<BlueprintPage />} />
           <Route path="/backtest" element={<BacktestPage />} />
+          <Route path="/optimize" element={<OptimizePage />} />
           <Route path="/paper" element={<PaperPage />} />
           <Route path="/live" element={<LivePage />} />
           <Route path="/gateway" element={<GatewayPage />} />
