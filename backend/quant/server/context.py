@@ -46,6 +46,7 @@ class AppContext:
     coordinator: Any = None  # SessionCoordinator，多实例会话租约/命令
     news_ingestion: Any = None  # NewsIngestionService，自动新闻抓取
     gateway_manager: Any = None  # GatewayManager，C++ 交易网关
+    optimize: Any = None  # OptimizeService，参数寻优（不落库，纯内存任务表）
     instance_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -199,6 +200,11 @@ def build_context(settings: Settings | None = None) -> AppContext:
     from .backtest_manager import BacktestManager
 
     ctx.backtests = BacktestManager(ctx)
+
+    # 参数寻优（同样延迟导入，避免 context ← service ← engine 的循环）
+    from ..services.optimize_service import OptimizeService
+
+    ctx.optimize = OptimizeService(ctx)
     return ctx
 
 

@@ -48,6 +48,12 @@ from .market import (
     WatchlistUpdate,
 )
 from .news import NewsFactorOut, NewsFetchStatusOut, NewsItemIn, NewsItemOut
+from .optimize import (
+    OptimizeJobOut,
+    OptimizeJobSummary,
+    OptimizeStartRequest,
+    WalkForwardOptions,
+)
 from .risk import RiskRuleOut
 from .runs import (
     BacktestRequest,
@@ -119,6 +125,9 @@ __all__ = [
     "NewsFetchStatusOut",
     "NewsItemIn",
     "NewsItemOut",
+    "OptimizeJobOut",
+    "OptimizeJobSummary",
+    "OptimizeStartRequest",
     "PaperStartRequest",
     "PaperStateOut",
     "ParamOut",
@@ -146,5 +155,6 @@ __all__ = [
     "TotpSetupResponse",
     "UserApprovalRequest",
     "UserOut",
+    "WalkForwardOptions",
     "WatchlistUpdate",
 ]

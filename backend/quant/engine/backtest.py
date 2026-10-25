@@ -116,6 +116,7 @@ class BacktestEngine(BaseEngine):
         recorder: Any = None,
         bus: EventBus | None = None,
         news: Any = None,
+        frames: dict[str, pd.DataFrame] | None = None,
     ) -> None:
         super().__init__(config)
         self.data = data
@@ -126,6 +127,9 @@ class BacktestEngine(BaseEngine):
         self._recorder_events = EventRecorder(self.bus, limit=2000)
         self._session: TradingSession | None = None
         self._result: EngineResult | None = None
+        # 预置行情数据：参数寻优要跑几十上百次相同区间的回测，
+        # 每次重新加载数据会让寻优 90% 的时间花在 IO 上。
+        self._frames = frames
 
     # ------------------------------------------------------------------ #
     def run(self) -> EngineResult:
@@ -141,7 +145,7 @@ class BacktestEngine(BaseEngine):
 
         try:
             self._report(0.02, "加载行情数据")
-            frames = self._load_frames()
+            frames = self._frames if self._frames is not None else self._load_frames()
             if not frames:
                 raise RuntimeError("没有可用的行情数据，请先检查数据源或日期区间")
 

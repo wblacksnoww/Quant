@@ -39,6 +39,7 @@ from .routers import (
     live,
     market,
     news,
+    optimize,
     paper,
     risk,
     strategies,
@@ -173,6 +174,11 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
             except Exception:  # noqa: BLE001
                 log.exception("停止交易网关失败")
             try:
+                if app.state.ctx.optimize is not None:
+                    app.state.ctx.optimize.shutdown()
+            except Exception:  # noqa: BLE001
+                log.exception("停止参数寻优失败")
+            try:
                 app.state.ctx.paper.stop_all(timeout=5)
             except Exception:  # noqa: BLE001
                 log.exception("停止纸盘失败")
@@ -272,6 +278,7 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
         live,
         gateway,
         news,
+        optimize,
         risk,
         feedback,
         funds,

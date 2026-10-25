@@ -1066,6 +1066,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/optimize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 寻优任务列表 */
+        get: operations["list_jobs_api_optimize_get"];
+        put?: never;
+        /** 提交寻优任务 */
+        post: operations["create_job_api_optimize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/optimize/objectives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 可选的寻优目标 */
+        get: operations["list_objectives_api_optimize_objectives_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/optimize/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 寻优任务详情 */
+        get: operations["get_job_api_optimize__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/optimize/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 取消寻优任务 */
+        post: operations["cancel_job_api_optimize__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/paper/continue": {
         parameters: {
             query?: never;
@@ -1677,7 +1746,10 @@ export interface components {
             /** Symbols */
             symbols: string[];
         };
-        /** BarOut */
+        /**
+         * BarOut
+         * @description 单根 K 线。``limit_up`` / ``limit_down`` 为当日真实涨跌停价（已含 ST、北交所等差异）。
+         */
         BarOut: {
             /** Amount */
             amount: number;
@@ -1756,7 +1828,10 @@ export interface components {
             /** Old Password */
             old_password: string;
         };
-        /** CostInput */
+        /**
+         * CostInput
+         * @description 交易成本。全部带上界，防止"把滑点写成 10000 bps"把回测跑成负收益。
+         */
         CostInput: {
             /**
              * Commission Rate
@@ -2459,7 +2534,10 @@ export interface components {
             /** Label */
             label: string;
         };
-        /** Message */
+        /**
+         * Message
+         * @description 操作成功回执。``detail`` 供前端展示次要信息（如影响的条数）。
+         */
         Message: {
             /** Detail */
             detail?: {
@@ -2627,6 +2705,167 @@ export interface components {
              */
             url: string;
         };
+        /**
+         * OptimizeJobOut
+         * @description 单次寻优的完整结果。
+         *
+         *     ``trials`` 默认只返回按目标值排序的前 N 条 —— 一次寻优可能有上千组，
+         *     全量返回既拖慢前端也没人看第 800 名。
+         */
+        OptimizeJobOut: {
+            /** Best */
+            best?: {
+                [key: string]: unknown;
+            } | null;
+            /** Created At */
+            created_at: string;
+            /** Error */
+            error?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Folds */
+            folds?: {
+                [key: string]: unknown;
+            }[];
+            /** Job Id */
+            job_id: string;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Mode */
+            mode: string;
+            /**
+             * Progress
+             * @default 0
+             */
+            progress: number;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Total Trials
+             * @default 0
+             */
+            total_trials: number;
+            /** Trials */
+            trials?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
+         * OptimizeJobSummary
+         * @description 列表用的轻量状态。
+         */
+        OptimizeJobSummary: {
+            /** Created At */
+            created_at: string;
+            /** Error */
+            error?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Job Id */
+            job_id: string;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Mode */
+            mode: string;
+            /**
+             * Progress
+             * @default 0
+             */
+            progress: number;
+            /** Status */
+            status: string;
+        };
+        /**
+         * OptimizeStartRequest
+         * @description 提交一次寻优。
+         *
+         *     ``space`` 是"参数名 → 候选值"的声明式描述，支持三种写法：
+         *
+         *     - 枚举：``{"fast": [5, 10, 15]}``
+         *     - 等差：``{"slow": {"start": 20, "stop": 60, "step": 10}}``
+         *     - 固定：``{"position_pct": 0.95}``
+         */
+        OptimizeStartRequest: {
+            /** Benchmark */
+            benchmark?: string | null;
+            cost?: components["schemas"]["CostInput"] | null;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /**
+             * Initial Cash
+             * @default 1000000
+             */
+            initial_cash: number;
+            /**
+             * Method
+             * @default grid
+             * @enum {string}
+             */
+            method: "grid" | "random";
+            /**
+             * Min Trades
+             * @description 成交次数门槛：低于该值的参数组合不参与排名，防止选出「几乎不交易」的伪最优
+             * @default 5
+             */
+            min_trades: number;
+            /**
+             * Objective
+             * @default sharpe
+             * @enum {string}
+             */
+            objective: "sharpe" | "sortino" | "calmar" | "annual_return" | "total_return" | "win_rate" | "profit_factor";
+            /**
+             * Params
+             * @description 不参与寻优的固定参数
+             */
+            params?: {
+                [key: string]: unknown;
+            };
+            /** Risk */
+            risk?: components["schemas"]["RiskRuleInput"][] | null;
+            /**
+             * Sample Size
+             * @description 随机采样组数
+             */
+            sample_size?: number | null;
+            /**
+             * Seed
+             * @description 随机种子，便于复现
+             */
+            seed?: number | null;
+            /** Space */
+            space: {
+                [key: string]: unknown;
+            };
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /** Strategy Id */
+            strategy_id: string;
+            /** Symbols */
+            symbols: string[];
+            /**
+             * Walk Forward
+             * @default false
+             */
+            walk_forward: boolean;
+            walk_forward_options?: components["schemas"]["WalkForwardOptions"];
+        };
         /** PaperStartRequest */
         PaperStartRequest: {
             /**
@@ -2751,7 +2990,10 @@ export interface components {
              */
             total_return: number;
         };
-        /** ParamOut */
+        /**
+         * ParamOut
+         * @description 策略参数元信息，前端据此自动生成表单控件。
+         */
         ParamOut: {
             /** Choices */
             choices?: unknown[];
@@ -3281,7 +3523,10 @@ export interface components {
             /** Username */
             username: string;
         };
-        /** UserOut */
+        /**
+         * UserOut
+         * @description 对外暴露的用户信息，绝不含密码哈希。
+         */
         UserOut: {
             /**
              * Approval Status
@@ -3322,6 +3567,29 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * WalkForwardOptions
+         * @description 滚动窗口设置。仅在 ``walk_forward=true`` 时生效。
+         */
+        WalkForwardOptions: {
+            /**
+             * Step Days
+             * @description 滚动步长；缺省等于测试段长度（测试段首尾相接）
+             */
+            step_days?: number | null;
+            /**
+             * Test Days
+             * @description 测试段长度（自然日）
+             * @default 90
+             */
+            test_days: number;
+            /**
+             * Train Days
+             * @description 训练段长度（自然日）
+             * @default 365
+             */
+            train_days: number;
         };
         /** WatchlistUpdate */
         WatchlistUpdate: {
@@ -5411,6 +5679,155 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NewsFetchStatusOut"];
+                };
+            };
+        };
+    };
+    list_jobs_api_optimize_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OptimizeJobSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_job_api_optimize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OptimizeStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OptimizeJobSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_objectives_api_optimize_objectives_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_job_api_optimize__job_id__get: {
+        parameters: {
+            query?: {
+                /** @description 返回前 N 组参数 */
+                trials?: number;
+            };
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OptimizeJobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_job_api_optimize__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Message"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

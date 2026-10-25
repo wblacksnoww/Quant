@@ -28,6 +28,34 @@ __all__ = [
 BAR_INTERVAL = Literal["1d", "1m", "5m", "15m", "30m", "60m"]
 
 
+def dedupe_symbols(values: list[str]) -> list[str]:
+    """规范化标的列表：去空、去重、校验可解析、禁止混市场。
+
+    回测与参数寻优共用这一份实现 —— 两边如果各写一份，迟早出现
+    "回测拒绝了混市场标的、寻优却放过去"这种只在特定入口才炸的差异。
+    """
+    from ...core.markets import Instrument, Market, parse_instrument
+
+    seen: list[Instrument] = []
+    for item in values:
+        text = str(item).strip()
+        if not text:
+            continue
+        try:
+            inst = parse_instrument(text)
+        except ValueError as exc:
+            raise ValueError(f"无法识别的标的 {item!r}：{exc}") from exc
+        if inst not in seen:
+            seen.append(inst)
+    if not seen:
+        raise ValueError("至少需要一个标的")
+    markets = {inst.market for inst in seen}
+    if len(markets) > 1:
+        labels = "、".join(Market(m).label for m in markets)
+        raise ValueError(f"同一运行只能包含单一市场的标的（当前混用了 {labels}）")
+    return [inst.id for inst in seen]
+
+
 class CostInput(BaseModel):
     """交易成本。全部带上界，防止"把滑点写成 10000 bps"把回测跑成负收益。"""
 
@@ -65,26 +93,7 @@ class BacktestRequest(BaseModel):
     @field_validator("symbols")
     @classmethod
     def _dedupe(cls, values: list[str]) -> list[str]:
-        from ...core.markets import Instrument, Market, parse_instrument
-
-        seen: list[Instrument] = []
-        for item in values:
-            text = str(item).strip()
-            if not text:
-                continue
-            try:
-                inst = parse_instrument(text)
-            except ValueError as exc:
-                raise ValueError(f"无法识别的标的 {item!r}：{exc}") from exc
-            if inst not in seen:
-                seen.append(inst)
-        if not seen:
-            raise ValueError("至少需要一个标的")
-        markets = {inst.market for inst in seen}
-        if len(markets) > 1:
-            labels = "、".join(Market(m).label for m in markets)
-            raise ValueError(f"同一运行只能包含单一市场的标的（当前混用了 {labels}）")
-        return [inst.id for inst in seen]
+        return dedupe_symbols(values)
 
 
 class RunSummary(BaseModel):

@@ -329,6 +329,7 @@
         "type": "object"
       },
       "BarOut": {
+        "description": "单根 K 线。``limit_up`` / ``limit_down`` 为当日真实涨跌停价（已含 ST、北交所等差异）。",
         "properties": {
           "amount": {
             "title": "Amount",
@@ -501,6 +502,7 @@
         "type": "object"
       },
       "CostInput": {
+        "description": "交易成本。全部带上界，防止\"把滑点写成 10000 bps\"把回测跑成负收益。",
         "properties": {
           "commission_rate": {
             "default": 0.0003,
@@ -2133,6 +2135,7 @@
         "type": "object"
       },
       "Message": {
+        "description": "操作成功回执。``detail`` 供前端展示次要信息（如影响的条数）。",
         "properties": {
           "detail": {
             "additionalProperties": true,
@@ -2464,6 +2467,324 @@
         "title": "NewsItemOut",
         "type": "object"
       },
+      "OptimizeJobOut": {
+        "description": "单次寻优的完整结果。\n\n``trials`` 默认只返回按目标值排序的前 N 条 —— 一次寻优可能有上千组，\n全量返回既拖慢前端也没人看第 800 名。",
+        "properties": {
+          "best": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "folds": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Folds",
+            "type": "array"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "title": "Message",
+            "type": "string"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "progress": {
+            "default": 0.0,
+            "title": "Progress",
+            "type": "number"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "title": "Summary",
+            "type": "object"
+          },
+          "total_trials": {
+            "default": 0,
+            "title": "Total Trials",
+            "type": "integer"
+          },
+          "trials": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Trials",
+            "type": "array"
+          }
+        },
+        "required": [
+          "job_id",
+          "mode",
+          "status",
+          "created_at"
+        ],
+        "title": "OptimizeJobOut",
+        "type": "object"
+      },
+      "OptimizeJobSummary": {
+        "description": "列表用的轻量状态。",
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "title": "Message",
+            "type": "string"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "progress": {
+            "default": 0.0,
+            "title": "Progress",
+            "type": "number"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "mode",
+          "status",
+          "created_at"
+        ],
+        "title": "OptimizeJobSummary",
+        "type": "object"
+      },
+      "OptimizeStartRequest": {
+        "description": "提交一次寻优。\n\n``space`` 是\"参数名 → 候选值\"的声明式描述，支持三种写法：\n\n- 枚举：``{\"fast\": [5, 10, 15]}``\n- 等差：``{\"slow\": {\"start\": 20, \"stop\": 60, \"step\": 10}}``\n- 固定：``{\"position_pct\": 0.95}``",
+        "properties": {
+          "benchmark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark"
+          },
+          "cost": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CostInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "end": {
+            "format": "date",
+            "title": "End",
+            "type": "string"
+          },
+          "initial_cash": {
+            "default": 1000000,
+            "exclusiveMinimum": 0.0,
+            "maximum": 10000000000.0,
+            "title": "Initial Cash",
+            "type": "number"
+          },
+          "method": {
+            "default": "grid",
+            "enum": [
+              "grid",
+              "random"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "min_trades": {
+            "default": 5,
+            "description": "成交次数门槛：低于该值的参数组合不参与排名，防止选出「几乎不交易」的伪最优",
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Min Trades",
+            "type": "integer"
+          },
+          "objective": {
+            "default": "sharpe",
+            "enum": [
+              "sharpe",
+              "sortino",
+              "calmar",
+              "annual_return",
+              "total_return",
+              "win_rate",
+              "profit_factor"
+            ],
+            "title": "Objective",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": true,
+            "description": "不参与寻优的固定参数",
+            "title": "Params",
+            "type": "object"
+          },
+          "risk": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/RiskRuleInput"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk"
+          },
+          "sample_size": {
+            "anyOf": [
+              {
+                "maximum": 2000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "随机采样组数",
+            "title": "Sample Size"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "随机种子，便于复现",
+            "title": "Seed"
+          },
+          "space": {
+            "additionalProperties": true,
+            "minProperties": 1,
+            "title": "Space",
+            "type": "object"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          },
+          "strategy_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Strategy Id",
+            "type": "string"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Symbols",
+            "type": "array"
+          },
+          "walk_forward": {
+            "default": false,
+            "title": "Walk Forward",
+            "type": "boolean"
+          },
+          "walk_forward_options": {
+            "$ref": "#/components/schemas/WalkForwardOptions"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "symbols",
+          "start",
+          "end",
+          "space"
+        ],
+        "title": "OptimizeStartRequest",
+        "type": "object"
+      },
       "PaperStartRequest": {
         "properties": {
           "bar_interval": {
@@ -2736,6 +3057,7 @@
         "type": "object"
       },
       "ParamOut": {
+        "description": "策略参数元信息，前端据此自动生成表单控件。",
         "properties": {
           "choices": {
             "items": {},
@@ -3958,6 +4280,7 @@
         "type": "object"
       },
       "UserOut": {
+        "description": "对外暴露的用户信息，绝不含密码哈希。",
         "properties": {
           "approval_status": {
             "default": "approved",
@@ -4084,6 +4407,43 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WalkForwardOptions": {
+        "description": "滚动窗口设置。仅在 ``walk_forward=true`` 时生效。",
+        "properties": {
+          "step_days": {
+            "anyOf": [
+              {
+                "maximum": 730.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "滚动步长；缺省等于测试段长度（测试段首尾相接）",
+            "title": "Step Days"
+          },
+          "test_days": {
+            "default": 90,
+            "description": "测试段长度（自然日）",
+            "maximum": 730.0,
+            "minimum": 10.0,
+            "title": "Test Days",
+            "type": "integer"
+          },
+          "train_days": {
+            "default": 365,
+            "description": "训练段长度（自然日）",
+            "maximum": 3650.0,
+            "minimum": 30.0,
+            "title": "Train Days",
+            "type": "integer"
+          }
+        },
+        "title": "WalkForwardOptions",
         "type": "object"
       },
       "WatchlistUpdate": {
@@ -7282,6 +7642,211 @@
         "summary": "自动抓取状态",
         "tags": [
           "新闻政策"
+        ]
+      }
+    },
+    "/api/optimize": {
+      "get": {
+        "operationId": "list_jobs_api_optimize_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OptimizeJobSummary"
+                  },
+                  "title": "Response List Jobs Api Optimize Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "寻优任务列表",
+        "tags": [
+          "参数寻优"
+        ]
+      },
+      "post": {
+        "operationId": "create_job_api_optimize_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OptimizeStartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OptimizeJobSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "提交寻优任务",
+        "tags": [
+          "参数寻优"
+        ]
+      }
+    },
+    "/api/optimize/objectives": {
+      "get": {
+        "operationId": "list_objectives_api_optimize_objectives_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "可选的寻优目标",
+        "tags": [
+          "参数寻优"
+        ]
+      }
+    },
+    "/api/optimize/{job_id}": {
+      "get": {
+        "operationId": "get_job_api_optimize__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "返回前 N 组参数",
+            "in": "query",
+            "name": "trials",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "description": "返回前 N 组参数",
+              "maximum": 2000,
+              "minimum": 1,
+              "title": "Trials",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OptimizeJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "寻优任务详情",
+        "tags": [
+          "参数寻优"
+        ]
+      }
+    },
+    "/api/optimize/{job_id}/cancel": {
+      "post": {
+        "operationId": "cancel_job_api_optimize__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "取消寻优任务",
+        "tags": [
+          "参数寻优"
         ]
       }
     },
