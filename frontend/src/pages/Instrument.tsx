@@ -30,6 +30,7 @@ import type {
 import { KLineChart } from '../components/Charts'
 import { Badge, Banner, Button, Card, Empty, Field, Loading, Stat } from '../components/ui'
 import { IconRefresh } from '../components/icons'
+import { usePolling } from '../hooks/usePolling'
 import {
   fmtCompact,
   fmtNumber,
@@ -241,13 +242,11 @@ export function InstrumentPage() {
   }, [loadChart])
 
   // 今日/本周是分钟线：每 15 秒自动刷新（页面可见时）
-  useEffect(() => {
-    if (range !== 'today' && range !== 'week') return
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') loadChart()
-    }, 15_000)
-    return () => window.clearInterval(timer)
-  }, [range, loadChart])
+  usePolling(loadChart, {
+    interval: 15_000,
+    enabled: range === 'today' || range === 'week',
+    immediate: false,
+  })
 
   // 一直缩小到数据最左端时，自动切到更长的周期（今日→本周→本月→1年→3年→5年）
   const zoomLock = useRef(Date.now())
@@ -288,16 +287,14 @@ export function InstrumentPage() {
   }, [info, range])
 
   // 实时刷新现价/涨跌（3 秒；页面隐藏时不轮询）
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return
-      marketApi
-        .instrument(symbol)
-        .then((fresh) => setInfo(fresh))
-        .catch(() => undefined)
-    }, 3000)
-    return () => window.clearInterval(timer)
+  const refreshInfo = useCallback(() => {
+    return marketApi
+      .instrument(symbol)
+      .then((fresh) => setInfo(fresh))
+      .catch(() => undefined)
   }, [symbol])
+
+  usePolling(refreshInfo, { interval: 3000, immediate: false })
 
   // ---- 当前会话是否在跑这个标的 -------------------------------------------- //
   useEffect(() => {

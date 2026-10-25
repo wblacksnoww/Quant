@@ -3,9 +3,10 @@
  * 指数不可交易，独立于标的体系；配置存 localStorage（quant.index_cards）。
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { marketApi } from '../api/client'
 import type { IndexQuote } from '../api/types'
+import { usePolling } from '../hooks/usePolling'
 import { Badge, Button, Modal } from './ui'
 import { IconSettings } from './icons'
 import { classForSign, fmtNumber, fmtSignedPct, marketLabel, marketTone } from '../utils/format'
@@ -41,19 +42,13 @@ export function IndexCards() {
   const [draft, setDraft] = useState<string[]>(ids)
 
   const load = useCallback(() => {
-    marketApi
+    return marketApi
       .indices()
       .then((result) => setAll(result))
       .catch(() => undefined) // 刷新失败保留上一次数据，不清空卡片
   }, [])
 
-  useEffect(() => {
-    load()
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') load()
-    }, REFRESH_MS)
-    return () => window.clearInterval(timer)
-  }, [load])
+  usePolling(load, { interval: REFRESH_MS })
 
   const byId = useMemo(() => new Map(all.map((item) => [item.id, item])), [all])
   const cards = useMemo(

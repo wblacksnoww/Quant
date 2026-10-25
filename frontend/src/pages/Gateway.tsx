@@ -4,9 +4,9 @@ import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { credentialApi, gatewayApi, strategyApi } from '../api/client'
 import type { Credential, CustomStrategy, GatewayStatus } from '../api/types'
+import { usePolling } from '../hooks/usePolling'
 import { notify } from '../store/toast'
 import { Badge, Banner, Button, Card, Empty, Field, Loading, Stat } from '../components/ui'
-import { fmtDateTime } from '../utils/format'
 
 const STRATEGY_TYPES = [
   { value: 'grid', label: '网格交易', hint: '价格每跌一格买入、涨一格卖出，震荡市持续吃波动' },
@@ -66,12 +66,7 @@ export function GatewayPage() {
       .catch(() => undefined)
   }, [load])
 
-  useEffect(() => {
-    if (status?.running) {
-      const timer = window.setInterval(() => void load(), 2000)
-      return () => window.clearInterval(timer)
-    }
-  }, [status?.running, load])
+  usePolling(load, { interval: 2000, enabled: status?.running ?? false, immediate: false })
 
   const pickCustom = (id: number) => {
     setCustomId(id)

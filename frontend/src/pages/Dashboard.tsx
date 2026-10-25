@@ -7,6 +7,7 @@ import type { DataCacheItem, Health, PaperState, RunSummary, SystemInfo } from '
 import { CardBoard } from '../components/CardBoard'
 import { Badge, Banner, Button, Card, Empty, Loading, Stat, StatusBadge } from '../components/ui'
 import { IconFlask, IconPlay, IconRefresh, IconShield } from '../components/icons'
+import { usePolling } from '../hooks/usePolling'
 import { fmtDateTime, fmtMoney, fmtPct, fmtSignedPct } from '../utils/format'
 
 function uptimeText(seconds: number): string {
@@ -48,14 +49,17 @@ export function DashboardPage() {
 
   useEffect(() => {
     void load()
-    const timer = window.setInterval(() => {
-      void paperApi
-        .state()
-        .then(setPaper)
-        .catch(() => undefined)
-    }, 8000)
-    return () => window.clearInterval(timer)
   }, [load])
+
+  // 模拟盘状态单独高频刷新，不重跑整页的 5 个请求
+  const refreshPaper = useCallback(() => {
+    return paperApi
+      .state()
+      .then(setPaper)
+      .catch(() => undefined)
+  }, [])
+
+  usePolling(refreshPaper, { interval: 8000, immediate: false })
 
   const runningCount = runs.filter((run) => run.status === 'running' || run.status === 'pending').length
   const finished = runs.filter((run) => run.status === 'finished' && run.metrics)

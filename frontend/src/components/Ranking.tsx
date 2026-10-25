@@ -4,9 +4,10 @@
  * 虚拟货币取主流交易对；后端 60 秒缓存，前端同样 60 秒自动刷新。
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { marketApi } from '../api/client'
 import type { QuoteItem, Ranking } from '../api/types'
+import { usePolling } from '../hooks/usePolling'
 import { Card, Empty, Button } from './ui'
 import { IconRefresh } from './icons'
 import { classForSign, fmtCompact, fmtPrice, fmtSignedPct, marketLabel, priceDigits } from '../utils/format'
@@ -40,17 +41,6 @@ const PERIOD_LABELS: Record<RankPeriod, string> = { day: '今日', week: '本周
 const DAY_REFRESH_MS = 5_000
 const WINDOW_REFRESH_MS = 30_000
 
-/** 页面可见时按指定间隔刷新。 */
-function useAutoRefresh(load: () => void, intervalMs: number) {
-  useEffect(() => {
-    load()
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') load()
-    }, intervalMs)
-    return () => window.clearInterval(timer)
-  }, [load, intervalMs])
-}
-
 function pctText(value: number | null | undefined): string {
   return value === null || value === undefined ? '—' : fmtSignedPct(value / 100)
 }
@@ -79,7 +69,7 @@ export function HotPicks({
       .catch(() => setItems([]))
   }, [market])
 
-  useAutoRefresh(load, 30_000)
+  usePolling(load, { interval: 30_000 })
 
   if (items.length === 0) return null
 
@@ -169,7 +159,7 @@ export function RankingBoard({
       .finally(() => setLoading(false))
   }, [market, sortField, sortOrder, period])
 
-  useAutoRefresh(load, period === 'day' ? DAY_REFRESH_MS : WINDOW_REFRESH_MS)
+  usePolling(load, { interval: period === 'day' ? DAY_REFRESH_MS : WINDOW_REFRESH_MS })
 
   const items = data?.items ?? []
 

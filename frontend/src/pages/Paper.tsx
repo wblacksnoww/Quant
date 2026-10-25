@@ -21,6 +21,7 @@ import { PaperSessionStatus } from '../components/paper/PaperSessionStatus'
 import { SwitchStrategyModal } from '../components/SwitchStrategy'
 import { IconPlay, IconStop } from '../components/icons'
 import { Badge, Banner, Button, Card, Field, Loading } from '../components/ui'
+import { usePolling } from '../hooks/usePolling'
 import { useEvents } from '../store/events'
 import { notify } from '../store/toast'
 import { useWatchlist } from '../store/watchlist'
@@ -134,13 +135,7 @@ export function PaperPage() {
   }, [loadSessions, loadRuns])
 
   // 运行中高频轮询，结束后降低频率
-  useEffect(() => {
-    const interval = running ? 2000 : 10000
-    const timer = window.setInterval(() => {
-      void loadSessions()
-    }, interval)
-    return () => window.clearInterval(timer)
-  }, [running, loadSessions])
+  usePolling(loadSessions, { interval: running ? 2000 : 10000, immediate: false })
 
   // 事件驱动的即时刷新
   const lastEvent = useEvents((store) => store.last)

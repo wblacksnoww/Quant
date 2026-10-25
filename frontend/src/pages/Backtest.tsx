@@ -20,6 +20,7 @@ import { SymbolPicker } from '../components/SymbolPicker'
 import { IconFlask, IconRefresh, IconStop, IconTrash } from '../components/icons'
 import { RunDetailBody, RunMetrics } from '../components/RunDetail'
 import { Badge, Banner, Button, Card, Empty, Field, Loading, Progress, StatusBadge } from '../components/ui'
+import { usePolling } from '../hooks/usePolling'
 import { useEvents } from '../store/events'
 import { useWatchlist } from '../store/watchlist'
 import { notify } from '../store/toast'
@@ -167,19 +168,22 @@ export function BacktestPage() {
 
   // 运行中轮询（WS 只是加速，轮询保证最终一致）
   const running = isActive(detail?.status)
-  useEffect(() => {
-    if (!selectedId || !running) return
-    const timer = window.setInterval(() => {
-      void backtestApi
-        .get(selectedId)
-        .then((result) => {
-          setDetail(result)
-          if (!isActive(result.status)) void refreshRuns()
-        })
-        .catch(() => undefined)
-    }, 2500)
-    return () => window.clearInterval(timer)
-  }, [selectedId, running, refreshRuns])
+  const pollDetail = useCallback(() => {
+    if (!selectedId) return
+    return backtestApi
+      .get(selectedId)
+      .then((result) => {
+        setDetail(result)
+        if (!isActive(result.status)) void refreshRuns()
+      })
+      .catch(() => undefined)
+  }, [selectedId, refreshRuns])
+
+  usePolling(pollDetail, {
+    interval: 2500,
+    enabled: Boolean(selectedId) && running,
+    immediate: false,
+  })
 
   // WebSocket：进度与完成事件
   const lastEvent = useEvents((state) => state.last)

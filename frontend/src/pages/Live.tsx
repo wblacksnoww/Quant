@@ -12,6 +12,7 @@ import { EquityChart } from '../components/Charts'
 import { SwitchStrategyModal } from '../components/SwitchStrategy'
 import { Badge, Banner, Button, Card, Empty, Field, Loading, Stat, StatusBadge } from '../components/ui'
 import { IconPlay, IconRefresh, IconStop } from '../components/icons'
+import { usePolling } from '../hooks/usePolling'
 import { classForSign, fmtDateTime, fmtMoney, fmtNumber, fmtSignedPct, parseSymbols } from '../utils/format'
 import { notify } from '../store/toast'
 
@@ -109,16 +110,8 @@ export function LivePage() {
     void loadAll()
   }, [loadAll])
 
-  // 运行中：2 秒轮询；空闲 15 秒
-  useEffect(() => {
-    const interval = active ? 2000 : 15000
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void loadSessions()
-      }
-    }, interval)
-    return () => window.clearInterval(timer)
-  }, [active, loadSessions])
+  // 运行中：2 秒轮询；空闲 15 秒（页面切后台时由 usePolling 暂停）
+  usePolling(loadSessions, { interval: active ? 2000 : 15000, immediate: false })
 
   const changeStrategy = (id: string) => {
     setStrategyId(id)

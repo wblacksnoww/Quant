@@ -11,6 +11,7 @@ import { IndexCards } from '../components/IndexCards'
 import { HotPicks, RankingBoard, type RankMarket } from '../components/Ranking'
 import { Badge, Banner, Button, Card, Empty, Field, Loading, Stat } from '../components/ui'
 import { IconRefresh, IconSearch, IconTrash } from '../components/icons'
+import { usePolling } from '../hooks/usePolling'
 import {
   classForSign,
   displayCode,
@@ -173,13 +174,14 @@ export function MarketPage() {
 
   useEffect(() => {
     void loadQuotes(false)
-    if (quoteInterval <= 0) return
-    const timer = window.setInterval(() => {
-      // 页面在后台时不轮询；自动轮询使用静默模式，避免 spinner 每秒闪烁
-      if (document.visibilityState === 'visible') void loadQuotes(true)
-    }, quoteInterval)
-    return () => window.clearInterval(timer)
-  }, [loadQuotes, quoteInterval])
+  }, [loadQuotes])
+
+  // 自动轮询走静默模式，避免 spinner 每秒闪烁；页面切后台时由 usePolling 暂停
+  usePolling(() => loadQuotes(true), {
+    interval: quoteInterval,
+    enabled: quoteInterval > 0,
+    immediate: false,
+  })
 
   // ---- 标的检索（防抖），按市场过滤 ----
   useEffect(() => {
