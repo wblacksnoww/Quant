@@ -191,6 +191,29 @@ class TestDependabot:
         assert "pandas" in ignored
         assert "numpy" in ignored
 
+    def test_major_upgrades_blocked_by_wildcard(self):
+        """前端与 pip 必须用通配符拦掉**所有** major 升级，而不是逐个列举。
+
+        曾经只能写 `react` / `react-dom` 两个，第一次运行就漏掉了
+        vite 5.4 → 8.3 和 echarts 5.6 → 6.1 两个跨大版本提案。
+        逐个列举的方式每加一个库就要重新判断一次，必然漏。
+
+        这类升级 CI 抓不到：vite 大版本可能编译通过但产物行为变了，
+        ECharts 大版本可能类型对得上但某个 option 运行时静默失效。
+        """
+        data = yaml.safe_load((GITHUB / "dependabot.yml").read_text(encoding="utf-8"))
+        for ecosystem in ("npm", "pip"):
+            update = next(u for u in data["updates"] if u["package-ecosystem"] == ecosystem)
+            wildcards = [
+                i
+                for i in update.get("ignore", [])
+                if i.get("dependency-name") == "*"
+                and "version-update:semver-major" in i.get("update-types", [])
+            ]
+            assert wildcards, (
+                f"{ecosystem} 没有用 `dependency-name: *` 拦住 major 升级；逐个列举依赖名会漏掉跨大版本提案"
+            )
+
 
 class TestGitAttributes:
     def test_exists_and_forces_lf_on_scripts(self):

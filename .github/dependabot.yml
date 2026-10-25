@@ -50,10 +50,19 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
     ignore:
-      # React 大版本升级会连带影响所有组件，必须单独排期
-      - dependency-name: "react"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "react-dom"
+      # --- 大版本一律不自动提 ---
+      #
+      # 之前这里只逐个 ignore 了 react / react-dom，结果第一次运行就漏掉了
+      # vite 5.4 → 8.3 和 echarts 5.6 → 6.1 两个跨大版本升级。
+      # 逐个列举依赖名的方式必然漏 —— 每加一个库都要重新判断一次。
+      #
+      # 改为一律拦截、需要时人工开 PR。理由：大版本升级要排期、要读
+      # migration guide、要在浏览器里点一遍，不是 CI 绿了就能合的事。
+      #
+      # 构建工具的大版本尤其危险：vite 5 → 8 可能编译通过、产物行为变了；
+      # ECharts 5 → 6 可能类型对得上、运行时某个 option 静默失效。
+      # 这两类 CI 都抓不到，只能人看。
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
   # -------------------------------------------------------------------------
@@ -80,18 +89,30 @@ updates:
         patterns: ["*"]
         update-types: ["patch"]
     ignore:
+      # --- 大版本一律不自动提（理由同前端：逐个列举必然漏） ---
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
       # --- 数值与 ABI 相关：只走人工升级 ---
       # 这几项的版本变化会改变回测数值或 .so ABI，
       # 自动 PR 容易被"CI 绿了就合"，而 CI 只验证不崩、不验证结论没变。
       - dependency-name: "pandas"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+        update-types: ["version-update:semver-minor"]
       - dependency-name: "numpy"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
-      - dependency-name: "pyarrow"
-        update-types: ["version-update:semver-major"]
+        update-types: ["version-update:semver-minor"]
+      # --- 0.x 库的 minor 实际是 breaking ---
+      #
+      # semver 规定 0.x 版本可以在 minor 里破坏兼容，而 Dependabot 按
+      # semver 判断，所以 `fastapi 0.148 → 0.160` 会被标成 minor 放行。
+      # 实际跨度 12 个 minor，升级后 500 错误完全可能。
+      # uvloop 同理（0.22 → 0.23 改过 loop 策略内部行为）。
+      # 这两个是首次运行时真实出现的，所以显式拦住；新发现的按同样方式加。
+      - dependency-name: "fastapi"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "uvloop"
+        update-types: ["version-update:semver-minor"]
       # pybind11 决定扩展的 C++ 标准与绑定行为，升级需重编译验证
       - dependency-name: "pybind11"
-        update-types: ["version-update:semver-major"]
+        update-types: ["version-update:semver-minor"]
 
   # -------------------------------------------------------------------------
   # Docker：基础镜像
