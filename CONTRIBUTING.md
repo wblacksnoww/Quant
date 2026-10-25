@@ -377,12 +377,35 @@ git push origin v1.2.0
 | 坑 | 症状 | 处理 |
 |---|---|---|
 | ABI 不匹配 | 测试全绿但慢 70 倍 | `native_status()` 确认 `available: True` |
+| native 缺失还"成功"跑完 | 回测 `finished` 但零成交 | 已改为显式报错；若见 `status=failed` 报 C++ 缺失，重新编译 |
 | `.so` 没重编译 | 改了 C++ 行为没变 | 看 `.so` mtime |
 | 新闻字段缺列 | 回测零成交，无报错 | 看运行日志里的「已剥掉 N 条条件」 |
 | 算子未注册 | 回测零成交 | 看日志里的 error 条目 |
 | testpaths 是 `backend/tests` | 根目录 `pytest` 找不到测试 | `cd backend && pytest` |
 | 合成数据当结论 | 收益好得离谱 | 合成 tick 只能验机制，不能判优劣 |
 | CRLF 混入 | 整文件 diff、容器里 `$'\r'` 报错 | `.gitattributes` 已强制 LF，别改编辑器设置 |
+| 锁文件不可满足 | CI 装依赖步骤红，报 `requirements are unsatisfiable` | 见下方「依赖升级」 |
+
+### 依赖升级
+
+Dependabot 只判断"每个包单独看有没有新版本"，**不验证同一次分组更新里的组合
+是否可满足**。真实踩过的案例：
+
+```
+ccxt==4.5.89 依赖 propcache==0.5.2（钉死 ==）
+同组又把 propcache 升到 0.5.4
+→ pip 解析失败，CI 装依赖步骤直接红
+```
+
+所以合 lock 类改动前，**必须**在干净环境跑一次完整解析，只查版本存在性是不够的：
+
+```bash
+uv venv --python 3.12 /tmp/lockcheck
+uv pip install --python /tmp/lockcheck/bin/python -r deploy/requirements.lock.txt
+```
+
+前端同理，`npm ci` 之后还要跑 `npx tsc --noEmit` —— 依赖升级引发类型错误很常见。
+
 
 ---
 
