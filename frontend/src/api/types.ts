@@ -835,3 +835,54 @@ export interface OptimizeObjectiveOption {
   key: OptimizeObjective
   label: string
 }
+
+// --------------------------------------------------------------------------- //
+// 组合（权重优化 + 指数成分股）
+// --------------------------------------------------------------------------- //
+
+export type PortfolioMethod = 'equal_weight' | 'inverse_vol' | 'risk_parity' | 'min_variance' | 'max_sharpe'
+
+export interface PortfolioOptimizeRequest {
+  symbols: string[]
+  method?: PortfolioMethod
+  start?: string | null
+  end?: string | null
+  lookback_days?: number
+  risk_free_rate?: number
+  max_weight?: number
+  min_weight?: number
+}
+
+export interface PortfolioOptimizeResult {
+  method: string
+  method_label: string
+  weights: Record<string, number>
+  expected_return: number
+  volatility: number
+  sharpe: number
+  diversification: number
+  note: string
+  diagnostics: Record<string, number>
+  price_start?: string | null
+  price_end?: string | null
+}
+
+export interface PortfolioMethodOption {
+  key: PortfolioMethod
+  label: string
+}
+
+export interface IndexSummary {
+  index_code: string
+  entries: number
+  active: number
+  earliest?: string | null
+  sources: string[]
+}
+
+export interface IndexMember {
+  symbol: string
+  start_date?: string | null
+  end_date?: string | null
+  source: string
+}

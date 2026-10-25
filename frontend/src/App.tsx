@@ -17,6 +17,7 @@ import { MarketPage } from './pages/Market'
 import { NewsPage } from './pages/News'
 import { OptimizePage } from './pages/Optimize'
 import { PaperPage } from './pages/Paper'
+import { PortfolioPage } from './pages/Portfolio'
 import { RiskPage } from './pages/Risk'
 import { SettingsPage } from './pages/Settings'
 import { StrategiesPage } from './pages/Strategies'
@@ -74,6 +75,7 @@ export default function App() {
           <Route path="/strategies/blueprint" element={<BlueprintPage />} />
           <Route path="/backtest" element={<BacktestPage />} />
           <Route path="/optimize" element={<OptimizePage />} />
+          <Route path="/portfolio" element={<PortfolioPage />} />
           <Route path="/paper" element={<PaperPage />} />
           <Route path="/live" element={<LivePage />} />
           <Route path="/gateway" element={<GatewayPage />} />

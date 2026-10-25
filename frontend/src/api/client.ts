@@ -41,6 +41,11 @@ import type {
   OptimizeObjectiveOption,
   OptimizeStartRequest,
   PaperStartRequest,
+  IndexMember,
+  IndexSummary,
+  PortfolioMethodOption,
+  PortfolioOptimizeRequest,
+  PortfolioOptimizeResult,
   PaperState,
   QuotesResponse,
   RegisterRequest,
@@ -491,4 +496,20 @@ export const optimizeApi = {
   get: (id: string, trials = 100) => request<OptimizeJob>(`/optimize/${id}`, { query: { trials } }),
   list: (limit = 10) => request<OptimizeJobSummary[]>('/optimize', { query: { limit } }),
   cancel: (id: string) => request<Message>(`/optimize/${id}/cancel`, { method: 'POST' }),
+}
+
+export const portfolioApi = {
+  methods: () => request<PortfolioMethodOption[]>('/portfolio/methods'),
+  optimize: (body: PortfolioOptimizeRequest) =>
+    request<PortfolioOptimizeResult>('/portfolio/optimize', { method: 'POST', body }),
+  indexes: () => request<IndexSummary[]>('/portfolio/indexes'),
+  members: (indexCode: string, asOf: string) =>
+    request<IndexMember[]>(`/portfolio/indexes/${encodeURIComponent(indexCode)}/members`, {
+      query: { as_of: asOf },
+    }),
+  importSnapshot: (indexCode: string, symbols: string[], asOf: string) =>
+    request<{ added: number; removed: number; kept: number; active: number }>(
+      `/portfolio/indexes/${encodeURIComponent(indexCode)}/members`,
+      { method: 'POST', body: { symbols, as_of: asOf, source: 'manual' } },
+    ),
 }
