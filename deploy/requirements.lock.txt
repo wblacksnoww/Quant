@@ -40,7 +40,7 @@ openpyxl==3.1.5
 opentelemetry-api==1.45.1
 orjson==3.13.0
 pandas==3.0.6
-propcache==0.5.2
+propcache==0.5.4
 psycopg-binary==3.3.6
 psycopg==3.3.6
 py-mini-racer==0.6.0
