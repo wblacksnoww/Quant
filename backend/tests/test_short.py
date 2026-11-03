@@ -164,7 +164,6 @@ def test_short_and_long_differ_on_same_data(context):
     short_result = BacktestEngine(_engine_config("short", fast=5, slow=20), context.data).run()
     assert long_result.status == "finished"
     assert short_result.status == "finished"
-    long_sides = {t["side"] for t in long_result.trades}
     short_sides = {t["side"] for t in short_result.trades}
     assert short_sides, "空头回测应有成交"
     # 空头策略的第一笔开仓是卖出（多头是买入）

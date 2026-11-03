@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from datetime import datetime
 
-from .errors import InsufficientCash, InsufficientMargin, InsufficientPosition, ShortNotAllowed
+from .errors import InsufficientCash, InsufficientMargin, ShortNotAllowed
 from .markets import rules_for
 from .types import AccountSnapshot, Fill, Position, Side, utcnow
 
