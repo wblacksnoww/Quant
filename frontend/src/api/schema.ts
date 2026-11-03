@@ -1790,6 +1790,12 @@ export interface components {
             /** Benchmark */
             benchmark?: string | null;
             cost?: components["schemas"]["CostInput"] | null;
+            /**
+             * Direction
+             * @default long
+             * @enum {string}
+             */
+            direction: "long" | "short";
             /** End */
             end?: string | null;
             /**
@@ -2527,6 +2533,12 @@ export interface components {
             cost?: components["schemas"]["CostInput"] | null;
             /** Credential Id */
             credential_id: number;
+            /**
+             * Direction
+             * @default long
+             * @enum {string}
+             */
+            direction: "long" | "short";
             /** End */
             end?: string | null;
             /**
@@ -3006,6 +3018,12 @@ export interface components {
             /** Benchmark */
             benchmark?: string | null;
             cost?: components["schemas"]["CostInput"] | null;
+            /**
+             * Direction
+             * @default long
+             * @enum {string}
+             */
+            direction: "long" | "short";
             /** End */
             end?: string | null;
             /**

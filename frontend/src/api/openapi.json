@@ -250,6 +250,15 @@
               }
             ]
           },
+          "direction": {
+            "default": "long",
+            "enum": [
+              "long",
+              "short"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
           "end": {
             "anyOf": [
               {
@@ -1963,6 +1972,15 @@
             "title": "Credential Id",
             "type": "integer"
           },
+          "direction": {
+            "default": "long",
+            "enum": [
+              "long",
+              "short"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
           "end": {
             "anyOf": [
               {
@@ -2970,6 +2988,15 @@
                 "type": "null"
               }
             ]
+          },
+          "direction": {
+            "default": "long",
+            "enum": [
+              "long",
+              "short"
+            ],
+            "title": "Direction",
+            "type": "string"
           },
           "end": {
             "anyOf": [

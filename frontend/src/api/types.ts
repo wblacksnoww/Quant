@@ -448,6 +448,8 @@ export interface OrderRecord {
 export interface PositionRecord {
   symbol: string
   quantity: number
+  /** 'long' / 'short' / 'flat'：quantity 为负 = 空头（仅虚拟货币） */
+  direction?: 'long' | 'short' | 'flat' | string
   available: number
   avg_cost: number
   last_price: number

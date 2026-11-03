@@ -537,6 +537,13 @@ export function LivePage() {
                     {state.positions.map((item) => (
                       <tr key={item.symbol}>
                         <td className="mono strong">{item.symbol}</td>
+                        <td>
+                          {item.direction === 'short' ? (
+                            <span className="down strong">空</span>
+                          ) : (
+                            <span className="up strong">多</span>
+                          )}
+                        </td>
                         <td className="right num">{fmtNumber(item.quantity, 4)}</td>
                         <td className="right num">{fmtNumber(item.available, 4)}</td>
                         <td className="right num">{fmtNumber(item.avg_cost, 4)}</td>

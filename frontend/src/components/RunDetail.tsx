@@ -237,6 +237,7 @@ export function RunDetailBody({ detail }: { detail: RunDetail }) {
                 <thead>
                   <tr>
                     <th>代码</th>
+                    <th>方向</th>
                     <th className="right">数量</th>
                     <th className="right">可用</th>
                     <th className="right">成本价</th>
@@ -250,6 +251,13 @@ export function RunDetailBody({ detail }: { detail: RunDetail }) {
                   {detail.positions.map((position) => (
                     <tr key={position.symbol}>
                       <td className="strong mono">{position.symbol}</td>
+                      <td>
+                        {position.direction === 'short' ? (
+                          <span className="down strong">空</span>
+                        ) : (
+                          <span className="up strong">多</span>
+                        )}
+                      </td>
                       <td className="right num">{position.quantity.toLocaleString('zh-CN')}</td>
                       <td className="right num">{position.available.toLocaleString('zh-CN')}</td>
                       <td className="right num">{fmtMoney(position.avg_cost)}</td>
