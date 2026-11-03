@@ -94,7 +94,34 @@ jobs:
 
       - name: Pytest
         working-directory: backend
-        run: pytest -q
+        run: |
+          set -o pipefail
+          pytest -q --tb=short -rf 2>&1 | tee /tmp/pytest.log
+
+      # 日志需要仓库 admin 权限才能在线查看；把失败摘要打进 workflow 注解，
+      # 注解走公开 API，没有登录也能排查 CI 失败。
+      - name: Expose test failures as annotations
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          import re
+
+          log = open("/tmp/pytest.log", encoding="utf-8", errors="replace").read()
+          failed = re.findall(r"^FAILED (\S+)", log, re.M)
+          errors = re.findall(r"^(ERROR \S+)", log, re.M)
+          if not failed and not errors:
+              # 没有收集到 FAILED 行（如收集阶段崩溃），输出日志末尾
+              tail = log[-1500:]
+              for line in tail.splitlines():
+                  print(f"::error::tail| {line[:400]}")
+          else:
+              for name in (failed + errors)[:20]:
+                  print(f"::error::failed test: {name[:300]}")
+              # 再补每个失败的首行错误（E 开头）
+              e_lines = [ln for ln in log.splitlines() if ln.startswith("E ")][:40]
+              for ln in e_lines:
+                  print(f"::error::{ln[:400]}")
+          PY
 
       # OpenAPI 漂移检查需要 node（用 npx 调 openapi-typescript），所以放这里
       - uses: actions/setup-node@v7
