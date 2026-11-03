@@ -333,8 +333,12 @@ class Fill:
 
     @property
     def cash_flow(self) -> float:
-        """对现金的净影响：买入为负、卖出为正，均已扣费。"""
-        return self.side.sign * self.gross - self.fees.total
+        """对现金的净影响：买入为负、卖出为正，均已扣费。
+
+        空头开仓（SELL）现金增加、买回平空（BUY）现金减少，与多空方向无关，
+        只跟交易方向有关——这正是权益 = 现金 + 市值能自动覆盖空头的原因。
+        """
+        return -self.side.sign * self.gross - self.fees.total
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -361,7 +365,13 @@ class Fill:
 
 @dataclass(slots=True)
 class Position:
-    """持仓。``available`` 体现 T+1：T+1 市场当日买入当日不可卖（T+0 市场例外）。"""
+    """持仓。``quantity`` 允许为负：正 = 多头，负 = 空头。
+
+    做空记账口径（与 :class:`~quant.core.portfolio.Account` 一致）：
+    开空时卖出所得全额入现金，权益 = 现金 + 市值，空头市值为负，
+    于是价格涨 → 权益降，价格跌 → 权益升，不需要单独的保证金账户。
+    ``available`` 对多头是可卖数量（T+1），对空头是可买回数量（T+0 市场恒等 |quantity|）。
+    """
 
     symbol: str
     quantity: float = 0.0
@@ -375,6 +385,31 @@ class Position:
     @property
     def is_flat(self) -> bool:
         return self.quantity == 0
+
+    @property
+    def is_short(self) -> bool:
+        return self.quantity < 0
+
+    @property
+    def is_long(self) -> bool:
+        return self.quantity > 0
+
+    @property
+    def direction(self) -> str:
+        """'long' / 'short' / 'flat'，前端与落库统一用这个词。"""
+        if self.quantity > 0:
+            return "long"
+        if self.quantity < 0:
+            return "short"
+        return "flat"
+
+    @property
+    def direction_label(self) -> str:
+        return {"long": "多", "short": "空", "flat": "-"}.get(self.direction, "-")
+
+    @property
+    def abs_quantity(self) -> float:
+        return abs(self.quantity)
 
     @property
     def cost_value(self) -> float:
@@ -393,9 +428,10 @@ class Position:
 
     @property
     def unrealized_pct(self) -> float:
+        # 分母取绝对值：空头 cost_value 为负，直接除会把盈亏符号翻反
         if self.is_flat or self.cost_value == 0:
             return 0.0
-        return self.unrealized_pnl / self.cost_value
+        return self.unrealized_pnl / abs(self.cost_value)
 
     @property
     def total_pnl(self) -> float:
@@ -406,6 +442,7 @@ class Position:
             "symbol": self.symbol,
             "quantity": self.quantity,
             "available": self.available,
+            "direction": self.direction,
             "avg_cost": _round(self.avg_cost),
             "last_price": _round(self.last_price),
             "cost_value": _round(self.cost_value, 2),
@@ -437,6 +474,7 @@ class AccountSnapshot:
     unrealized_pnl: float = 0.0
     total_fees: float = 0.0
     position_count: int = 0
+    gross_exposure: float = 0.0  # Σ|持仓市值|，空头记正数（总敞口）
 
     @property
     def total_return(self) -> float:
@@ -452,7 +490,11 @@ class AccountSnapshot:
 
     @property
     def position_ratio(self) -> float:
-        return 1.0 - self.cash_ratio
+        """仓位比例 = 总敞口 / 权益。空头市值为负，净额口径会失真，
+        必须用 ``gross_exposure``（Σ|持仓市值|）。纯多头时与 1-cash_ratio 一致。"""
+        if self.total_equity <= 0:
+            return 0.0
+        return min(max(0.0, self.gross_exposure) / self.total_equity, 1.0)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -468,6 +510,7 @@ class AccountSnapshot:
             "total_return": _round(self.total_return, 6),
             "cash_ratio": _round(self.cash_ratio, 6),
             "position_ratio": _round(self.position_ratio, 6),
+            "gross_exposure": _round(self.gross_exposure, 2),
             "position_count": self.position_count,
         }
 

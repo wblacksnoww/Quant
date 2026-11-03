@@ -451,6 +451,7 @@ class BacktestEngine(BaseEngine):
             extras,
             progress,
             int(cfg.max_order_age_days),
+            cfg.direction,
         )
 
         result.status = raw_result.get("status", "finished")
@@ -550,6 +551,7 @@ class BacktestEngine(BaseEngine):
             strategy_name=cfg.strategy_id,
             recorder=self.recorder,
             news=self.news,
+            direction=cfg.direction,
         )
 
         # 把订单/成交也转给记录器（若提供）

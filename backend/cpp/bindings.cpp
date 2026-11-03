@@ -23,7 +23,7 @@ py::dict run_backtest_native(
     std::vector<py::array_t<double, py::array::c_style | py::array::forcecast>> limit_ups,
     std::vector<py::array_t<double, py::array::c_style | py::array::forcecast>> limit_downs,
     std::vector<std::map<std::string, py::array_t<double, py::array::c_style | py::array::forcecast>>> extras,
-    py::function progress, int max_order_age_days);
+    py::function progress, int max_order_age_days, std::string direction);
 
 namespace {
 
@@ -83,7 +83,7 @@ PYBIND11_MODULE(_core, m) {
         py::arg("dates"), py::arg("opens"), py::arg("highs"), py::arg("lows"), py::arg("closes"),
         py::arg("volumes"), py::arg("amounts"), py::arg("prev_closes"), py::arg("limit_ups"),
         py::arg("limit_downs"), py::arg("extras"), py::arg("progress"),
-        py::arg("max_order_age_days") = 30);
+        py::arg("max_order_age_days") = 30, py::arg("direction") = "long");
 
   // ---- tick 级回测 ---------------------------------------------------- //
   // 整段下沉：Python 只交数据、收结果，不参与逐 tick 循环。
@@ -100,7 +100,8 @@ PYBIND11_MODULE(_core, m) {
       .def_readwrite("position_pct", &TickConfig::position_pct)
       .def_readwrite("stop_loss", &TickConfig::stop_loss)
       .def_readwrite("take_profit", &TickConfig::take_profit)
-      .def_readwrite("slippage_bps", &TickConfig::slippage_bps);
+      .def_readwrite("slippage_bps", &TickConfig::slippage_bps)
+      .def_readwrite("direction_short", &TickConfig::direction_short);
 
   m.def(
       "run_tick_backtest",

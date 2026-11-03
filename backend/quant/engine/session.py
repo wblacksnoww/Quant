@@ -106,6 +106,7 @@ class TradingSession:
         recorder: RunRecorderProtocol | None = None,
         auto_end_of_day: bool = True,
         news: Any = None,
+        direction: str = "long",
     ) -> None:
         self.account = account
         self.broker = broker
@@ -126,6 +127,7 @@ class TradingSession:
             strategy_name=strategy_name or strategy_cls.strategy_id,
             risk=risk,
             news=news,
+            direction=direction,
         )
         self.strategy = strategy_cls(self.ctx, strategy_params)
         self.equity_curve: list[dict[str, Any]] = []

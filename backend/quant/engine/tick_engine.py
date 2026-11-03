@@ -226,6 +226,7 @@ class TickBacktestEngine(BaseEngine):
         tc.fee_rate = float(getattr(cost, "commission_rate", 0.0003) or 0.0003)
         tc.stamp_tax = float(getattr(cost, "stamp_tax", 0.001) or 0.001)
         tc.slippage_bps = float(getattr(cost, "slippage_bps", 0.0) or 0.0)
+        tc.direction_short = cfg.direction == "short"
         return tc
 
     @staticmethod

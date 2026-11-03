@@ -58,31 +58,61 @@ void TickSeries::append_as_bar(size_t begin, size_t end, std::vector<double>& ou
 }
 
 void TickAccount::apply_buy(double qty, double price, double fee, int64_t day) {
+  if (qty <= 0) return;
   double cost = qty * price + fee;
   // 现金闸门：绝不允许负现金（与 bar 级 apply_fill 同一纪律）
   if (cost > cash + 1e-6) return;
-  double new_qty = position + qty;
-  avg_cost = new_qty > 0 ? (avg_cost * position + qty * price) / new_qty : 0.0;
-  position = new_qty;
+  // 平空段：空头持仓先被买入买回（fee 按量分摊进已实现盈亏）
+  double close_qty = position < 0 ? std::min(-position, qty) : 0.0;
+  double open_qty = qty - close_qty;
+  if (close_qty > 0) {
+    realized_pnl += (avg_cost - price) * close_qty - fee * (close_qty / qty);
+    position += close_qty;
+    if (std::abs(position) <= 1e-12) {
+      position = 0.0;
+      available = 0.0;
+      avg_cost = 0.0;
+    }
+  }
+  // 开多段：费用摊进成本
+  if (open_qty > 0) {
+    double new_abs = std::abs(position) + open_qty;
+    avg_cost =
+        new_abs > 0 ? (std::abs(avg_cost * position) + price * open_qty + fee * (open_qty / qty)) / new_abs : 0.0;
+    position += open_qty;
+    last_buy_day = day;
+    // T+1：当日买入不可卖，available 不变（T+0 市场由调用方置 available）
+  }
   cash -= cost;
   total_fees += fee;
-  last_buy_day = day;
-  // T+1：当日买入不可卖，available 不变
 }
 
 void TickAccount::apply_sell(double qty, double price, double fee) {
-  if (qty > available + 1e-9) return;
-  double proceeds = qty * price - fee;
-  realized_pnl += (price - avg_cost) * qty - fee;
-  position -= qty;
-  available -= qty;
-  cash += proceeds;
-  total_fees += fee;
-  if (position <= 1e-9) {
-    position = 0.0;
-    available = 0.0;
-    avg_cost = 0.0;
+  if (qty <= 0) return;
+  // 平多段：不得超过可卖数量（T+1 当日买入不可卖）
+  double close_qty = position > 0 ? std::min(available, qty) : 0.0;
+  double open_qty = qty - close_qty;
+  if (close_qty > 0) {
+    realized_pnl += (price - avg_cost) * close_qty - fee * (close_qty / qty);
+    position -= close_qty;
+    available -= close_qty;
+    if (std::abs(position) <= 1e-12) {
+      position = 0.0;
+      available = 0.0;
+      avg_cost = 0.0;
+    }
   }
+  // 开空段：成本 = 扣费后净卖出所得（空头赚「净卖价 - 买回价」）；
+  // 空头 available = position（T+0 全部可平）
+  if (open_qty > 0) {
+    double new_abs = std::abs(position) + open_qty;
+    avg_cost =
+        new_abs > 0 ? (std::abs(avg_cost * position) + price * open_qty - fee * (open_qty / qty)) / new_abs : 0.0;
+    position -= open_qty;
+    available = position;
+  }
+  cash += qty * price - fee;
+  total_fees += fee;
 }
 
 TickSeriesResult run_tick_backtest_one(const TickSeries& series, const CompiledSpec& spec,
@@ -130,74 +160,108 @@ TickSeriesResult run_tick_backtest_one(const TickSeries& series, const CompiledS
 
     // --- 1) 撮合：用上一根 bar 产生的信号，在当前 tick 价格上成交 ---
     //    这保证"决策在 t 收盘、成交在 t 之后"，与 bar 级时序纪律一致。
-    if (has_exit && acct.available > 0) {
-      double qty = acct.available;
-      // 成交量约束：单个 tick 最多吃掉 volume * pct
+    if (has_exit && (cfg.direction_short ? acct.position < -1e-9 : acct.available > 0)) {
+      // 做空模式：退出信号 = 买入平空（slippage 买向 +）；多头模式 = 卖出平仓（-）
+      bool closing_short = cfg.direction_short;
+      double qty = closing_short ? std::abs(acct.position) : acct.available;
       double cap = series.volume[i] * cfg.volume_limit_pct;
       if (cap > 0 && qty > cap) qty = round_lot(cap, lot);
       if (qty > 0) {
         double fill_px = px;
-        if (cfg.slippage_bps > 0) fill_px *= (1.0 - cfg.slippage_bps / 10000.0);
-        double fee = sell_fee(qty * fill_px, cfg);
+        if (cfg.slippage_bps > 0)
+          fill_px *= (1.0 + (closing_short ? 1.0 : -1.0) * cfg.slippage_bps / 10000.0);
+        double fee = closing_short ? buy_fee(qty * fill_px, cfg) : sell_fee(qty * fill_px, cfg);
         double before_pos = acct.position;
-        acct.apply_sell(qty, fill_px, fee);
-        if (acct.position < before_pos - 1e-9) {
+        if (closing_short)
+          acct.apply_buy(qty, fill_px, fee, day);
+        else
+          acct.apply_sell(qty, fill_px, fee);
+        if (std::abs(acct.position - before_pos) > 1e-9) {
           TickFill f;
           f.ts_ns = ts;
           f.price = fill_px;
           f.quantity = qty;
           f.fee = fee;
-          f.is_buy = false;
+          f.is_buy = closing_short;
           out.fills.push_back(f);
         }
       }
       has_exit = false;
-    } else if (has_entry && acct.position <= 1e-9) {
-      // 目标仓位 = 权益 * position_pct，换算出股数
+    } else if (has_entry && std::abs(acct.position) <= 1e-9) {
+      // 目标仓位 = 权益 * position_pct，换算出股数（做空 = 卖出开空的名义）
       double budget = acct.equity() * std::max(0.0, std::min(1.0, cfg.position_pct));
       double fill_px = px;
-      if (cfg.slippage_bps > 0) fill_px *= (1.0 + cfg.slippage_bps / 10000.0);
+      if (cfg.slippage_bps > 0)
+        fill_px *= (1.0 + (cfg.direction_short ? 1.0 : -1.0) * cfg.slippage_bps / 10000.0);
       if (fill_px > 0) {
         double qty = round_lot(budget / fill_px, lot);
         double cap = series.volume[i] * cfg.volume_limit_pct;
         if (cap > 0 && qty > cap) qty = round_lot(cap, lot);
-        // 现金上限（含费用余量）
-        double affordable = round_lot(acct.cash / (fill_px * (1.0 + cfg.fee_rate + 0.002)), lot);
-        if (qty > affordable) qty = affordable;
-        if (qty > 0) {
-          double fee = buy_fee(qty * fill_px, cfg);
-          acct.apply_buy(qty, fill_px, fee, day);
-          TickFill f;
-          f.ts_ns = ts;
-          f.price = fill_px;
-          f.quantity = qty;
-          f.fee = fee;
-          f.is_buy = true;
-          out.fills.push_back(f);
+        if (cfg.direction_short) {
+          // 开空：名义 ≤ 权益（1x 保证金），无现金支出，卖出所得入账
+          double margin_cap = round_lot(acct.equity() / fill_px, lot);
+          if (qty > margin_cap) qty = margin_cap;
+          if (qty > 0) {
+            double fee = sell_fee(qty * fill_px, cfg);
+            acct.apply_sell(qty, fill_px, fee);
+            TickFill f;
+            f.ts_ns = ts;
+            f.price = fill_px;
+            f.quantity = qty;
+            f.fee = fee;
+            f.is_buy = false;
+            out.fills.push_back(f);
+          }
+        } else {
+          // 现金上限（含费用余量）
+          double affordable = round_lot(acct.cash / (fill_px * (1.0 + cfg.fee_rate + 0.002)), lot);
+          if (qty > affordable) qty = affordable;
+          if (qty > 0) {
+            double fee = buy_fee(qty * fill_px, cfg);
+            acct.apply_buy(qty, fill_px, fee, day);
+            TickFill f;
+            f.ts_ns = ts;
+            f.price = fill_px;
+            f.quantity = qty;
+            f.fee = fee;
+            f.is_buy = true;
+            out.fills.push_back(f);
+          }
         }
       }
       has_entry = false;
     }
 
     // --- 2) 止损 / 止盈：tick 级检查（这是 tick 回测相对 bar 级的核心优势） ---
-    if (acct.available > 0 && acct.avg_cost > 0) {
-      double pnl = px / acct.avg_cost - 1.0;
+    bool in_long = acct.available > 0 && acct.avg_cost > 0;
+    bool in_short = cfg.direction_short && acct.position < -1e-9 && acct.avg_cost > 0;
+    if (in_long || in_short) {
+      // 空头盈亏方向相反：价格涨 → 亏损
+      double pnl = in_short ? 1.0 - px / acct.avg_cost : px / acct.avg_cost - 1.0;
       bool hit_stop = cfg.stop_loss > 0 && pnl <= -cfg.stop_loss;
       bool hit_take = cfg.take_profit > 0 && pnl >= cfg.take_profit;
       if (hit_stop || hit_take) {
-        double qty = acct.available;
+        double qty = in_short ? std::abs(acct.position) : acct.available;
         double cap = series.volume[i] * cfg.volume_limit_pct;
         if (cap > 0 && qty > cap) qty = round_lot(cap, lot);
         if (qty > 0) {
-          double fee = sell_fee(qty * px, cfg);
-          acct.apply_sell(qty, px, fee);
-          TickFill f;
-          f.ts_ns = ts;
-          f.price = px;
-          f.quantity = qty;
-          f.fee = fee;
-          f.is_buy = false;
-          out.fills.push_back(f);
+          double fee = in_short ? buy_fee(qty * px, cfg) : sell_fee(qty * px, cfg);
+          double before_pos = acct.position;
+          if (in_short)
+            acct.apply_buy(qty, px, fee, day);
+          else
+            acct.apply_sell(qty, px, fee);
+          if (std::abs(acct.position - before_pos) <= 1e-9 && in_short) {
+            // 买回失败（现金不足）则不记成交
+          } else {
+            TickFill f;
+            f.ts_ns = ts;
+            f.price = px;
+            f.quantity = qty;
+            f.fee = fee;
+            f.is_buy = in_short;
+            out.fills.push_back(f);
+          }
         }
       }
     }

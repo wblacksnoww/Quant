@@ -247,6 +247,9 @@ class BoardRules:
     lot_size: int  # 买入最小单位（股）
     t_plus_1: bool = True
     price_digits: int = 2
+    # 是否允许做空（负持仓）。仅虚拟货币允许：现货信用交易/合约才有做空资格，
+    # A 股融券、美股港股借券虽存在但本系统不建模，明确 False 比含糊的 True 安全。
+    can_short: bool = False
 
     @property
     def limit_label(self) -> str:
@@ -264,8 +267,8 @@ _INDEX = BoardRules("index", "指数", 0.0, 1, t_plus_1=False, price_digits=4)
 _US = BoardRules("us", "美股", 0.0, 1, t_plus_1=False)
 _HK = BoardRules("hk", "港股", 0.0, 100, t_plus_1=False, price_digits=3)
 
-# 虚拟货币：7×24 无涨跌停、T+0、任意数量（小数）、8 位报价精度
-_CRYPTO = BoardRules("crypto", "虚拟货币", 0.0, 1, t_plus_1=False, price_digits=8)
+# 虚拟货币：7×24 无涨跌停、T+0、任意数量（小数）、8 位报价精度；允许做空
+_CRYPTO = BoardRules("crypto", "虚拟货币", 0.0, 1, t_plus_1=False, price_digits=8, can_short=True)
 # 场外基金：净值制申购/赎回（不走引擎撮合），份额小数、4 位净值精度
 _FUND_OTC = BoardRules("fund_otc", "场外基金", 0.0, 1, t_plus_1=False, price_digits=4)
 

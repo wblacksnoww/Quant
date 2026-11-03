@@ -59,6 +59,9 @@ struct Engine {
 
   bool has_open_order(size_t sym) const { return broker.has_open_order(symbols[sym]); }
 
+  // direction=short 时入场信号开空、退出信号平空（镜像 Python StrategyContext.submit 翻转）
+  bool direction_short = false;
+
   double round_lot(double qty, size_t sym) const {
     int lot = rules[sym].lot_size;
     if (lot <= 1) return qty;
@@ -97,6 +100,15 @@ struct Engine {
   void buy_percent(size_t sym, double percent, const std::string& tag, ClockNs now) {
     double price = price_now(sym, cursor_of(sym));
     if (price <= 0) return;
+    if (direction_short) {
+      // 做空模式：入场信号变成卖出开空，目标名义 = 权益 × percent；
+      // 超出保证金容量的部分由 Broker 按权益缩减（镜像 Python ctx.submit 翻转）
+      double notional = acct.equity() * std::max(0.0, std::min(1.0, percent));
+      double qty = round_lot(notional / price, sym);
+      if (qty <= 0) return;
+      submit_order(sym, false, qty, false, 0.0, tag, now);
+      return;
+    }
     double qty = size_percent(sym, true, percent, price);
     if (qty <= 0) return;
     submit_order(sym, true, qty, false, 0.0, tag, now);
@@ -105,6 +117,15 @@ struct Engine {
   void close_pos(size_t sym, const std::string& tag, ClockNs now, double fraction = 1.0) {
     auto it = acct.positions.find(symbols[sym]);
     if (it == acct.positions.end()) return;
+    if (direction_short && it->second.is_short()) {
+      // 做空模式：退出信号变成买入平空（空头 available = quantity，为负）
+      double short_abs = std::abs(it->second.quantity);
+      if (short_abs <= 0) return;
+      double qty = fraction >= 1.0 ? short_abs : round_lot(short_abs * fraction, sym);
+      if (qty <= 0) return;
+      submit_order(sym, true, qty, false, 0.0, tag, now);
+      return;
+    }
     double available = it->second.available;
     if (available <= 0) return;
     double qty = fraction >= 1.0 ? available : round_lot(available * fraction, sym);
@@ -115,6 +136,25 @@ struct Engine {
   void order_target_percent(size_t sym, double target, const std::string& tag, ClockNs now) {
     double price = price_now(sym, cursor_of(sym));
     if (price <= 0) return;
+    if (direction_short) {
+      // 做空模式：target 是空头敞口占权益的目标比例
+      double target_value = acct.equity() * target;
+      auto it = acct.positions.find(symbols[sym]);
+      double short_abs = 0.0;
+      if (it != acct.positions.end() && it->second.is_short())
+        short_abs = std::abs(it->second.market_value());
+      double diff = target_value - short_abs;
+      if (std::abs(diff) < price * 100) return;
+      if (diff > 0) {
+        double qty = round_lot(diff / price, sym);
+        if (qty > 0) submit_order(sym, false, qty, false, 0.0, tag, now);
+      } else {
+        double qty = round_lot(std::abs(diff) / price, sym);
+        if (it != acct.positions.end()) qty = std::min(qty, std::abs(it->second.quantity));
+        if (qty > 0) submit_order(sym, true, qty, false, 0.0, tag, now);
+      }
+      return;
+    }
     double target_value = acct.equity() * target;
     auto it = acct.positions.find(symbols[sym]);
     double mv = it != acct.positions.end() ? it->second.market_value() : 0.0;
@@ -197,10 +237,11 @@ struct Engine {
     // 多个退出规则 → 唯一动作（与 apply_exit 相同的优先级：止损100 / 止盈80 / 信号50）
     int action = 0;  // 0=hold 1=stop 2=tp 3=signal
     double close = cols[sym].close[i];
-    if (!flat && available > 0) {
+    if (!flat && (direction_short || available > 0)) {
       double cost = it->second.avg_cost;
       if (cost > 0) {
-        double pnl = close / cost - 1.0;
+        // 空头盈亏方向相反：价格跌 → 盈利
+        double pnl = direction_short ? 1.0 - close / cost : close / cost - 1.0;
         if (p.stop_loss > 0 && pnl <= -p.stop_loss) action = 1;
         if (p.take_profit > 0 && pnl >= p.take_profit && action == 0) action = 2;
       }
@@ -224,9 +265,11 @@ struct Engine {
     bool flat = it == acct.positions.end() || it->second.flat();
     double available = it != acct.positions.end() ? it->second.available : 0.0;
     if (has_open_order(sym)) return;
-    if (!flat && available > 0) {
+    if (!flat && (direction_short || available > 0)) {
       double cost = it->second.avg_cost;
-      if (cost > 0 && p.stop_loss > 0 && cols[sym].close[i] / cost - 1.0 <= -p.stop_loss) {
+      double pnl =
+          direction_short ? 1.0 - cols[sym].close[i] / cost : cols[sym].close[i] / cost - 1.0;
+      if (cost > 0 && p.stop_loss > 0 && pnl <= -p.stop_loss) {
         close_pos(sym, "stop_loss", now);
         return;
       }
@@ -306,8 +349,9 @@ struct Engine {
       double available = it != acct.positions.end() ? it->second.available : 0.0;
       if (has_open_order(s)) continue;
 
-      if (!flat && available > 0 && it->second.avg_cost > 0) {
-        double pnl = cols[s].close[i] / it->second.avg_cost - 1.0;
+      if (!flat && (direction_short || available > 0) && it->second.avg_cost > 0) {
+        double pnl = direction_short ? 1.0 - cols[s].close[i] / it->second.avg_cost
+                                     : cols[s].close[i] / it->second.avg_cost - 1.0;
         // 止损/止盈来自 spec（与 Python CustomRuleStrategy 同源），不是 StrategyParams 默认
         if (p.spec.stop_loss > 0 && pnl <= -p.spec.stop_loss) {
           close_pos(s, "stop_loss", now);
@@ -320,7 +364,7 @@ struct Engine {
       }
       if (flat) {
         if (entry) buy_percent(s, p.spec.position_pct, "entry", now);
-      } else if (available > 0) {
+      } else if (direction_short || available > 0) {
         if (exit) close_pos(s, "exit", now);
       }
     }
@@ -352,12 +396,13 @@ py::dict run_backtest_native(
     std::vector<py::array_t<double, py::array::c_style | py::array::forcecast>> limit_ups,
     std::vector<py::array_t<double, py::array::c_style | py::array::forcecast>> limit_downs,
     std::vector<std::map<std::string, py::array_t<double, py::array::c_style | py::array::forcecast>>> extras,
-    py::function progress, int max_order_age_days) {
+    py::function progress, int max_order_age_days, std::string direction) {
   StrategyKind kind = strategy_kind(strategy_id);
   CostModel cost = cost_from_dict(cost_dict, stamp_both_sides);
 
   Engine eng(symbols, initial_cash, cost, volume_limit_pct, kind, max_order_age_days);
   eng.strategy_name = strategy_id;
+  eng.direction_short = (direction == "short");
   // 参数
   auto getf = [&](const char* k, double def) {
     if (params.contains(k) && !params[k].is_none()) return py::cast<double>(params[k]);

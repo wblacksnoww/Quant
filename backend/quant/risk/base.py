@@ -119,6 +119,22 @@ class RiskRule(ABC):
 # --------------------------------------------------------------------------- #
 
 
+def _short_opening_qty(order: Order, state: RiskState) -> float:
+    """该订单会**新开空仓**的数量；0 表示纯平多/加多，不涉及做空。
+
+    多条规则都默认「SELL = 减仓、永远放行」，做空引入后这个假设不再成立：
+    做空市场（目前仅虚拟货币）的 SELL 超出可卖数量的部分是开空，
+    应当和买入一样接受开仓类风控约束。
+    """
+    if order.side is not Side.SELL:
+        return 0.0
+    if not rules_for(order.symbol).can_short:
+        return 0.0
+    pos = state.account.get_position(order.symbol)
+    sellable = max(0.0, pos.available) if pos.is_long else 0.0
+    return max(0.0, order.quantity - sellable)
+
+
 class MaxPositionPct(RiskRule):
     rule_id = "max_position_pct"
     display_name = "单票仓位护栏"
@@ -129,14 +145,24 @@ class MaxPositionPct(RiskRule):
     )
 
     def check(self, order: Order, state: RiskState) -> RiskDecision:
-        if order.side is Side.SELL or state.equity <= 0:
+        short_qty = _short_opening_qty(order, state)
+        if order.side is Side.SELL and short_qty <= 0:
+            return RiskDecision.ok()  # 纯平多：减仓永远放行
+        if state.equity <= 0:
             return RiskDecision.ok()
         limit = float(self.params.get("limit", 0.30))
         price = float(order.limit_price or state.account.last_price(order.symbol) or 0.0)
         if price <= 0:
             return RiskDecision.ok()
         pos = state.account.get_position(order.symbol)
-        projected = (pos.market_value + price * order.quantity) / state.equity
+        if order.side is Side.SELL:
+            # 开空：新敞口 = |当前市值| + 开空名义（当前已空头则含在市值里）
+            projected = (abs(pos.market_value) + price * short_qty) / state.equity
+        elif pos.is_short:
+            # 买回平空：敞口只减不增
+            projected = max(0.0, abs(pos.market_value) - price * order.quantity) / state.equity
+        else:
+            projected = (pos.market_value + price * order.quantity) / state.equity
         if projected > limit + 1e-9:
             return self.block(
                 f"{order.symbol} 目标仓位 {projected:.1%} 超过上限 {limit:.1%}",
@@ -177,7 +203,7 @@ class MaxPositions(RiskRule):
     description = "同时持有的标的数量上限，避免过度分散导致管理成本上升。"
 
     def check(self, order: Order, state: RiskState) -> RiskDecision:
-        if order.side is Side.SELL:
+        if order.side is Side.SELL and _short_opening_qty(order, state) <= 0:
             return RiskDecision.ok()
         limit = int(self.params.get("limit", 10))
         pos = state.account.get_position(order.symbol)
@@ -198,7 +224,7 @@ class DailyLossLimit(RiskRule):
     description = "当日亏损超过阈值后禁止开新仓（只允许减仓）。"
 
     def check(self, order: Order, state: RiskState) -> RiskDecision:
-        if order.side is Side.SELL:
+        if order.side is Side.SELL and _short_opening_qty(order, state) <= 0:
             return RiskDecision.ok()
         limit = float(self.params.get("limit", 0.05))
         if state.daily_pnl_pct <= -limit:
@@ -217,7 +243,7 @@ class MaxDrawdown(RiskRule):
     description = "从权益峰值回撤超过阈值后，拒绝一切买入指令。"
 
     def check(self, order: Order, state: RiskState) -> RiskDecision:
-        if order.side is Side.SELL:
+        if order.side is Side.SELL and _short_opening_qty(order, state) <= 0:
             return RiskDecision.ok()
         limit = float(self.params.get("limit", 0.20))
         if state.drawdown >= limit:

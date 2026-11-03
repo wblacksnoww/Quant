@@ -28,6 +28,7 @@ struct SymbolRules {
   bool t_plus_1 = false;
   double limit_pct = 0.0;
   int price_digits = 2;
+  bool can_short = false;  // 是否允许做空（仅 CRYPTO）——聚合初始化缺省为 false
 };
 
 SymbolRules rules_for(const std::string& symbol);
@@ -104,9 +105,13 @@ struct Fill {
 // 账户账本（镜像 core.portfolio.Account）
 // ------------------------------------------------------------------ //
 struct Position {
+  // quantity 允许为负：正 = 多头，负 = 空头（镜像 Python core.types.Position）。
+  // 权益 = 现金 + 市值对空头自动成立：市值 = price * quantity < 0，
+  // 价格涨 → 市值绝对值变大 → 权益降，不需要独立保证金账户。
   double quantity = 0.0, available = 0.0, avg_cost = 0.0, last_price = 0.0, realized_pnl = 0.0;
   ClockNs opened_ns = 0;
   bool flat() const { return quantity == 0.0; }
+  bool is_short() const { return quantity < 0.0; }
   double market_value() const { return (last_price != 0.0 ? last_price : avg_cost) * quantity; }
   double cost_value() const { return avg_cost * quantity; }
   double unrealized() const { return flat() ? 0.0 : market_value() - cost_value(); }
@@ -124,6 +129,8 @@ class Account {
   double available_cash() const { return cash - frozen_cash; }
   double market_value() const;
   double equity() const { return cash + market_value(); }
+  double gross_exposure() const;   // Σ|持仓市值|，仓位比例用
+  double short_notional() const;   // 空头名义价值合计，开空保证金校验用
   double unrealized_pnl() const;
   Position& get_position(const std::string& symbol);
   double last_price_of(const std::string& symbol) const;
@@ -134,6 +141,11 @@ class Account {
   void apply_fill(const Fill& fill);
   void on_new_session();
   int holding_count() const;
+  // 开空保证金率：空头名义 × ratio ≤ 权益。默认 1.0（无杠杆），与 Python 一致。
+  double short_margin_ratio = 1.0;
+  // 把一笔成交拆成「平仓量 / 开仓量」（镜像 Account._split_close_open）
+  void split_close_open(const std::string& symbol, bool buy, double qty, double& close_qty,
+                        double& open_qty) const;
 };
 
 // ------------------------------------------------------------------ //

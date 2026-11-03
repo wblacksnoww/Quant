@@ -72,6 +72,20 @@ class InsufficientPosition(BrokerError):
     http_status = 400
 
 
+class ShortNotAllowed(BrokerError):
+    """该市场不允许做空（如 A 股现货），却被要求开空仓。"""
+
+    code = "short_not_allowed"
+    http_status = 400
+
+
+class InsufficientMargin(BrokerError):
+    """开空/加空所需保证金不足（名义价值超出权益 × 1/保证金率）。"""
+
+    code = "insufficient_margin"
+    http_status = 400
+
+
 class OrderRejected(BrokerError):
     code = "order_rejected"
     http_status = 400
@@ -173,6 +187,7 @@ __all__ = [
     "EngineError",
     "EngineNotRunning",
     "InsufficientCash",
+    "InsufficientMargin",
     "InsufficientPosition",
     "LimitUpDownBlocked",
     "MasterKeyMissing",
@@ -181,4 +196,5 @@ __all__ = [
     "QuantError",
     "RiskRejected",
     "SecurityError",
+    "ShortNotAllowed",
 ]

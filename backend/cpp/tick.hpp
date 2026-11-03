@@ -123,6 +123,9 @@ struct TickConfig {
   double stop_loss = 0.0;
   double take_profit = 0.0;
   double slippage_bps = 0.0;
+  // direction=short：入场信号卖出开空、退出信号买入平空（仅 CRYPTO）。
+  // TickAccount 的 position 允许为负，equity = cash + position*last_price 自动成立。
+  bool direction_short = false;
 };
 
 // 对一个标的跑 tick 回测。策略以 spec 表达，复用 bar 级的 CompiledSpec。

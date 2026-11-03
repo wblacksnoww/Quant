@@ -102,6 +102,7 @@ def start(ctx: Any, *, user_id: int, body: Any) -> str:
             "poll_interval": body.poll_interval,
             "respect_market_hours": body.respect_market_hours,
             "bar_interval": getattr(body, "bar_interval", "1d"),
+            "direction": getattr(body, "direction", "long"),
         },
     )
     recorder.start()
@@ -205,6 +206,7 @@ def continue_run(ctx: Any, *, user_id: int, run_id: str) -> dict[str, Any]:
             benchmark=stored.get("benchmark"),
             risk_free_rate=float(stored.get("risk_free_rate") or 0.0),
             bar_interval=str(stored.get("bar_interval") or "1d"),
+            direction=str(stored.get("direction") or "long"),
             run_id=run_id,
             user_id=user_id,
         )

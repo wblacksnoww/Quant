@@ -44,6 +44,9 @@ class EngineConfig:
     user_id: int | None = None
     # bar 周期：1d（默认，日线）或 1m/5m/15m/30m/60m（分钟级，仅虚拟货币支持历史回测）
     bar_interval: str = "1d"
+    # 持仓方向：long（默认，策略信号照原样执行）或 short（信号翻转：买变卖、卖变买，
+    # 用于在允许做空的市场上用同一套策略逻辑做空）。仅虚拟货币支持。
+    direction: str = "long"
 
     def cost_model(self) -> object:
         """按市场取成本模型，并把默认滑点/冲击注入（用户未显式指定时）。"""
@@ -82,6 +85,10 @@ class EngineConfig:
             raise ValueError(f"bar_interval 只支持 1d/1m/5m/15m/30m/60m，当前 {self.bar_interval!r}")
         if self.bar_interval != "1d" and self.market != "CRYPTO":
             raise ValueError("分钟级 bar_interval 目前仅支持虚拟货币市场")
+        if self.direction not in ("long", "short"):
+            raise ValueError(f"direction 只支持 long/short，当前 {self.direction!r}")
+        if self.direction == "short" and self.market != "CRYPTO":
+            raise ValueError("做空（direction=short）目前仅支持虚拟货币市场")
 
 
 @dataclass

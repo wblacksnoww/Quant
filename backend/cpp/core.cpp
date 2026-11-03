@@ -102,7 +102,7 @@ SymbolRules rules_for(const std::string& symbol) {
   }
   if (market == "US") { r = {1, false, 0.0, 2}; return r; }
   if (market == "HK") { r = {100, false, 0.0, 3}; return r; }
-  if (market == "CRYPTO") { r = {1, false, 0.0, 8}; return r; }
+  if (market == "CRYPTO") { r = {1, false, 0.0, 8, true}; return r; }
   if (market == "FUND") { r = {1, false, 0.0, 4}; return r; }
   // CN：按代码前缀
   if (code.rfind("688", 0) == 0 || code.rfind("689", 0) == 0) { r = {200, true, 0.20, 2}; return r; }
@@ -195,10 +195,34 @@ double Account::market_value() const {
   for (const auto& [sym, pos] : positions) mv += pos.market_value();
   return mv;
 }
+double Account::gross_exposure() const {
+  double g = 0.0;
+  for (const auto& [sym, pos] : positions) g += std::abs(pos.market_value());
+  return g;
+}
+double Account::short_notional() const {
+  double n = 0.0;
+  for (const auto& [sym, pos] : positions)
+    if (pos.is_short()) n += std::abs(pos.market_value());
+  return n;
+}
 double Account::unrealized_pnl() const {
   double u = 0.0;
   for (const auto& [sym, pos] : positions) u += pos.unrealized();
   return u;
+}
+void Account::split_close_open(const std::string& symbol, bool buy, double qty, double& close_qty,
+                               double& open_qty) const {
+  auto it = positions.find(symbol);
+  double pos_qty = it != positions.end() ? it->second.quantity : 0.0;
+  double delta = buy ? qty : -qty;  // 该笔成交对持仓的符号
+  if (pos_qty != 0.0 && (pos_qty > 0) != (delta > 0)) {
+    close_qty = std::min(std::abs(pos_qty), qty);
+    open_qty = qty - close_qty;
+    return;
+  }
+  close_qty = 0.0;
+  open_qty = qty;
 }
 Position& Account::get_position(const std::string& symbol) { return positions[symbol]; }
 double Account::last_price_of(const std::string& symbol) const {
@@ -229,18 +253,50 @@ void Account::unfreeze(double amount) {
   frozen_cash = std::max(0.0, frozen_cash - amount);
 }
 double Account::realized_pnl_for(const std::string& symbol, bool buy, double price, double qty, double fees_total) const {
-  if (buy) return 0.0;
+  // 平仓段才有已实现盈亏（买回平空也算）；与 apply_fill 用同一分解，口径一致
+  double close_qty = 0.0, open_qty = 0.0;
+  split_close_open(symbol, buy, qty, close_qty, open_qty);
+  if (close_qty <= 0) return 0.0;
   auto it = positions.find(symbol);
   double avg = it != positions.end() ? it->second.avg_cost : 0.0;
-  return (price - avg) * qty - fees_total;
+  bool short_close = it != positions.end() && it->second.is_short();
+  double fees_close = qty > 0 ? fees_total * (close_qty / qty) : fees_total;
+  return short_close ? (avg - price) * close_qty - fees_close
+                     : (price - avg) * close_qty - fees_close;
 }
 void Account::apply_fill(const Fill& fill) {
   Position& pos = get_position(fill.symbol);
   double gross = std::abs(fill.price * fill.quantity);
   double fees_total = fill.fees.total();
+  double close_qty = 0.0, open_qty = 0.0;
+  split_close_open(fill.symbol, fill.buy, fill.quantity, close_qty, open_qty);
+  double fees_close = fill.quantity > 0 ? fees_total * (close_qty / fill.quantity) : fees_total;
+  double fees_open = fees_total - fees_close;
+  SymbolRules rules = rules_for(fill.symbol);
+
+  // 闸门 1：不允许做空的市场出现开空量直接拒绝（镜像 ShortNotAllowed）
+  if (open_qty > 0 && !fill.buy && !rules.can_short) {
+    char buf[160];
+    std::snprintf(buf, sizeof(buf),
+                  "%s 所在市场不允许做空，卖出 %.8g 中有 %.8g 会开空仓",
+                  fill.symbol.c_str(), fill.quantity, open_qty);
+    throw std::runtime_error(buf);
+  }
+  // 闸门 2：开空保证金（空头名义 × ratio ≤ 权益；开空瞬间权益不变）
+  if (open_qty > 0 && !fill.buy) {
+    double notional_after = (std::abs(pos.quantity) + open_qty) * fill.price;
+    double eq = equity();
+    if (notional_after * short_margin_ratio > eq + 1e-6) {
+      char buf[192];
+      std::snprintf(buf, sizeof(buf),
+                    "%s 开空保证金不足：空头名义 %.2f × 保证金率 %g 超过权益 %.2f",
+                    fill.symbol.c_str(), notional_after, short_margin_ratio, eq);
+      throw std::runtime_error(buf);
+    }
+  }
+  // 闸门 3：买入现金充足（加多与买回平空同一条）
   if (fill.buy) {
     double cost = gross + fees_total;
-    // 最后一道闸门：现金不允许变负（撮合层已按可用资金缩减，此处兜底）
     if (cost > available_cash() + 1e-6) {
       char buf[192];
       std::snprintf(buf, sizeof(buf),
@@ -248,24 +304,44 @@ void Account::apply_fill(const Fill& fill) {
                     cost, available_cash());
       throw std::runtime_error(buf);
     }
-    double new_qty = pos.quantity + fill.quantity;
-    double new_cost = pos.cost_value() + gross + fees_total;
-    pos.avg_cost = new_cost / new_qty;
-    pos.quantity = new_qty;
-    SymbolRules rules = rules_for(fill.symbol);
-    if (!rules.t_plus_1) pos.available += fill.quantity;
-    if (pos.opened_ns == 0) pos.opened_ns = fill.dt_ns;
-    cash -= gross + fees_total;
-  } else {
-    double gross_profit = (fill.price - pos.avg_cost) * fill.quantity;
-    double realized = gross_profit - fees_total;
-    pos.realized_pnl += realized;
-    pos.quantity -= fill.quantity;
-    cash += gross - fees_total;
-    realized_pnl += realized;
-    if (pos.quantity == 0) pos.avg_cost = 0.0;
   }
-  pos.available = std::min(pos.available, pos.quantity);
+
+  double realized = 0.0;
+  // 平仓段
+  if (close_qty > 0) {
+    realized = pos.is_short() ? (pos.avg_cost - fill.price) * close_qty - fees_close
+                              : (fill.price - pos.avg_cost) * close_qty - fees_close;
+    pos.realized_pnl += realized;
+    pos.quantity += (fill.buy ? 1.0 : -1.0) * close_qty;
+    if (pos.quantity == 0) {
+      pos.avg_cost = 0.0;
+      pos.opened_ns = 0;
+    }
+  }
+  // 开仓段：多头成本 = 金额 + 费用；空头成本 = 卖出净所得（金额 - 费用）。
+  // 空头赚的是「卖得净价 - 买回价」，把费用加进空头成本会破坏
+  // 「已实现 + 未实现 = 总盈亏」恒等式。
+  if (open_qty > 0) {
+    double new_abs = std::abs(pos.quantity) + open_qty;
+    double open_gross = fill.price * open_qty;
+    double new_cost = fill.buy ? std::abs(pos.cost_value()) + open_gross + fees_open
+                               : std::abs(pos.cost_value()) + open_gross - fees_open;
+    pos.avg_cost = new_cost / new_abs;
+    pos.quantity += (fill.buy ? 1.0 : -1.0) * open_qty;
+    if (pos.opened_ns == 0) pos.opened_ns = fill.dt_ns;
+    if (!(fill.buy && rules.t_plus_1)) pos.available += (fill.buy ? 1.0 : -1.0) * open_qty;
+  }
+
+  // 现金：买入付 gross+fees，卖出收 gross-fees（与多空方向无关）
+  cash += fill.buy ? -(gross + fees_total) : (gross - fees_total);
+  realized_pnl += realized;
+  if (pos.quantity == 0) {
+    pos.available = 0.0;
+  } else if (pos.is_short()) {
+    pos.available = pos.quantity;  // 空头只存在于 T+0 市场，全部可平
+  } else {
+    pos.available = std::min(pos.available, pos.quantity);
+  }
   total_fees += fees_total;
   turnover += gross;
   trade_count += 1;
@@ -479,11 +555,12 @@ std::optional<std::string> Broker::validate(const Order& o) {
     }
   } else {
     double s = sellable(o.symbol, o.id);
-    if (o.quantity > s + 1e-9) {
+    if (o.quantity > s + 1e-9 && !rules.can_short) {
       char buf[128];
       std::snprintf(buf, sizeof(buf), "可卖数量不足：可卖 %.0f，委托 %.0f", s, o.quantity);
       return std::string(buf);
     }
+    // 做空市场放行：超出可卖数量的部分是开空，撮合时按保证金容量缩减
   }
   return std::nullopt;
 }
@@ -509,6 +586,26 @@ void Broker::submit(Order o) {
     }
     order.frozen_cash = frozen;
   } else {
+    // 开空部分冻结保证金（镜像 Python broker.submit）
+    SymbolRules srules = rules_for(order.symbol);
+    double sellable_qty = sellable(order.symbol, order.id);
+    double extra_short = std::max(0.0, order.quantity - sellable_qty);
+    if (extra_short > 0 && srules.can_short) {
+      double price = order.is_limit && order.limit_price > 0
+                         ? order.limit_price
+                         : acct.last_price_of(order.symbol);
+      if (price <= 0) price = 1.0;
+      double buffer = order.is_limit ? 1.0 : 1.02;
+      double margin = price * buffer * extra_short * acct.short_margin_ratio;
+      try {
+        acct.freeze(margin);
+      } catch (const std::exception& exc) {
+        std::string msg = std::string("开空保证金不足：") + exc.what();
+        order.reject(msg, now_ns_);
+        return;
+      }
+      order.frozen_cash = margin;
+    }
     order.has_frozen_qty = true;
   }
   order.status = "submitted";
@@ -586,10 +683,22 @@ bool Broker::try_match(Order& o, const BarView& bar) {
   }
   auto it = acct.positions.find(o.symbol);
   double pos_qty = it != acct.positions.end() ? it->second.quantity : 0.0;
-  if (!o.buy && qty > pos_qty) qty = pos_qty;
-  if (qty <= 0) return false;
-
   double price = out.price;
+  if (!o.buy) {
+    SymbolRules srules = rules_for(o.symbol);
+    if (qty > pos_qty && !srules.can_short) {
+      qty = std::max(0.0, pos_qty);
+    } else if (srules.can_short) {
+      // 开空部分受保证金容量约束（镜像 Python broker._short_capacity）
+      double close_part = std::min(std::max(0.0, pos_qty), qty);
+      double short_part = qty - close_part;
+      double capacity_notional =
+          acct.equity() / acct.short_margin_ratio - acct.short_notional();
+      double capacity = std::max(0.0, capacity_notional) / (price > 0 ? price : 1.0);
+      if (short_part > capacity + 1e-12) qty = close_part + std::max(0.0, capacity);
+    }
+  }
+  if (qty <= 0) return false;
   FeeBreakdown fees = matcher.fees(o, price, qty, bar.open);
   double realized = acct.realized_pnl_for(o.symbol, o.buy, price, qty, fees.total());
   Fill fill;
@@ -676,10 +785,26 @@ std::string RiskManager::pre_trade(const Order& o, Account& acct, ClockNs now_ns
     if (!rule.enabled) continue;
     char buf[160];
     if (rule.id == "max_position_pct") {
-      if (o.buy && equity > 0 && px > 0) {
+      if (equity > 0 && px > 0) {
         auto it = acct.positions.find(o.symbol);
         double mv = it != acct.positions.end() ? it->second.market_value() : 0.0;
-        double projected = (mv + px * o.quantity) / equity;
+        double projected;
+        if (!o.buy) {
+          // SELL：开空部分受约束；纯平多（无开空量或市场不允许做空）放行
+          SymbolRules srules = rules_for(o.symbol);
+          double sellable_qty =
+              it != acct.positions.end() && !it->second.is_short()
+                  ? std::max(0.0, it->second.available)
+                  : 0.0;
+          double short_qty = srules.can_short ? std::max(0.0, o.quantity - sellable_qty) : 0.0;
+          if (short_qty <= 0) continue;
+          projected = (std::abs(mv) + px * short_qty) / equity;
+        } else if (it != acct.positions.end() && it->second.is_short()) {
+          // 买回平空：敞口只减不增
+          projected = std::max(0.0, std::abs(mv) - px * o.quantity) / equity;
+        } else {
+          projected = (mv + px * o.quantity) / equity;
+        }
         double limit = rule.p_limit;
         if (projected > limit + 1e-9) {
           std::snprintf(buf, sizeof(buf), "[风控:%s] %s 目标仓位 %.1f%% 超过上限 %.1f%%",

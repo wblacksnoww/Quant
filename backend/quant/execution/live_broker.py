@@ -141,6 +141,18 @@ class LiveBroker(Broker):
                 return order
             order.meta["frozen_cash"] = frozen
         else:
+            # 开空部分冻结保证金（与 SimBroker 同一口径）
+            rules = rules_for(order.symbol)
+            extra_short = max(0.0, order.quantity - self._sellable(order.symbol))
+            if extra_short > 0 and rules.can_short:
+                margin = self._estimate_short_margin(order, extra_short)
+                try:
+                    self.account.freeze(margin)
+                except Exception as exc:  # noqa: BLE001
+                    order.reject(f"开空保证金不足：{exc}")
+                    self._emit_order(order)
+                    return order
+                order.meta["frozen_cash"] = margin
             order.meta["frozen_qty"] = order.quantity
 
         try:
@@ -286,6 +298,16 @@ class LiveBroker(Broker):
                 pass
         if order.is_open and order.side is Side.SELL:
             order.meta["frozen_qty"] = order.remaining
+            # 开空剩余部分重新冻结保证金（与 SimBroker 同一口径）
+            pos_now = self.account.get_position(order.symbol)
+            short_rest = max(0.0, order.remaining - max(0.0, pos_now.quantity))
+            if short_rest > 0 and rules_for(order.symbol).can_short:
+                try:
+                    margin = self._estimate_short_margin(order, short_rest, at_price=price)
+                    self.account.freeze(margin)
+                    order.meta["frozen_cash"] = margin
+                except Exception:  # noqa: BLE001 - 本地冻结失败不阻塞真实成交记账
+                    pass
 
         self._fills.append(fill)
         self._emit_fill(fill)
@@ -348,8 +370,9 @@ class LiveBroker(Broker):
                 return f"可用资金不足：需要 {need:.2f}，可用 {self.account.available_cash:.2f}"
         else:
             sellable = self._sellable(order.symbol, exclude_id=order.id)
-            if order.quantity > sellable + 1e-9:
+            if order.quantity > sellable + 1e-9 and not rules.can_short:
                 return f"可卖数量不足：可卖 {sellable}，委托 {order.quantity}"
+            # 做空市场放行：超出可卖数量的部分是开空，由交易所保证金规则兜底
         return None
 
     def _estimate_cash(self, order: Order) -> float:
@@ -362,6 +385,19 @@ class LiveBroker(Broker):
             price = order.limit_price or 1.0
         buffer = 1.0 if order.order_type is OrderType.LIMIT else 1.02
         return self.cost_model.estimate_buy_cost(price * buffer, order.quantity)
+
+    def _estimate_short_margin(self, order: Order, short_qty: float, at_price: float | None = None) -> float:
+        """开空 ``short_qty`` 需要冻结的保证金（与 SimBroker 同一口径）。"""
+        price = (
+            at_price
+            or order.limit_price
+            or self.account.last_price(order.symbol)
+            or self._last_quotes.get(order.symbol, 0.0)
+        )
+        if not price or price <= 0:
+            price = order.limit_price or 1.0
+        buffer = 1.0 if order.order_type is OrderType.LIMIT else 1.02
+        return price * buffer * short_qty * self.account.short_margin_ratio
 
     def _sellable(self, symbol: str, exclude_id: str | None = None) -> float:
         pos = self.account.get_position(symbol)

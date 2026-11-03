@@ -37,6 +37,7 @@ def build_engine_config(
         benchmark=body.benchmark,
         risk_free_rate=body.risk_free_rate or rf,
         bar_interval=getattr(body, "bar_interval", None) or "1d",
+        direction=getattr(body, "direction", None) or "long",
         user_id=user_id,
     )
 

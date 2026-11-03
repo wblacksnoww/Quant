@@ -252,6 +252,7 @@ class BacktestManager:
             "adjust": config.adjust,
             "volume_limit_pct": config.volume_limit_pct,
             "risk_free_rate": config.risk_free_rate,
+            "direction": config.direction,
         }
 
     @staticmethod
@@ -270,6 +271,7 @@ class BacktestManager:
             volume_limit_pct=float(payload.get("volume_limit_pct", 0.10)),
             risk_free_rate=float(payload.get("risk_free_rate") or 0.0),
             bar_interval=str(payload.get("bar_interval") or "1d"),
+            direction=str(payload.get("direction") or "long"),
             run_id=run_id,
             user_id=user_id,
         )

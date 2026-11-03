@@ -204,6 +204,7 @@ class LiveEngine(BaseEngine):
             recorder=self.recorder,
             auto_end_of_day=False,  # 跨日才撤 DAY 单
             news=self.news,
+            direction=cfg.direction,
         )
 
     # ------------------------------------------------------------------ #

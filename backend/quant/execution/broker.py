@@ -138,6 +138,18 @@ class SimBroker(Broker):
                 return order
             order.meta["frozen_cash"] = frozen
         else:
+            # 开空部分按保证金冻结现金：空头占用购买力，不能再拿去做多
+            rules = rules_for(order.symbol)
+            extra_short = max(0.0, order.quantity - self._sellable(order.symbol))
+            if extra_short > 0 and rules.can_short:
+                margin = self._estimate_short_margin(order, extra_short)
+                try:
+                    self.account.freeze(margin)
+                except Exception as exc:  # noqa: BLE001 - 保证金不足直接拒单
+                    order.reject(f"开空保证金不足：{exc}")
+                    self._emit_order(order)
+                    return order
+                order.meta["frozen_cash"] = margin
             order.meta["frozen_qty"] = order.quantity
 
         order.mark_submitted()
@@ -238,13 +250,35 @@ class SimBroker(Broker):
                 outcome.fill_price,
             )
 
+        price = outcome.fill_price
         quantity = outcome.quantity
-        if order.side is Side.SELL and quantity > self.account.get_position(order.symbol).quantity:
-            quantity = self.account.get_position(order.symbol).quantity
+        pos = self.account.get_position(order.symbol)
+        rules = rules_for(order.symbol)
+        if order.side is Side.SELL:
+            if quantity > pos.quantity and not rules.can_short:
+                quantity = max(0.0, pos.quantity)
+            elif rules.can_short:
+                # 开空部分受保证金容量约束：权益/保证金率 - 已有空头名义
+                close_part = min(max(0.0, pos.quantity), quantity)
+                short_part = quantity - close_part
+                capacity = self._short_capacity(order.symbol, price)
+                if short_part > capacity + 1e-12:
+                    quantity = close_part + max(0.0, capacity)
+                    order.meta["margin_capped"] = True
+                    order.meta["margin_capped_detail"] = (
+                        f"保证金保护：原计划开空 {short_part:.8g}，按权益缩减为 {max(0.0, capacity):.8g}"
+                    )
+                    log.warning(
+                        "保证金缩减成交 %s %s: 开空 %.8g → %.8g（成交价 %.8g）",
+                        order.symbol,
+                        order.id,
+                        short_part,
+                        capacity,
+                        price,
+                    )
         if quantity <= 0:
             return None
 
-        price = outcome.fill_price
         base_price = bar.open
         fees = self.matching.fees(order, price, quantity, base_price)
         realized = self.account.realized_pnl_for(order.symbol, order.side, price, quantity, fees.total)
@@ -276,6 +310,15 @@ class SimBroker(Broker):
                 order.expire("剩余数量资金不足")
         if order.is_open and order.side is Side.SELL:
             order.meta["frozen_qty"] = order.remaining
+            # 开空剩余部分重新冻结保证金（释放发生在 apply_fill 之前）
+            short_rest = max(0.0, order.remaining - max(0.0, pos.quantity))
+            if short_rest > 0 and rules.can_short:
+                try:
+                    margin = self._estimate_short_margin(order, short_rest, at_price=price)
+                    self.account.freeze(margin)
+                    order.meta["frozen_cash"] = margin
+                except Exception:  # noqa: BLE001 - 剩余开空保证金不够就挂到日终
+                    order.expire("剩余开空保证金不足")
 
         # 跳空缩减过的单：剩余数量在当前价位本来就买不起，继续挂只会白占冻结额度，
         # 直接终止（已成交部分保留）。不这样做的话，剩余资金会一直锁到日终。
@@ -367,7 +410,10 @@ class SimBroker(Broker):
         else:
             sellable = self._sellable(order.symbol, exclude_id=order.id)
             if order.quantity > sellable + 1e-9:
-                return f"可卖数量不足：可卖 {sellable}，委托 {order.quantity}"
+                if not rules.can_short:
+                    return f"可卖数量不足：可卖 {sellable}，委托 {order.quantity}"
+                # 做空市场放行：超出可卖数量的部分是开空，
+                # 保证金容量在撮合时按当时权益缩减（见 _short_capacity）
         return None
 
     def _estimate_cash(self, order: Order) -> float:
@@ -378,6 +424,26 @@ class SimBroker(Broker):
         # 市价单上浮 2% 作为冻结缓冲，防止开盘跳空导致穿仓
         buffer = 1.0 if order.order_type is OrderType.LIMIT else 1.02
         return self.cost_model.estimate_buy_cost(price * buffer, order.quantity)
+
+    def _estimate_short_margin(self, order: Order, short_qty: float, at_price: float | None = None) -> float:
+        """开空 ``short_qty`` 需要冻结的保证金。市价单留 2% 价格缓冲。"""
+        price = at_price or order.limit_price or self.account.last_price(order.symbol)
+        if not price or price <= 0:
+            price = order.limit_price or 1.0
+        buffer = 1.0 if order.order_type is OrderType.LIMIT else 1.02
+        return price * buffer * short_qty * self.account.short_margin_ratio
+
+    def _short_capacity(self, symbol: str, price: float) -> float:
+        """当前权益下还能再开的空头数量（按 ``price`` 折算）。
+
+        容量名义价值 = 权益 / 保证金率 - 已有空头名义。为 0 表示空头已满仓。
+        """
+        if price <= 0:
+            return 0.0
+        equity = self.account.equity()
+        notional = self.account.short_notional()
+        capacity_notional = equity / self.account.short_margin_ratio - notional
+        return max(0.0, capacity_notional) / price
 
     def _sellable(self, symbol: str, exclude_id: str | None = None) -> float:
         """可卖数量 = T+1 可用 - 在途卖单（排除正在校验的这一单）。"""

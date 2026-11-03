@@ -89,6 +89,8 @@ class BacktestRequest(BaseModel):
     risk_free_rate: float = Field(default=0.02, ge=-0.1, le=0.5)
     # K 线周期：1d（默认）或 1m/5m/15m/30m/60m（分钟级，虚拟货币专用）
     bar_interval: BAR_INTERVAL = "1d"
+    # 持仓方向：long（默认）或 short（信号翻转做空，仅虚拟货币）
+    direction: Literal["long", "short"] = "long"
 
     @field_validator("symbols")
     @classmethod

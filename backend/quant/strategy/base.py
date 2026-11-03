@@ -125,6 +125,7 @@ class StrategyContext:
         strategy_name: str = "",
         risk: Any = None,
         news: Any = None,
+        direction: str = "long",
     ) -> None:
         self.account = account
         self.broker = broker
@@ -136,6 +137,10 @@ class StrategyContext:
         self._index: dict[str, int] = {}
         self._current_dt: datetime | None = None
         self._news = news
+        # "short" 时 submit 会把订单方向翻转（买变卖、卖变买），
+        # 策略代码完全无感 —— 同一套双均线逻辑，direction 一换就是做空策略。
+        # 翻转发生在风控之前，风控与券商看到的都是真实订单。
+        self.direction = direction if direction in ("long", "short") else "long"
         self.state: dict[str, Any] = {}  # 策略可自由使用的持久化黑盒
 
     # -- 时间 -------------------------------------------------------------- #
@@ -259,8 +264,16 @@ class StrategyContext:
 
     # -- 下单 -------------------------------------------------------------- #
     def submit(self, order: Order) -> Order:
-        """提交订单：先过风控，再进券商。风控拒绝的订单不会冻结资金。"""
+        """提交订单：先过风控，再进券商。风控拒绝的订单不会冻结资金。
+
+        ``direction=short`` 时订单方向在此翻转（买变卖、卖变买），
+        策略零改动获得做空能力；翻转后走的与普通订单完全相同的
+        风控/校验/撮合/结算链路。
+        """
         order.strategy = self.strategy_name
+        if self.direction == "short":
+            order.side = order.side.opposite
+            order.meta["direction"] = "short"
 
         if self.risk is not None:
             decision = self.risk.pre_trade(

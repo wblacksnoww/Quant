@@ -254,6 +254,7 @@ class PaperEngine(BaseEngine):
             # replay 逐日推进，日终即真实日终；live 由引擎在跨日时撤单
             auto_end_of_day=self.options.mode == "replay",
             news=self.news,
+            direction=cfg.direction,
         )
 
     def _restore_account(self, account: Account) -> None:
