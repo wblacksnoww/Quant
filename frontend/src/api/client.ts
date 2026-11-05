@@ -132,7 +132,12 @@ type RequestOptions = {
   query?: Record<string, string | number | boolean | null | undefined>
   signal?: AbortSignal
   auth?: boolean
+  /** 超时毫秒数，缺省 30 秒。行情类快接口可调小，拉全历史的可调大。 */
+  timeoutMs?: number
 }
+
+/** 没有超时的 fetch 会把按钮永久卡在 loading（disabled），用户看到的就是「点了没反应」。 */
+const DEFAULT_TIMEOUT_MS = 30_000
 
 function buildUrl(path: string, query?: RequestOptions['query']): string {
   const url = `${API_BASE}${path}`
@@ -150,13 +155,40 @@ async function rawFetch(path: string, options: RequestOptions = {}): Promise<Res
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (options.body !== undefined) headers['Content-Type'] = 'application/json'
   if (options.auth !== false && accessToken) headers.Authorization = `Bearer ${accessToken}`
-  return fetch(buildUrl(path, options.query), {
-    method: options.method ?? 'GET',
-    headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    signal: options.signal,
-    credentials: 'same-origin',
-  })
+
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const controller = new AbortController()
+  let timedOut = false
+  const timer = window.setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, timeoutMs)
+  // 调用方自带的 signal 与超时合并：任一触发都中断请求
+  const external = options.signal
+  const onExternalAbort = () => controller.abort()
+  if (external) {
+    if (external.aborted) controller.abort()
+    else external.addEventListener('abort', onExternalAbort)
+  }
+
+  try {
+    return await fetch(buildUrl(path, options.query), {
+      method: options.method ?? 'GET',
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: controller.signal,
+      credentials: 'same-origin',
+    })
+  } catch (error) {
+    // 超时要给可读原因：直接抛 AbortError 会被上层显示成「行情加载失败」，看不出是超时
+    if (timedOut) {
+      throw new ApiError(`请求超时（${Math.round(timeoutMs / 1000)} 秒），请稍后重试`, 0, 'timeout')
+    }
+    throw error
+  } finally {
+    window.clearTimeout(timer)
+    external?.removeEventListener('abort', onExternalAbort)
+  }
 }
 
 async function toApiError(response: Response): Promise<ApiError> {
@@ -191,11 +223,14 @@ export function refreshSession(): Promise<boolean> {
   if (!refresh) return Promise.resolve(false)
 
   refreshInFlight = (async () => {
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => controller.abort(), 12_000)
     try {
       const response = await fetch(buildUrl('/auth/refresh'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ refresh_token: refresh }),
+        signal: controller.signal,
       })
       if (!response.ok) {
         clearSession()
@@ -210,6 +245,7 @@ export function refreshSession(): Promise<boolean> {
       // 网络故障不清空 refresh token，下次还能再试
       return false
     } finally {
+      window.clearTimeout(timer)
       refreshInFlight = null
     }
   })()
@@ -222,6 +258,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   try {
     response = await rawFetch(path, options)
   } catch (error) {
+    if (error instanceof ApiError) throw error // 超时等原因已带可读文案
     if ((error as Error).name === 'AbortError') throw error
     throw new ApiError('无法连接服务器，请检查网络或服务状态', 0, 'network_error')
   }
@@ -281,23 +318,36 @@ export const authApi = {
 
 export const marketApi = {
   markets: () => request<MarketInfo[]>('/market/markets'),
+  // 首次拉多年日线要跑数据源，给足时间；其余行情接口走短超时，避免按钮久灰
   bars: (symbol: string, start?: string, end?: string, refresh = false) =>
-    request<BarsResponse>('/market/bars', { query: { symbol, start, end, refresh } }),
-  indices: () => request<IndexQuote[]>('/market/indices'),
-  instrument: (symbol: string) => request<InstrumentInfo>('/market/instrument', { query: { symbol } }),
+    request<BarsResponse>('/market/bars', {
+      query: { symbol, start, end, refresh },
+      timeoutMs: 60_000,
+    }),
+  indices: () => request<IndexQuote[]>('/market/indices', { timeoutMs: 12_000 }),
+  instrument: (symbol: string) =>
+    request<InstrumentInfo>('/market/instrument', { query: { symbol }, timeoutMs: 20_000 }),
   intraday: (symbol: string, freq: '1m' | '5m' | '15m' | '30m' | '60m' = '5m', limit = 240) =>
-    request<BarsResponse>('/market/intraday', { query: { symbol, freq, limit } }),
+    request<BarsResponse>('/market/intraday', { query: { symbol, freq, limit }, timeoutMs: 30_000 }),
   klines: (
     symbol: string,
     interval: '1m' | '5m' | '15m' | '30m' | '60m' | '1d' | '1w' | '1M' = '1d',
     limit = 240,
-  ) => request<BarsResponse>('/market/klines', { query: { symbol, interval, limit } }),
+  ) =>
+    request<BarsResponse>('/market/klines', {
+      query: { symbol, interval, limit },
+      timeoutMs: 30_000,
+    }),
   quote: (symbols: string[]) =>
     request<QuotesResponse>('/market/quote', {
       query: { symbols: symbols.join(',') },
+      timeoutMs: 12_000,
     }),
   ranking: (market: string, sort = 'change_pct', order = 'desc', limit = 20, period = 'day') =>
-    request<Ranking>('/market/ranking', { query: { market, sort, order, limit, period } }),
+    request<Ranking>('/market/ranking', {
+      query: { market, sort, order, limit, period },
+      timeoutMs: 25_000,
+    }),
   search: (keyword: string, limit = 10, market?: string | null) =>
     request<SymbolInfo[]>('/market/search', { query: { q: keyword, limit, market } }),
   symbols: () => request<string[]>('/market/symbols'),
@@ -306,6 +356,8 @@ export const marketApi = {
     request<{ refreshed: Record<string, number> }>('/market/refresh', {
       method: 'POST',
       query: { symbols: symbols.join(',') },
+      // 跳过缓存重新拉数据源，慢是正常的；给足时间但必须有限
+      timeoutMs: 120_000,
     }),
   calendar: (start?: string, end?: string, market?: string) =>
     request<string[]>('/market/calendar', { query: { start, end, market } }),

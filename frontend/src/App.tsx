@@ -23,6 +23,7 @@ import { SettingsPage } from './pages/Settings'
 import { StrategiesPage } from './pages/Strategies'
 import { useAuth } from './store/auth'
 import { useEvents } from './store/events'
+import { notify } from './store/toast'
 
 export default function App() {
   const status = useAuth((state) => state.status)
@@ -36,6 +37,27 @@ export default function App() {
       if (!authenticated) markAnonymous()
     })
   }, [bootstrap, markAnonymous])
+
+  // 事件处理器里的异常 React 不会兜（ErrorBoundary 只管渲染），不转出来的话
+  // 用户看到的只是「点了按钮没反应」，控制台里才有堆栈。
+  useEffect(() => {
+    const onError = (event: ErrorEvent) => {
+      if (!event.message) return // 资源加载失败没有 message，不刷屏
+      notify('error', `前端异常：${event.message}`)
+    }
+    const onRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason as { name?: string; message?: string } | undefined
+      if (reason?.name === 'AbortError') return // 切页/轮询主动取消，不算错误
+      const message = reason instanceof Error ? reason.message : String(reason ?? '未知错误')
+      notify('error', message)
+    }
+    window.addEventListener('error', onError)
+    window.addEventListener('unhandledrejection', onRejection)
+    return () => {
+      window.removeEventListener('error', onError)
+      window.removeEventListener('unhandledrejection', onRejection)
+    }
+  }, [])
 
   const { connected } = useWebSocket(handleEvent, status === 'authenticated')
 

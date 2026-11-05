@@ -89,6 +89,8 @@ export function MarketPage() {
   const [searchMarket, setSearchMarket] = useState<'ALL' | RankMarket>('ALL')
   const [suggestions, setSuggestions] = useState<SymbolInfo[]>([])
   const [searching, setSearching] = useState(false)
+  // 缓存表按标的刷新：没有反馈的话，跳缓存拉数据期间按钮看起来就像坏了
+  const [refreshingSymbol, setRefreshingSymbol] = useState<string | null>(null)
 
   const loadCache = useCallback(async () => {
     try {
@@ -140,6 +142,8 @@ export function MarketPage() {
         } catch {
           // 忽略
         }
+        // 手动点「立即刷新」时要说清为什么没动作，否则看起来像按钮坏了
+        if (!silent) notify('info', '自选为空：先用上方搜索框添加标的')
         return
       }
       if (!silent) setQuoteLoading(true)
@@ -727,7 +731,11 @@ export function MarketPage() {
                                 <Button
                                   size="sm"
                                   variant="ghost"
+                                  loading={refreshingSymbol === item.symbol}
+                                  disabled={refreshingSymbol !== null}
+                                  title="跳过缓存，重新向数据源拉取"
                                   onClick={async () => {
+                                    setRefreshingSymbol(item.symbol)
                                     try {
                                       await marketApi.refresh([item.symbol])
                                       notify('success', `${displayCode(item.symbol)} 已更新`)
@@ -735,6 +743,8 @@ export function MarketPage() {
                                       else await loadCache()
                                     } catch (err) {
                                       notify('error', err instanceof ApiError ? err.message : '刷新失败')
+                                    } finally {
+                                      setRefreshingSymbol(null)
                                     }
                                   }}
                                 >

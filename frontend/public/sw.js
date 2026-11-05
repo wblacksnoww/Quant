@@ -1,5 +1,7 @@
 /* Quant Terminal PWA service worker：只缓存应用外壳，不缓存 API/WS/鉴权。 */
-const CACHE = 'quant-shell-v3'
+// 版本号变更会清掉上一版缓存。assets 是 cache-first，因此打包入口必须带内容哈希
+// （Vite 默认就是 name-[hash].js）；固定文件名会让浏览器永远跑第一版前端。
+const CACHE = 'quant-shell-v4'
 const SHELL = [
   '/',
   '/index.html',
@@ -13,9 +15,9 @@ const SHELL = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) =>
-      Promise.all(SHELL.map((url) => cache.add(url).catch(() => undefined))),
-    ),
+    caches
+      .open(CACHE)
+      .then((cache) => Promise.all(SHELL.map((url) => cache.add(url).catch(() => undefined)))),
   )
   self.skipWaiting()
 })
@@ -47,7 +49,10 @@ self.addEventListener('fetch', (event) => {
       fetch(request)
         .then((response) => {
           const copy = response.clone()
-          caches.open(CACHE).then((cache) => cache.put('/index.html', copy)).catch(() => undefined)
+          caches
+            .open(CACHE)
+            .then((cache) => cache.put('/index.html', copy))
+            .catch(() => undefined)
           return response
         })
         .catch(async () => {
@@ -64,7 +69,10 @@ self.addEventListener('fetch', (event) => {
       return fetch(request).then((response) => {
         if (response.ok && (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/'))) {
           const copy = response.clone()
-          caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => undefined)
+          caches
+            .open(CACHE)
+            .then((cache) => cache.put(request, copy))
+            .catch(() => undefined)
         }
         return response
       })
