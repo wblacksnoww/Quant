@@ -223,6 +223,7 @@ __all__ = [
     "Market",
     "US_EXCHANGE_SUFFIXES",
     "currency_symbol",
+    "market_rules",
     "normalize_id",
     "parse_instrument",
     "single_market",
@@ -239,7 +240,19 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True)
 class BoardRules:
-    """单个板块的交易规则。"""
+    """单个板块的交易规则。
+
+    市场差异拆成**三个独立维度**，不拿一个布尔硬扛全部语义：
+
+    * ``t_plus_1`` —— **当日回转**：当日买入的持仓当日能否卖出
+      （A 股 True；美股 / 港股 / 虚拟货币 False）。撮合与账户只消费这一个字段。
+    * ``settlement_days`` —— **交收周期** T+N，纯信息字段，不参与撮合。
+      港股「T+0 可回转 + T+2 交收」只有拆开表达才说得清。
+    * ``can_short`` / ``short_restricted`` —— **做空资格**。
+      ``can_short=False`` 的市场出现负持仓直接拒绝；``short_restricted=True``
+      表示现实中受名单/借券约束（港股仅指定可空证券），本系统不逐票校验，
+      只在界面明确标注，避免把「能空」说成「随便空」。
+    """
 
     code: str
     name: str
@@ -247,36 +260,152 @@ class BoardRules:
     lot_size: int  # 买入最小单位（股）
     t_plus_1: bool = True
     price_digits: int = 2
-    # 是否允许做空（负持仓）。仅虚拟货币允许：现货信用交易/合约才有做空资格，
-    # A 股融券、美股港股借券虽存在但本系统不建模，明确 False 比含糊的 True 安全。
     can_short: bool = False
+    settlement_days: int = 1
+    short_restricted: bool = False
+    short_note: str = ""
 
     @property
     def limit_label(self) -> str:
         return f"±{self.limit_pct * 100:.0f}%"
 
+    @property
+    def trade_mode(self) -> str:
+        """当日回转能力：``T+0`` / ``T+1``。"""
+        return "T+1" if self.t_plus_1 else "T+0"
 
-_MAIN = BoardRules("main", "沪深主板", 0.10, 100)
-_GEM = BoardRules("gem", "创业板", 0.20, 100)
-_STAR = BoardRules("star", "科创板", 0.20, 200)
-_BSE = BoardRules("bse", "北交所", 0.30, 100)
-_FUND = BoardRules("fund", "场内基金/ETF", 0.10, 100)
-_INDEX = BoardRules("index", "指数", 0.0, 1, t_plus_1=False, price_digits=4)
+    @property
+    def trade_mode_label(self) -> str:
+        return "T+1（次日可卖）" if self.t_plus_1 else "T+0（当日可卖）"
 
-# 境外市场：无涨跌停、T+0；港股每手股数因票而异，这里按 100 股近似
-_US = BoardRules("us", "美股", 0.0, 1, t_plus_1=False)
-_HK = BoardRules("hk", "港股", 0.0, 100, t_plus_1=False, price_digits=3)
+    @property
+    def settlement_label(self) -> str:
+        return "T+0 交收" if self.settlement_days == 0 else f"T+{self.settlement_days} 交收"
 
-# 虚拟货币：7×24 无涨跌停、T+0、任意数量（小数）、8 位报价精度；允许做空
-_CRYPTO = BoardRules("crypto", "虚拟货币", 0.0, 1, t_plus_1=False, price_digits=8, can_short=True)
+    @property
+    def short_label(self) -> str:
+        if not self.can_short:
+            return "不可做空"
+        return "仅限指定标的" if self.short_restricted else "可做空"
+
+    def capabilities(self) -> dict[str, object]:
+        """能力字段的统一出口，API / 前端不必各自拼装。"""
+        return {
+            "trade_mode": self.trade_mode,
+            "trade_mode_label": self.trade_mode_label,
+            "settlement_days": self.settlement_days,
+            "settlement_label": self.settlement_label,
+            "can_short": self.can_short,
+            "short_restricted": self.short_restricted,
+            "short_label": self.short_label,
+            "short_note": self.short_note,
+        }
+
+
+# --- A 股：T+1、涨跌停按板块、整手；融券业务本系统不建模 -------------------- #
+_CN_SHORT_NOTE = "A 股仅两融标的可融券卖空，本系统不建模融券"
+_MAIN = BoardRules("main", "沪深主板", 0.10, 100, short_note=_CN_SHORT_NOTE)
+_GEM = BoardRules("gem", "创业板", 0.20, 100, short_note=_CN_SHORT_NOTE)
+_STAR = BoardRules("star", "科创板", 0.20, 200, short_note=_CN_SHORT_NOTE)
+_BSE = BoardRules("bse", "北交所", 0.30, 100, short_note=_CN_SHORT_NOTE)
+
+# 场内 ETF 分两类：股票 ETF 跟随 A 股 T+1；债券/货币/跨境/黄金 ETF 支持 T+0 回转
+_FUND = BoardRules("fund", "场内股票 ETF", 0.10, 100, short_note="场内 ETF 不可做空")
+_FUND_T0 = BoardRules("fund_t0", "场内 T+0 ETF", 0.10, 100, t_plus_1=False, short_note="场内 ETF 不可做空")
+_INDEX = BoardRules("index", "指数", 0.0, 1, t_plus_1=False, price_digits=4, short_note="指数不可直接交易")
+
+# --- 境外市场：无涨跌停、T+0 回转；港股每手股数因票而异，按 100 股近似 -------- #
+# 美股：T+1 交收（2024-05 起），保证金账户可做空
+_US = BoardRules(
+    "us",
+    "美股",
+    0.0,
+    1,
+    t_plus_1=False,
+    can_short=True,
+    settlement_days=1,
+    short_note="需保证金账户；PDT 日内交易者规则不建模",
+)
+# 港股：T+0 回转、T+2 交收；做空仅限港交所指定可空名单
+_HK = BoardRules(
+    "hk",
+    "港股",
+    0.0,
+    100,
+    t_plus_1=False,
+    price_digits=3,
+    can_short=True,
+    settlement_days=2,
+    short_restricted=True,
+    short_note="仅港交所指定可空名单；本系统不逐票校验名单",
+)
+
+# --- 虚拟货币：7×24 无涨跌停、T+0 回转、无交收周期、任意数量；允许做空 -------- #
+_CRYPTO = BoardRules(
+    "crypto",
+    "虚拟货币",
+    0.0,
+    1,
+    t_plus_1=False,
+    price_digits=8,
+    can_short=True,
+    settlement_days=0,
+    short_note="7×24 连续交易，无交收周期，负持仓即空头",
+)
 # 场外基金：净值制申购/赎回（不走引擎撮合），份额小数、4 位净值精度
-_FUND_OTC = BoardRules("fund_otc", "场外基金", 0.0, 1, t_plus_1=False, price_digits=4)
+_FUND_OTC = BoardRules(
+    "fund_otc",
+    "场外基金",
+    0.0,
+    1,
+    t_plus_1=False,
+    price_digits=4,
+    settlement_days=1,
+    short_note="场外基金不可做空",
+)
 
 BOARDS: dict[str, BoardRules] = {
-    b.code: b for b in (_MAIN, _GEM, _STAR, _BSE, _FUND, _INDEX, _US, _HK, _CRYPTO, _FUND_OTC)
+    b.code: b
+    for b in (
+        _MAIN,
+        _GEM,
+        _STAR,
+        _BSE,
+        _FUND,
+        _FUND_T0,
+        _INDEX,
+        _US,
+        _HK,
+        _CRYPTO,
+        _FUND_OTC,
+    )
 }
 
-_ST = BoardRules("main_st", "主板ST", 0.05, 100)
+# 市场 → 默认板块规则：用于「同一运行只能单市场」时的粗粒度能力判断
+_MARKET_BOARD: dict[Market, BoardRules] = {
+    Market.CN: _MAIN,
+    Market.US: _US,
+    Market.HK: _HK,
+    Market.CRYPTO: _CRYPTO,
+    Market.FUND: _FUND_OTC,
+}
+
+
+def market_rules(market: Market | str) -> BoardRules:
+    """市场级默认规则（粗粒度：不针对具体标的的板块细分）。
+
+    ``EngineConfig`` 只掌握 ``market`` 字符串（标的已校验为单一市场），
+    做空/回转这类「市场级资格」判断走这里。
+    """
+    if isinstance(market, Market):
+        return _MARKET_BOARD[market]
+    try:
+        return _MARKET_BOARD[Market(str(market).strip().upper())]
+    except (KeyError, ValueError) as exc:
+        raise ValueError(f"不支持的市场: {market}") from exc
+
+
+_ST = BoardRules("main_st", "主板ST", 0.05, 100, short_note=_CN_SHORT_NOTE)
 
 
 def normalize_symbol(symbol: str) -> str:
@@ -317,6 +446,10 @@ def board_of(symbol: str) -> BoardRules:
         return _GEM
     if code.startswith(("8", "43", "92")):
         return _BSE
+    # 债券 / 货币 / 跨境 / 黄金 ETF 支持 T+0 回转，必须先于通用 ETF 前缀判断。
+    # 159 开头的跨境 ETF 无法按代码前缀区分，统一按股票 ETF 的 T+1 近似。
+    if code.startswith(("511", "513", "518")):
+        return _FUND_T0
     if code.startswith(("51", "56", "58", "15", "16", "588", "159")):
         return _FUND
     # 指数代码（000300 等）与股票代码共用同一数字空间，默认按主板处理

@@ -28,7 +28,7 @@ struct SymbolRules {
   bool t_plus_1 = false;
   double limit_pct = 0.0;
   int price_digits = 2;
-  bool can_short = false;  // 是否允许做空（仅 CRYPTO）——聚合初始化缺省为 false
+  bool can_short = false;  // 是否允许做空（CRYPTO / US / HK）——聚合初始化缺省为 false
 };
 
 SymbolRules rules_for(const std::string& symbol);

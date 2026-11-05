@@ -100,14 +100,16 @@ SymbolRules rules_for(const std::string& symbol) {
   } else {
     code = symbol;
   }
-  if (market == "US") { r = {1, false, 0.0, 2}; return r; }
-  if (market == "HK") { r = {100, false, 0.0, 3}; return r; }
+  if (market == "US") { r = {1, false, 0.0, 2, true}; return r; }
+  if (market == "HK") { r = {100, false, 0.0, 3, true}; return r; }
   if (market == "CRYPTO") { r = {1, false, 0.0, 8, true}; return r; }
   if (market == "FUND") { r = {1, false, 0.0, 4}; return r; }
   // CN：按代码前缀
   if (code.rfind("688", 0) == 0 || code.rfind("689", 0) == 0) { r = {200, true, 0.20, 2}; return r; }
   if (code.rfind("300", 0) == 0 || code.rfind("301", 0) == 0) { r = {100, true, 0.20, 2}; return r; }
   if (code.rfind("8", 0) == 0 || code.rfind("43", 0) == 0 || code.rfind("92", 0) == 0) { r = {100, true, 0.30, 2}; return r; }
+  // 债券/货币/跨境/黄金 ETF 支持 T+0 回转，必须先于通用 ETF 前缀判断
+  if (code.rfind("511", 0) == 0 || code.rfind("513", 0) == 0 || code.rfind("518", 0) == 0) { r = {100, false, 0.10, 2}; return r; }
   if (code.rfind("51", 0) == 0 || code.rfind("56", 0) == 0 || code.rfind("58", 0) == 0 ||
       code.rfind("15", 0) == 0 || code.rfind("16", 0) == 0 || code.rfind("588", 0) == 0 ||
       code.rfind("159", 0) == 0) { r = {100, true, 0.10, 2}; return r; }

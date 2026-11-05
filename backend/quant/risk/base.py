@@ -123,7 +123,7 @@ def _short_opening_qty(order: Order, state: RiskState) -> float:
     """该订单会**新开空仓**的数量；0 表示纯平多/加多，不涉及做空。
 
     多条规则都默认「SELL = 减仓、永远放行」，做空引入后这个假设不再成立：
-    做空市场（目前仅虚拟货币）的 SELL 超出可卖数量的部分是开空，
+    做空市场（CRYPTO / 美股 / 港股）的 SELL 超出可卖数量的部分是开空，
     应当和买入一样接受开仓类风控约束。
     """
     if order.side is not Side.SELL:

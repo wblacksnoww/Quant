@@ -45,7 +45,8 @@ class EngineConfig:
     # bar 周期：1d（默认，日线）或 1m/5m/15m/30m/60m（分钟级，仅虚拟货币支持历史回测）
     bar_interval: str = "1d"
     # 持仓方向：long（默认，策略信号照原样执行）或 short（信号翻转：买变卖、卖变买，
-    # 用于在允许做空的市场上用同一套策略逻辑做空）。仅虚拟货币支持。
+    # 用于在允许做空的市场上用同一套策略逻辑做空）。资格由市场能力表
+    # （markets.market_rules().can_short）判定：虚拟货币 / 美股 / 港股可空，A 股不可。
     direction: str = "long"
 
     def cost_model(self) -> object:
@@ -87,8 +88,12 @@ class EngineConfig:
             raise ValueError("分钟级 bar_interval 目前仅支持虚拟货币市场")
         if self.direction not in ("long", "short"):
             raise ValueError(f"direction 只支持 long/short，当前 {self.direction!r}")
-        if self.direction == "short" and self.market != "CRYPTO":
-            raise ValueError("做空（direction=short）目前仅支持虚拟货币市场")
+        if self.direction == "short":
+            from ..core.markets import market_rules
+
+            market_rule = market_rules(self.market)
+            if not market_rule.can_short:
+                raise ValueError(f"{self.market} 市场不支持做空（direction=short）：{market_rule.short_note}")
 
 
 @dataclass
