@@ -473,6 +473,12 @@ export function BacktestPage() {
               </Field>
             </div>
 
+            {direction === 'short' && strategy?.short_note && (
+              <div className="tiny" style={{ color: 'var(--warn)', lineHeight: 1.6 }}>
+                ⚠「{strategy.name}」做空语义：{strategy.short_note}
+              </div>
+            )}
+
             <div className="form-grid-3">
               <Field label="开始日期">
                 <input

@@ -166,6 +166,12 @@ class MyStrategy(Strategy):
   exposure / submit / cancel / log / state`，以及 `ParamSpec` 之外的运行期 `ctx.now`。
 - 内置策略在 `quant/strategy/builtin/`：`buy_hold`、`dual_ma`、`rsi_reversion`、
   `momentum_rotation`。指标函数在 `quant/strategy/indicators.py`（纯 pandas，无状态）。
+- 方向语义由策略自己声明：`long_note`（做多时的信号含义）与 `short_note`（`direction=short`
+  时的实际行为），两者都由 `schema()` 透给 `/api/strategies`。原因是做多做空**不是两套策略**：
+  `StrategyContext.submit` 统一翻转买卖方向，所以每个策略都"能"做空，但翻转后的含义随策略
+  而异——趋势策略翻成逆势做空、动量轮动翻成做空领涨。这两句文案不给出来，用户只会看到
+  "金叉买入"然后以为自己在做趋势空。留空时 `long_note` 回落到 `description`、
+  `short_note` 回落到框架的真实行为说明（`DEFAULT_SHORT_NOTE`）。
 
 ### 6.1 条件拼装策略（免代码，`custom_rule`）
 
@@ -416,7 +422,7 @@ src/
   下方是 K 线研究与本地缓存管理（缓存表同样带市场列）。
 - 图表统一用 ECharts（K 线、权益曲线 + 基准、回撤、月度收益热力、持仓暴露）。
 - 回测页同时使用轮询（结果）与 WS（进度/日志），断线自动降级为纯轮询。
-- **策略库页**：上半部是内置策略目录（含参数表、「回测」直达入口）；
+- **策略库页**：上半部是内置策略目录（含参数表、做多/做空两行的方向说明、「回测」直达入口）；
   下半部「我的拼装策略」——`StrategyBuilder` 条件拼装器（入场/离场规则、仓位/止损/止盈）
   + 「✦ 蓝图编辑器」入口（`/strategies/blueprint`，React Flow 画布，见 §6.2）
   + 已保存列表（v1 行显示两边条件文本；v2 行显示「蓝图 · N 节点」徽标与「编辑蓝图」按钮；

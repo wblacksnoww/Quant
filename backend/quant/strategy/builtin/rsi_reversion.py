@@ -14,6 +14,12 @@ class RsiReversionStrategy(Strategy):
     display_name = "RSI 均值回归"
     category = "mean_reversion"
     description = "RSI 跌破超卖线买入，回到超买线卖出。震荡市表现优于趋势市，单边下跌行情需要靠止损控制回撤。"
+    long_note = "RSI 跌破 oversold 买入（赌超跌反弹），回到 overbought 卖出或触发止损离场。"
+    short_note = (
+        "做空时信号反向：RSI 跌破 oversold 时开空、回到 overbought 时平空，"
+        "等于在超跌位置上追加下跌押注。这是全库最危险的一组做空语义——"
+        "均值回归策略做空后若价格真的反弹，亏损方向与策略原意相反，务必配上止损。"
+    )
 
     param_specs = (
         ParamSpec("period", "int", 14, 2, 60, description="RSI 周期"),

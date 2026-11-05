@@ -18,6 +18,11 @@ class BuyHoldStrategy(Strategy):
     display_name = "买入持有（基准）"
     category = "benchmark"
     description = "第一个交易日等权买入全部标的并持有到底，作为其它策略的对照基准。"
+    long_note = "第一个交易日按等权买入全部标的并持有到结束（总仓位由 position_pct 控制）。"
+    short_note = (
+        "做空时第一个交易日等权开空全部标的并持有到底，可以当作「无脑做空基准」："
+        "任何做空策略跑不赢它，就说明择时没有创造价值。同样受市场做空规则限制。"
+    )
 
     param_specs = (
         ParamSpec("rebalance_days", "int", 0, 0, 250, description="再平衡间隔（天），0=不再平衡"),

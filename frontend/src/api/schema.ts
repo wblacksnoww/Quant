@@ -3658,10 +3658,20 @@ export interface components {
             description: string;
             /** Id */
             id: string;
+            /**
+             * Long Note
+             * @default
+             */
+            long_note: string;
             /** Name */
             name: string;
             /** Params */
             params: components["schemas"]["ParamOut"][];
+            /**
+             * Short Note
+             * @default
+             */
+            short_note: string;
         };
         /** StrategyShareIn */
         StrategyShareIn: {

@@ -112,7 +112,10 @@ export function StrategiesPage() {
       return (
         item.id.toLowerCase().includes(text) ||
         item.name.toLowerCase().includes(text) ||
-        item.description.toLowerCase().includes(text)
+        item.description.toLowerCase().includes(text) ||
+        // 搜「做空」「做多」能筛出现在只有方向说明里才提到该词的策略
+        (item.long_note ?? '').toLowerCase().includes(text) ||
+        (item.short_note ?? '').toLowerCase().includes(text)
       )
     })
   }, [items, keyword, category])
@@ -153,6 +156,12 @@ export function StrategiesPage() {
             ))}
           </div>
           <Badge tone="accent">{filtered.length} 个策略</Badge>
+        </div>
+        <div className="divider" />
+        <div className="tiny faint">
+          做多/做空不是两套策略，而是同一策略的两种运行方向：选做空时框架把买卖信号整体翻转。
+          至于能不能真的做空，还取决于市场——A 股与场内股票 ETF 不可做空，美股、港股（指定名单）、
+          虚拟货币可以。
         </div>
       </Card>
 
@@ -213,6 +222,21 @@ export function StrategiesPage() {
                 </div>
               )}
               <div className="divider" />
+              <div className="col" style={{ gap: 8 }}>
+                <div className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
+                  <Badge tone="accent">做多</Badge>
+                  <span className="tiny" style={{ flex: 1 }}>
+                    {strategy.long_note || strategy.description || '—'}
+                  </span>
+                </div>
+                <div className="row" style={{ gap: 8, alignItems: 'flex-start' }}>
+                  <Badge tone="warn">做空</Badge>
+                  <span className="tiny" style={{ flex: 1 }}>
+                    {strategy.short_note || '买卖信号整体反向执行'}
+                  </span>
+                </div>
+              </div>
+              <div className="divider" />
               <div className="row wrap" style={{ gap: 6 }}>
                 <Badge tone="accent">{strategy.category || '未分类'}</Badge>
                 <span className="tiny faint">参数由后端 ParamSpec 自动生成，新增策略无需改前端。</span>
@@ -225,7 +249,7 @@ export function StrategiesPage() {
       {/* ---- 我的拼装策略（免代码） ---- */}
       <Card
         title="我的拼装策略"
-        description="用条件拼装买卖规则，无需写 Python；spec 经服务端白名单校验后由通用解释器执行"
+        description="用条件拼装买卖规则，无需写 Python；spec 经服务端白名单校验后由通用解释器执行。做空同样是信号反转：整张规则的买入变开空、卖出变平空。"
         flush
       >
         <div style={{ padding: '14px 16px 0' }}>

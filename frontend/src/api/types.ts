@@ -213,6 +213,10 @@ export interface Strategy {
   name: string
   description: string
   category: string
+  /** 做多方向下策略的实际信号含义 */
+  long_note: string
+  /** direction=short 时的实际行为：框架统一翻转信号，语义随策略而异 */
+  short_note: string
   params: StrategyParam[]
 }
 

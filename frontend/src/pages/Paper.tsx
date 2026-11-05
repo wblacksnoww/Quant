@@ -499,6 +499,12 @@ export function PaperPage() {
               </Field>
             </div>
 
+            {direction === 'short' && strategy?.short_note && (
+              <div className="tiny" style={{ color: 'var(--warn)', lineHeight: 1.6 }}>
+                ⚠「{strategy.name}」做空语义：{strategy.short_note}
+              </div>
+            )}
+
             {mode === 'replay' ? (
               <div className="form-grid-3">
                 <Field label="回放天数">

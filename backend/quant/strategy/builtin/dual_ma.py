@@ -17,6 +17,11 @@ class DualMaStrategy(Strategy):
     display_name = "双均线趋势"
     category = "trend"
     description = "快慢均线金叉买入、死叉卖出。经典趋势跟随，震荡市会被反复打脸，适合配合止损与仓位控制使用。"
+    long_note = "快线上穿慢线（金叉）买入并持有，下穿（死叉）卖出，只吃多头趋势段。"
+    short_note = (
+        "做空时信号整体反向：金叉开空、死叉平空，等于反过来押注上涨会失败。"
+        "这不是「趋势做空」，而是逆势做空，胜率与做多方向并不对称，建议先小仓位验证。"
+    )
 
     param_specs = (
         ParamSpec("fast", "int", 10, 2, 120, description="快线周期（日）"),

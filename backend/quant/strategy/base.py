@@ -45,6 +45,9 @@ from .exits import ExitDecision, ExitReason, pick_exit
 
 log = logging.getLogger(__name__)
 
+# 没有显式声明 short_note 的策略用这句兜底：它是框架的真实行为，不是免责声明
+DEFAULT_SHORT_NOTE = "做空时买卖信号整体反向执行（框架统一翻转）：策略的买入信号变成开空、卖出信号变成平空。"
+
 
 # --------------------------------------------------------------------------- #
 # 参数描述
@@ -343,6 +346,11 @@ class Strategy(ABC):
     display_name: str = ""
     description: str = ""
     category: str = "trend"  # trend | mean_reversion | momentum | benchmark
+    # 方向语义。做多做空不是两个策略，而是同一个策略在 direction 参数下的两种行为：
+    # submit() 统一翻转买卖方向，所以每个策略都"能"做空，但翻转后的含义各不相同
+    # （趋势策略翻成逆势、轮动策略翻成做空领涨），必须逐个讲清楚。
+    long_note: str = ""  # 做多时的信号含义；留空回落到 description
+    short_note: str = ""  # direction=short 时的实际行为；留空用 DEFAULT_SHORT_NOTE
     param_specs: tuple[ParamSpec, ...] = ()
 
     def __init__(self, ctx: StrategyContext, params: Mapping[str, Any] | None = None) -> None:
@@ -365,6 +373,8 @@ class Strategy(ABC):
             "name": cls.display_name or cls.strategy_id,
             "description": cls.description,
             "category": cls.category,
+            "long_note": cls.long_note or cls.description,
+            "short_note": cls.short_note or DEFAULT_SHORT_NOTE,
             "params": [spec.to_dict() for spec in cls.param_specs],
         }
 
@@ -568,4 +578,4 @@ def _finite(value: Any) -> float | None:
     return out if out == out else None
 
 
-__all__ = ["ParamSpec", "Strategy", "StrategyContext"]
+__all__ = ["DEFAULT_SHORT_NOTE", "ParamSpec", "Strategy", "StrategyContext"]

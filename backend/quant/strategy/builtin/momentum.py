@@ -23,6 +23,12 @@ class MomentumRotationStrategy(Strategy):
         "等权持有。适合标的池较大（如宽基成分股、行业 ETF）的场景。"
     )
 
+    long_note = "按 lookback 日涨幅排序，等权买入最强的 top_k 只，定期换仓——追强不追弱。"
+    short_note = (
+        "做空时会对动量最强的 top_k 只开空：等于押注领涨标的回落，与策略本意（强者更强）相反。"
+        "想做空弱势标的，正确做法是用拼装策略按动量升序选股，而不是在动量轮动里切方向。"
+    )
+
     param_specs = (
         ParamSpec("lookback", "int", 20, 5, 250, description="动量回看天数"),
         ParamSpec("top_k", "int", 1, 1, 10, description="持有标的数量"),

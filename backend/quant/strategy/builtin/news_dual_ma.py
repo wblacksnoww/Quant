@@ -117,6 +117,11 @@ class NewsDualMaStrategy(Strategy):
         "需要先在「新闻」页录入带情绪与政策风险的历史/实时新闻。"
         "信号由 C++ 解释器求值，与拼装策略、交易网关共用同一份实现。"
     )
+    long_note = "金叉且新闻因子过关（情绪、政策风险都在阈值内）时入场，新闻转向不利时清仓。"
+    short_note = (
+        "做空时信号反向：金叉且新闻过关时开空、新闻转向不利时平空，"
+        "新闻过滤照常生效。与双均线一样属于逆势做空，不是「利空做空」策略。"
+    )
 
     param_specs = DualMaStrategy.param_specs + (
         ParamSpec(

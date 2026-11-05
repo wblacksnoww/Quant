@@ -38,6 +38,9 @@ class StrategyOut(BaseModel):
     name: str
     description: str
     category: str
+    # 方向语义：做多做空是同一个策略在 direction 参数下的两种行为，翻转后的含义各不相同
+    long_note: str = ""
+    short_note: str = ""
     params: list[ParamOut]
 
 
