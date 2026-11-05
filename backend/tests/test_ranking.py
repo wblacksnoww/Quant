@@ -239,24 +239,88 @@ def test_service_ranking_cache_and_limit():
     assert provider.calls == 2  # 不同排序重新取数
 
 
+class _UnsupportedProvider:
+    """数据源不支持榜单（例如 synthetic）——配置问题，不是休市。"""
+
+    name = "synthetic"
+    markets = ("CN",)
+
+    def ranking(self, market, *, sort="change_pct", order="desc", limit=20):
+        raise NotImplementedError
+
+
+class _BrokenProvider:
+    name = "flaky"
+    markets = ("CN",)
+
+    def ranking(self, market, *, sort="change_pct", order="desc", limit=20):
+        raise RuntimeError("connection reset")
+
+
+class _EmptyProvider:
+    name = "quiet"
+    markets = ("CN",)
+
+    def ranking(self, market, *, sort="change_pct", order="desc", limit=20):
+        return []
+
+
+def test_ranking_explains_why_empty():
+    """空榜必须能区分「源不支持（改配置即可）」和「休市/限流」。
+
+    这三种情况以前都退化成同一句「数据源可能限流或休市」：数据源配错时
+    接口 200、榜单空、提示写着「休市」，排查只能靠读代码。
+    """
+    items, note = MarketDataService(store=None, provider=_UnsupportedProvider()).ranking_ex("CN")  # type: ignore[arg-type]
+    assert items == []
+    assert "不支持" in note
+    assert "synthetic" in note and "QUANT_DATA_PROVIDER" in note
+
+    items, note = MarketDataService(store=None, provider=_BrokenProvider()).ranking_ex("CN")  # type: ignore[arg-type]
+    assert items == []
+    assert "获取失败" in note and "RuntimeError" in note
+
+    items, note = MarketDataService(store=None, provider=_EmptyProvider()).ranking_ex("CN")  # type: ignore[arg-type]
+    assert items == []
+    assert "未返回榜单" in note
+
+
+def test_ranking_route_passes_source_note(client, context, monkeypatch):
+    """路由要把数据源层面的原因透传到 note，而不是覆盖成固定文案。"""
+    headers = login_headers(client)
+    monkeypatch.setattr(
+        context.data,
+        "ranking_ex",
+        lambda *a, **k: ([], "CN 排行榜：当前数据源（synthetic）不支持，请检查 QUANT_DATA_PROVIDER 配置"),
+    )
+    resp = client.get("/api/market/ranking", params={"market": "CN"}, headers=headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["items"] == []
+    assert "不支持" in body["note"]
+
+
 def test_ranking_route_contract(client, context, monkeypatch):
     headers = login_headers(client)
 
     def _fake_ranking(market, *, sort="change_pct", order="desc", limit=20, period="day"):
-        return [
-            RealtimeQuote(
-                symbol="CN:600519",
-                name="贵州茅台",
-                price=1500.0,
-                change_pct=1.1,
-                change=16.0,
-                amount=3e9,
-                market="CN",
-                currency="CNY",
-            )
-        ][:limit]
+        return (
+            [
+                RealtimeQuote(
+                    symbol="CN:600519",
+                    name="贵州茅台",
+                    price=1500.0,
+                    change_pct=1.1,
+                    change=16.0,
+                    amount=3e9,
+                    market="CN",
+                    currency="CNY",
+                )
+            ][:limit],
+            "",
+        )
 
-    monkeypatch.setattr(context.data, "ranking", _fake_ranking)
+    monkeypatch.setattr(context.data, "ranking_ex", _fake_ranking)
 
     resp = client.get(
         "/api/market/ranking",
@@ -402,13 +466,21 @@ def test_ranking_route_period_contract(client, context, monkeypatch):
 
     def _fake_ranking(market, *, sort="change_pct", order="desc", limit=20, period="day"):
         captured["period"] = period
-        return [
-            RealtimeQuote(
-                symbol="CN:600519", name="贵州茅台", price=1500.0, change_pct=5.0, market="CN", currency="CNY"
-            )
-        ]
+        return (
+            [
+                RealtimeQuote(
+                    symbol="CN:600519",
+                    name="贵州茅台",
+                    price=1500.0,
+                    change_pct=5.0,
+                    market="CN",
+                    currency="CNY",
+                )
+            ],
+            "",
+        )
 
-    monkeypatch.setattr(context.data, "ranking", _fake_ranking)
+    monkeypatch.setattr(context.data, "ranking_ex", _fake_ranking)
 
     resp = client.get(
         "/api/market/ranking",

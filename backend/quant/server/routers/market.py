@@ -302,13 +302,16 @@ def ranking(
     key = market.strip().upper()
     if key not in {m.value for m in Market}:
         raise HTTPException(status_code=422, detail=f"不支持的市场: {market}")
-    items = ctx.data.ranking(key, sort=sort, order=order, limit=limit, period=period)
-    note = ""
+    items, source_note = ctx.data.ranking_ex(key, sort=sort, order=order, limit=limit, period=period)
     if not items:
-        note = "当前市场暂未返回榜单数据（数据源可能限流或休市）"
+        # source_note 区分「数据源不支持（配置问题）」/「取数报错」/「源返回空（休市）」，
+        # 三种原因的处置完全不同，不该糊成一句「可能限流或休市」。
+        note = source_note or f"{key} 暂未返回榜单数据"
     elif period != "day":
         label = "本周" if period == "week" else "本月"
         note = f"{label}涨跌幅基于当日活跃榜单（成交额+涨跌幅两端）计算（免费源无全市场{label}涨幅）"
+    else:
+        note = ""
     return RankingOut(
         market=key,
         sort=sort,

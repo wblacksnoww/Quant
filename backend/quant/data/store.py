@@ -375,8 +375,8 @@ class MarketDataService:
         self._snap_ts = 0.0
         self._snap_note = ""
         self._last_good: dict[str, RealtimeQuote] = {}
-        # 排行榜缓存：(市场, 排序, 方向, 周期) → (时间戳, 榜单)
-        self._rank_cache: dict[tuple[str, str, str, str], tuple[float, list[RealtimeQuote]]] = {}
+        # 排行榜缓存：(市场, 排序, 方向, 周期) → (时间戳, 榜单, 空榜原因)
+        self._rank_cache: dict[tuple[str, str, str, str], tuple[float, list[RealtimeQuote], str]] = {}
         self._rank_lock = threading.Lock()
         self._index_cache: tuple[float, list[dict]] | None = None
 
@@ -591,7 +591,29 @@ class MarketDataService:
 
         今日榜直接取数据源的实时排行；本周/本月榜对「当日成交额前 40 只」
         并发拉日线计算窗口涨幅（免费源没有全市场周/月涨幅字段）。
-        数据源不支持时返回空列表，由前端提示。
+        数据源不支持时返回空列表；需要知道**为什么**是空的请用 ``ranking_ex``。
+        """
+        items, _note = self.ranking_ex(market, sort=sort, order=order, limit=limit, period=period, ttl=ttl)
+        return items
+
+    def ranking_ex(
+        self,
+        market: str = "CN",
+        *,
+        sort: str = "change_pct",
+        order: str = "desc",
+        limit: int = 20,
+        period: str = "day",
+        ttl: float | None = None,
+    ) -> tuple[list[RealtimeQuote], str]:
+        """排行榜 + 空榜原因。
+
+        返回 ``(items, note)``。``note`` 只在拿不到数据时非空，并把三种原因分开：
+        「数据源不支持」（配置问题，改 ``QUANT_DATA_PROVIDER`` 即可）、
+        「数据源报错」（网络/限流，会自动重试）、「源返回空」（休市或源无数据）。
+
+        此前三种情况都退化成同一句「数据源可能限流或休市」，导致把数据源配错
+        伪装成休市——排查时看不到任何异常，只能靠读代码猜。
         """
         period = (period or "day").strip().lower()
         key = (str(market).strip().upper(), sort, order, period)
@@ -601,23 +623,29 @@ class MarketDataService:
         with self._rank_lock:
             hit = self._rank_cache.get(key)
             if hit and now - hit[0] < ttl:
-                return hit[1][:limit]
+                return hit[1][:limit], hit[2]
 
         provider = self._provider_for(key[0])
+        source = getattr(provider, "name", "未知数据源")
         try:
             if period == "day":
                 items = provider.ranking(key[0], sort=sort, order=order, limit=max(limit, 50))
             else:
                 items = self._window_ranking(key[0], sort, order, limit, period)
         except NotImplementedError:
-            return []
+            items = []
+            note = f"{key[0]} 排行榜：当前数据源（{source}）不支持，请检查 QUANT_DATA_PROVIDER 配置"
+            log.warning("排行榜数据源不支持（%s，provider=%s）", key[0], source)
         except Exception as exc:  # noqa: BLE001 - 排行榜是增强功能，失败不阻断行情页
             log.warning("排行榜获取失败（%s/%s）: %s", key[0], period, exc)
-            return []
+            items = []
+            note = f"{key[0]} 排行榜获取失败（{type(exc).__name__}），稍后自动重试"
+        else:
+            note = "" if items else f"{key[0]} 数据源（{source}）未返回榜单，可能休市或限流"
 
         with self._rank_lock:
-            self._rank_cache[key] = (now, items)
-        return items[:limit]
+            self._rank_cache[key] = (now, items, note)
+        return items[:limit], note
 
     def _window_ranking(
         self, market: str, sort: str, order: str, limit: int, period: str
