@@ -12,6 +12,7 @@ from quant.core.markets import (
     Market,
     clamp_to_limits,
     currency_symbol,
+    market_rules,
     parse_instrument,
     single_market,
     strip_us_suffix,
@@ -152,6 +153,87 @@ def test_crypto_board_rules():
     assert fund.code == "fund_otc"
     assert fund.limit_pct == 0.0
     assert fund.t_plus_1 is False
+
+
+# --------------------------------------------------------------------------- #
+# 市场能力矩阵：当日回转 / 交收周期 / 做空资格（三个维度独立表达）
+# --------------------------------------------------------------------------- #
+
+
+def test_capability_matrix_by_market():
+    # A 股：T+1、不可做空（融券不建模）
+    cn = rules_for("CN:600519")
+    assert cn.trade_mode == "T+1"
+    assert cn.settlement_days == 1
+    assert cn.can_short is False
+    assert cn.short_label == "不可做空"
+    assert "融券" in cn.short_note
+
+    # 美股：T+0 回转、T+1 交收、可做空（需保证金账户）
+    us = rules_for("US:AAPL")
+    assert us.trade_mode == "T+0"
+    assert us.settlement_days == 1
+    assert us.can_short is True
+    assert us.short_restricted is False
+    assert us.short_label == "可做空"
+
+    # 港股：T+0 回转、T+2 交收、仅指定名单可空
+    hk = rules_for("HK:00700")
+    assert hk.trade_mode == "T+0"
+    assert hk.settlement_days == 2
+    assert hk.settlement_label == "T+2 交收"
+    assert hk.can_short is True
+    assert hk.short_restricted is True
+    assert hk.short_label == "仅限指定标的"
+
+    # 虚拟货币：T+0、无交收、可做空
+    crypto = rules_for("CRYPTO:BTC/USDT")
+    assert crypto.trade_mode == "T+0"
+    assert crypto.settlement_days == 0
+    assert crypto.settlement_label == "T+0 交收"
+    assert crypto.can_short is True
+    assert crypto.short_restricted is False
+
+
+def test_market_rules_by_market_code():
+    assert market_rules("CN").can_short is False
+    assert market_rules("US").can_short is True
+    assert market_rules(Market.HK).short_restricted is True
+    assert market_rules("CRYPTO").trade_mode == "T+0"
+    assert market_rules("FUND").can_short is False
+    with pytest.raises(ValueError, match="不支持的市场"):
+        market_rules("XX")
+
+
+def test_etf_t0_versus_stock_etf_t1():
+    """债券/货币/跨境/黄金 ETF 是 T+0 回转；股票 ETF 跟随 A 股 T+1。"""
+    for code in ("CN:511010", "CN:513050", "CN:518880"):
+        assert rules_for(code).trade_mode == "T+0", code
+    for code in ("CN:510300", "CN:588000", "CN:159915"):
+        assert rules_for(code).trade_mode == "T+1", code
+    # ETF 一律不可做空（不建模 ETF 融券）
+    assert rules_for("CN:511010").can_short is False
+    assert rules_for("CN:510300").can_short is False
+
+
+def test_capabilities_payload_matches_fields():
+    """capabilities() 是 API 的唯一出口，必须与字段一一对应。"""
+    board = rules_for("HK:00700")
+    payload = board.capabilities()
+    assert payload["trade_mode"] == board.trade_mode
+    assert payload["settlement_days"] == board.settlement_days
+    assert payload["can_short"] == board.can_short
+    assert payload["short_label"] == board.short_label
+    assert set(payload) == {
+        "trade_mode",
+        "trade_mode_label",
+        "settlement_days",
+        "settlement_label",
+        "can_short",
+        "short_restricted",
+        "short_label",
+        "short_note",
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -332,6 +414,13 @@ def test_instrument_detail_endpoint(client, context, monkeypatch):
     assert body["lot_size"] == 100
     assert body["t_plus_1"] is True
     assert body["limit_pct"] == pytest.approx(0.10)
+    # 能力字段：A 股 T+1、不可做空
+    assert body["trade_mode"] == "T+1"
+    assert body["trade_mode_label"].startswith("T+1")
+    assert body["settlement_days"] == 1
+    assert body["can_short"] is False
+    assert body["short_label"] == "不可做空"
+    assert body["short_note"]
 
     crypto = client.get("/api/market/instrument", params={"symbol": "CRYPTO:BTC/USDT"}, headers=headers)
     assert crypto.status_code == 200, crypto.text
@@ -341,6 +430,37 @@ def test_instrument_detail_endpoint(client, context, monkeypatch):
     assert cbody["lot_size"] == 1
     assert cbody["t_plus_1"] is False
     assert cbody["limit_pct"] == 0.0
+    assert cbody["trade_mode"] == "T+0"
+    assert cbody["settlement_days"] == 0
+    assert cbody["can_short"] is True
+    assert cbody["short_restricted"] is False
+
+    # 港股：T+0 回转 + T+2 交收 + 仅指定名单可空
+    hk = client.get("/api/market/instrument", params={"symbol": "HK:00700"}, headers=headers)
+    assert hk.status_code == 200, hk.text
+    hbody = hk.json()
+    assert (hbody["trade_mode"], hbody["settlement_days"], hbody["short_label"]) == (
+        "T+0",
+        2,
+        "仅限指定标的",
+    )
 
     bad = client.get("/api/market/instrument", params={"symbol": "@@@"}, headers=headers)
     assert bad.status_code == 422
+
+
+def test_markets_endpoint_exposes_capabilities(client):
+    """市场列表必须带上能力字段——前端据此决定方向选项能否选做空。"""
+    headers = login_headers(client)
+    resp = client.get("/api/market/markets", headers=headers)
+    assert resp.status_code == 200, resp.text
+    by_code = {item["code"]: item for item in resp.json()}
+    assert by_code["CN"]["can_short"] is False
+    assert by_code["CN"]["trade_mode"] == "T+1"
+    assert by_code["US"]["can_short"] is True
+    assert by_code["US"]["trade_mode"] == "T+0"
+    assert by_code["HK"]["short_restricted"] is True
+    assert by_code["HK"]["settlement_days"] == 2
+    assert by_code["CRYPTO"]["can_short"] is True
+    for item in by_code.values():
+        assert item["short_label"], item

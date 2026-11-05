@@ -69,6 +69,31 @@ def test_us_buy_available_same_day():
     assert acct.get_position("US:AAPL").available == pytest.approx(3.0)
 
 
+def test_hk_buy_available_same_day():
+    """港股 T+0 回转（交收是 T+2，但不影响当日卖出）。"""
+    acct = Account(100_000)
+    acct.apply_fill(_fill("HK:00700", 100.0, 100.0))
+    assert acct.get_position("HK:00700").available == pytest.approx(100.0)
+
+
+@pytest.mark.parametrize("symbol", ["CN:511010", "CN:513050", "CN:518880"])
+def test_bond_crossborder_gold_etf_t0(symbol):
+    """场内债券/跨境/黄金 ETF 是 T+0 回转：当日买入即可卖。"""
+    acct = Account(100_000)
+    acct.apply_fill(_fill(symbol, 100.0, 100.0))
+    assert acct.get_position(symbol).available == pytest.approx(100.0)
+
+
+def test_stock_etf_remains_t1():
+    """股票 ETF 跟随 A 股 T+1，不能因为「是 ETF」就放行当日卖出。"""
+    acct = Account(100_000)
+    acct.apply_fill(_fill("CN:510300", 100.0, 4.0))
+    pos = acct.get_position("CN:510300")
+    assert pos.available == 0.0
+    acct.on_new_session()
+    assert pos.available == pytest.approx(100.0)
+
+
 def test_cn_buy_deferred_to_next_session():
     acct = Account(100_000)
     acct.apply_fill(_fill("CN:600519", 100.0, 100.0))
