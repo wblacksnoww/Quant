@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { marketApi } from '../api/client'
 import type { SymbolInfo } from '../api/types'
 import { Badge, Button } from './ui'
-import { displayCode, marketLabel, normalizeInstrumentId } from '../utils/format'
+import { displayCode, marketCodeOf, marketLabel, normalizeInstrumentId } from '../utils/format'
 
 export function SymbolPicker({
   watchlist,
@@ -55,6 +55,13 @@ export function SymbolPicker({
   const watchRemaining = useMemo(
     () => watchlist.filter((item) => !selected.includes(item)),
     [watchlist, selected],
+  )
+
+  // 后端只接受单一市场的组合（交易时段、T+0/T+1、手数、手续费都不同）。
+  // 选择阶段就点出来，别让人配完参数、点了运行才被拒。
+  const marketCodes = useMemo(
+    () => Array.from(new Set(selected.map((item) => marketCodeOf(item)).filter(Boolean))),
+    [selected],
   )
 
   return (
@@ -164,6 +171,13 @@ export function SymbolPicker({
             </span>
           ))}
         </div>
+      )}
+
+      {marketCodes.length > 1 && (
+        <span className="tiny" style={{ color: 'var(--warn)' }}>
+          跨市场不能放在同一次运行里（当前混用了 {marketCodes.map((code) => marketLabel(code)).join(' / ')}
+          ），请只保留一个市场的标的
+        </span>
       )}
     </div>
   )

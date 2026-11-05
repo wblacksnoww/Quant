@@ -27,7 +27,7 @@ import { usePolling } from '../hooks/usePolling'
 import { useEvents } from '../store/events'
 import { notify } from '../store/toast'
 import { useWatchlist } from '../store/watchlist'
-import { fmtMoney, fmtSignedPct, marketCodeOf } from '../utils/format'
+import { fmtMoney, fmtSignedPct, marketCodeOf, marketLabel } from '../utils/format'
 
 function defaultsFor(strategy: Strategy | undefined): Record<string, unknown> {
   if (!strategy) return {}
@@ -96,15 +96,24 @@ export function PaperPage() {
     }
   }, [])
 
+  // 一次运行只能有一个市场：混选时不存在"这个市场的规则"，
+  // 拿 symbols[0] 代表全部会把「A股 + 美股」显示成美股的可做空状态。
+  const marketCodes = useMemo(
+    () => Array.from(new Set(symbols.map((item) => marketCodeOf(item)).filter(Boolean))),
+    [symbols],
+  )
+  const mixedMarket = marketCodes.length > 1
   const marketInfo = useMemo(() => {
-    const code = marketCodeOf(symbols[0])
+    if (mixedMarket) return undefined
+    const code = marketCodes[0]
     return code ? markets.find((item) => item.code === code) : undefined
-  }, [markets, symbols])
+  }, [markets, marketCodes, mixedMarket])
   const canShort = marketInfo?.can_short ?? false
 
   useEffect(() => {
-    if (marketInfo && !marketInfo.can_short && direction === 'short') setDirection('long')
-  }, [marketInfo, direction])
+    if (direction !== 'short') return
+    if (mixedMarket || (marketInfo && !marketInfo.can_short)) setDirection('long')
+  }, [marketInfo, mixedMarket, direction])
 
   // 通用参数表单（拼装策略的 spec 由下拉携带，不渲染 JSON 输入）
   const formParams = useMemo(
@@ -196,6 +205,13 @@ export function PaperPage() {
     }
     if (symbols.length === 0) {
       setError('请至少选择一个标的')
+      return
+    }
+    if (mixedMarket) {
+      setError(
+        `跨市场不能同一次运行：当前混用了 ${marketCodes.map((code) => marketLabel(code)).join(' / ')}，请只保留一个市场的标的`,
+      )
+      notify('warning', '跨市场不能同一次运行')
       return
     }
     const cleanParams: Record<string, unknown> = {}
@@ -438,9 +454,13 @@ export function PaperPage() {
               <Field
                 label="持仓方向"
                 hint={
-                  marketInfo
-                    ? `${marketInfo.label}：${marketInfo.trade_mode_label}，${marketInfo.short_label}`
-                    : '按所选标的的市场自动判断'
+                  mixedMarket
+                    ? `所选标的跨了 ${marketCodes.length} 个市场（${marketCodes
+                        .map((code) => marketLabel(code))
+                        .join(' / ')}），先只保留一个市场`
+                    : marketInfo
+                      ? `${marketInfo.label}：${marketInfo.trade_mode_label}，${marketInfo.short_label}`
+                      : '按所选标的的市场自动判断'
                 }
               >
                 <select

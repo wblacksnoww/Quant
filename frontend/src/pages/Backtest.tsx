@@ -26,7 +26,15 @@ import { usePolling } from '../hooks/usePolling'
 import { useEvents } from '../store/events'
 import { useWatchlist } from '../store/watchlist'
 import { notify } from '../store/toast'
-import { durationText, fmtDateTime, fmtSignedPct, marketCodeOf, todayISO, yearsAgoISO } from '../utils/format'
+import {
+  durationText,
+  fmtDateTime,
+  fmtSignedPct,
+  marketCodeOf,
+  marketLabel,
+  todayISO,
+  yearsAgoISO,
+} from '../utils/format'
 
 const DEFAULT_COST: CostConfig = {
   commission_rate: 3e-4,
@@ -99,16 +107,26 @@ export function BacktestPage() {
     }
   }, [])
 
+  // 一次运行只能有一个市场。混着选时不存在"这个市场的规则"：
+  // 拿 symbols[0] 代表全部，会把「A股 + 美股」显示成"美股可做空"，是假的。
+  const marketCodes = useMemo(
+    () => Array.from(new Set(symbols.map((item) => marketCodeOf(item)).filter(Boolean))),
+    [symbols],
+  )
+  const mixedMarket = marketCodes.length > 1
   const marketInfo = useMemo(() => {
-    const code = marketCodeOf(symbols[0])
+    if (mixedMarket) return undefined
+    const code = marketCodes[0]
     return code ? markets.find((item) => item.code === code) : undefined
-  }, [markets, symbols])
+  }, [markets, marketCodes, mixedMarket])
   const canShort = marketInfo?.can_short ?? false
 
-  // 换到不可做空的市场时回落到做多，避免提交一个后端必然拒绝的组合
+  // 不可做空的市场、或跨市场（没有统一规则）时回落到做多，
+  // 避免提交一个后端必然拒绝的组合
   useEffect(() => {
-    if (marketInfo && !marketInfo.can_short && direction === 'short') setDirection('long')
-  }, [marketInfo, direction])
+    if (direction !== 'short') return
+    if (mixedMarket || (marketInfo && !marketInfo.can_short)) setDirection('long')
+  }, [marketInfo, mixedMarket, direction])
 
   // 通用参数表单要渲染的参数（拼装策略的 spec 由下面专门的下拉处理，不渲染 JSON 输入）
   const formParams = useMemo(
@@ -266,6 +284,12 @@ export function BacktestPage() {
       setFormError('单次回测最多 30 个标的')
       return
     }
+    if (mixedMarket) {
+      setFormError(
+        `跨市场不能同一次运行：当前混用了 ${marketCodes.map((code) => marketLabel(code)).join(' / ')}，请只保留一个市场的标的`,
+      )
+      return
+    }
     if (start > end) {
       setFormError('开始日期不能晚于结束日期')
       return
@@ -411,11 +435,15 @@ export function BacktestPage() {
               <Field
                 label="持仓方向"
                 hint={
-                  marketInfo
-                    ? `${marketInfo.label}：${marketInfo.trade_mode_label}，${marketInfo.short_label}${
-                        marketInfo.short_note ? `（${marketInfo.short_note}）` : ''
-                      }`
-                    : '选择标的后面板按市场自动判断；A 股、场内 ETF 不可做空'
+                  mixedMarket
+                    ? `所选标的跨了 ${marketCodes.length} 个市场（${marketCodes
+                        .map((code) => marketLabel(code))
+                        .join(' / ')}），无法放在同一次运行里；先只保留一个市场`
+                    : marketInfo
+                      ? `${marketInfo.label}：${marketInfo.trade_mode_label}，${marketInfo.short_label}${
+                          marketInfo.short_note ? `（${marketInfo.short_note}）` : ''
+                        }`
+                      : '选择标的后面板按市场自动判断；A 股、场内 ETF 不可做空'
                 }
               >
                 <select
