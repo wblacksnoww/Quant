@@ -37,7 +37,7 @@ docker compose up -d --build
 脚本产生的 `.env` 权限为 600，要点：
 
 - `QUANT_MASTER_KEY`：**绝对不能丢**（见 §6）。
-- `QUANT_ADMIN_PASSWORD`：首次启动创建管理员用；之后改密码请登录后在设置页操作。
+- `QUANT_ADMIN_PASSWORD`：首次启动创建管理员用（之后改 `QUANT_ADMIN_PASSWORD` 不会生效，需用 `quant user passwd` 或登录后设置页修改）。
 - `QUANT_HTTP_PORT`：默认 8080，冲突时改这里。
 
 启动后自检：
@@ -187,8 +187,13 @@ docker compose ps                      # 状态（两个健康检查：backend /
 docker compose logs -f backend         # 后端日志
 docker compose exec backend quant doctor   # 环境/密钥/数据库自检
 docker compose exec backend quant user create --username alice --password '...' --role user
+docker compose exec backend quant user passwd --username admin --password '...'   # 忘记密码时重置
 ./scripts/verify.sh                    # 一键自检
 ```
+
+- 忘记密码：Web 端没有"重置"入口（改密需要旧密码），用 `quant user passwd` 直接在库里改。
+  该命令同时清除失败计数与锁定（`--keep-lock` 可保留），并作废该用户全部 refresh token，
+  所以改完所有已登录的浏览器都要重新登录。密码强度与注册一致：至少 10 位、含四类字符中的三类。
 
 - 桌面端/手机端访问同一入口即可，布局自适应。
 - 用户管理：管理员登录后进入"设置 → 用户"，或 `quant user` CLI。

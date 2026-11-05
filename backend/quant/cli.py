@@ -252,29 +252,47 @@ def user(args: argparse.Namespace) -> int:
     from quant.config import get_settings
     from quant.security.password import hash_password, validate_strength
     from quant.storage.db import Database
-    from quant.storage.repositories import UserRepository
+    from quant.storage.repositories import TokenRepository, UserRepository
 
     _setup_logging(args.verbose)
-    if args.action != "create":
-        print("目前仅支持 create", file=sys.stderr)
-        return 2
     try:
         validate_strength(args.password)
     except Exception as exc:  # noqa: BLE001
         print(f"密码强度不足: {exc}", file=sys.stderr)
         return 2
 
+    # 本地库可能还没建表（全新检出），passwd 时建表无害：用户不存在会直接报错返回
     db = Database(get_settings().database_url)
     db.create_all()
-    with db.session() as session:
-        repo = UserRepository(session)
-        if repo.get_by_username(args.username):
-            print("用户名已存在", file=sys.stderr)
-            return 1
-        created = repo.create(args.username, hash_password(args.password), role=args.role)
-        print(f"已创建用户 {created.username}（role={created.role}, id={created.id}）")
-    db.dispose()
-    return 0
+    try:
+        with db.session() as session:
+            repo = UserRepository(session)
+            existing = repo.get_by_username(args.username)
+
+            if args.action == "create":
+                if existing:
+                    print("用户名已存在", file=sys.stderr)
+                    return 1
+                created = repo.create(args.username, hash_password(args.password), role=args.role)
+                print(f"已创建用户 {created.username}（role={created.role}, id={created.id}）")
+                return 0
+
+            # passwd：忘记密码时的唯一自救通道（Web 端没有重置入口，改密要已登录的旧密码）
+            if existing is None:
+                print(f"用户 {args.username} 不存在", file=sys.stderr)
+                return 1
+            repo.update_password(existing, hash_password(args.password))
+            cleared = ""
+            if not args.keep_lock:
+                existing.failed_attempts = 0
+                existing.locked_until = None
+                cleared = "，已清除失败计数与锁定"
+            # 改密即失效所有会话：旧 refresh token 换不出新 access token
+            revoked = TokenRepository(session).revoke_all(existing.id)
+            print(f"已更新 {existing.username} 的密码{cleared}，作废 {revoked} 个刷新令牌")
+            return 0
+    finally:
+        db.dispose()
 
 
 def openapi(args) -> int:
@@ -344,10 +362,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=openapi)
 
     p = sub.add_parser("user", help="用户管理")
-    p.add_argument("action", choices=["create"])
+    p.add_argument("action", choices=["create", "passwd"])
     p.add_argument("--username", required=True)
     p.add_argument("--password", required=True)
-    p.add_argument("--role", choices=["user", "admin"], default="user")
+    p.add_argument("--role", choices=["user", "admin"], default="user", help="仅 create 使用")
+    p.add_argument(
+        "--keep-lock",
+        action="store_true",
+        help="passwd 时保留原有失败计数与锁定状态（默认一并清掉）",
+    )
     p.set_defaults(func=user)
 
     return parser

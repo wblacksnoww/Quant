@@ -299,6 +299,7 @@ quant fetch --symbols 600519,000001 --years 5   # 预拉行情
 quant doctor                                # 环境、密钥、数据库自检
 quant keygen --file master.key              # 生成主密钥
 quant user create --username alice --password '...' --role user
+quant user passwd --username admin --password '...'   # 忘记密码时重置（并解除锁定）
 ```
 
 容器内执行：`docker compose exec backend quant doctor`。
