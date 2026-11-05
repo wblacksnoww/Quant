@@ -238,6 +238,27 @@ def benchmark_analysis(
 # --------------------------------------------------------------------------- #
 
 
+def average_exposure(curve: Any) -> float | None:
+    """权益曲线上的平均敞口（Σ|持仓市值| / 权益）。
+
+    Python 与 C++ 两条引擎路径写出的曲线都带 ``position_ratio`` 列，字段名一致，
+    所以同一份实现可以服务四个调用点（回测 native / 回测 Python / 模拟盘 / 实盘）。
+    缺列或全空时返回 ``None``，由调用方保留默认值 —— 宁可显示 0 也不编一个数。
+    """
+    if curve is None:
+        return None
+    try:
+        frame = curve if isinstance(curve, pd.DataFrame) else pd.DataFrame(curve)
+    except Exception:  # noqa: BLE001 - 曲线格式异常不应让整个绩效计算失败
+        return None
+    if frame.empty or "position_ratio" not in frame.columns:
+        return None
+    values = pd.to_numeric(frame["position_ratio"], errors="coerce").dropna()
+    if values.empty:
+        return None
+    return float(values.mean())
+
+
 def compute(
     equity: pd.Series | Iterable[float],
     *,
@@ -246,8 +267,14 @@ def compute(
     rf_annual: float = 0.0,
     benchmark: pd.Series | None = None,
     periods: int = TRADING_DAYS,
+    exposure: float | None = None,
 ) -> PerformanceReport:
-    """计算完整绩效报告。"""
+    """计算完整绩效报告。
+
+    ``exposure`` 是曲线上的平均敞口（0~1）。它不属于"从净值能反推"的量 ——
+    净值只反映盈亏，看不出钱是满仓赚的还是半仓赚的，所以必须由调用方
+    从账户快照里算好传进来；不传就留 0，不做无根据的猜测。
+    """
     if not isinstance(equity, pd.Series):
         series = pd.Series(list(equity), dtype=float)
     else:
@@ -313,6 +340,9 @@ def compute(
     )
     report.turnover = float(sum(float(getattr(t, "gross", 0.0)) for t in trades))
 
+    if exposure is not None:
+        report.exposure = min(1.0, max(0.0, float(exposure)))
+
     if isinstance(series.index, pd.DatetimeIndex):
         report.monthly_returns = monthly_returns(series)
 
@@ -342,6 +372,7 @@ def compute(
 
 __all__ = [
     "PerformanceReport",
+    "average_exposure",
     "compute",
     "drawdown_series",
     "max_drawdown",

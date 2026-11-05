@@ -22,7 +22,7 @@ from ..data.store import MarketDataService
 from ..execution.broker import SimBroker
 from ..execution.cost import CostModel
 from ..execution.matching import MatchingEngine
-from ..metrics.performance import compute
+from ..metrics.performance import average_exposure, compute
 from ..risk.base import DEFAULT_RULES, RiskManager
 from ..strategy.base import Strategy
 from ..strategy.custom_fields import NEWS_FIELDS
@@ -476,6 +476,7 @@ class BacktestEngine(BaseEngine):
                 initial_equity=cfg.initial_cash,
                 rf_annual=cfg.risk_free_rate,
                 benchmark=_align_benchmark(cfg.benchmark, frames, equity.index),
+                exposure=average_exposure(curve),
             )
         if self.recorder is not None:
             self.recorder.finalize(result)
@@ -578,6 +579,7 @@ class BacktestEngine(BaseEngine):
             initial_equity=cfg.initial_cash,
             rf_annual=cfg.risk_free_rate,
             benchmark=benchmark_curve,
+            exposure=average_exposure(curve),
         )
         result.equity_curve = session.equity_curve
         result.trades = [t.to_dict() for t in trades]

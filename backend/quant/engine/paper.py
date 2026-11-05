@@ -542,7 +542,7 @@ class PaperEngine(BaseEngine):
 
     # ------------------------------------------------------------------ #
     def _fill_result(self, result: EngineResult, session: TradingSession) -> None:
-        from ..metrics.performance import compute
+        from ..metrics.performance import average_exposure, compute
 
         curve = pd.DataFrame(session.equity_curve)
         if len(curve):
@@ -552,6 +552,7 @@ class PaperEngine(BaseEngine):
                 trades=session.fills,
                 initial_equity=self.config.initial_cash,
                 rf_annual=self.config.risk_free_rate,
+                exposure=average_exposure(curve),
             )
         result.equity_curve = session.equity_curve
         result.trades = [t.to_dict() for t in session.fills]
