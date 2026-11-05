@@ -262,3 +262,40 @@ def test_native_stock_markets_short_opens_short(symbol, tmp_path):
     assert result.status == "finished", result.error
     assert result.trades, "空头回测应有成交"
     assert result.trades[0]["side"] == "sell", "首笔开仓必须是卖出"
+
+
+def test_native_short_position_fields_are_consistent(tmp_path):
+    """C++ 持仓输出必须带 direction，且空头未实现收益率符号与盈亏一致。
+
+    这两处曾是 Python 修好、C++ 漏同步：
+    * 空头 cost_value 为负，分母少了 abs() 会把亏损显示成盈利（+69% 的假收益）；
+    * direction 缺失时前端「方向」列把空单显示成多单。
+    """
+    import quant.core_native as core_native
+
+    if not core_native.HAS_NATIVE:
+        pytest.skip("quant._core 不可用")
+
+    from quant.data.providers.synthetic import SyntheticProvider
+    from quant.data.store import DataStore, MarketDataService
+
+    data = MarketDataService(DataStore(root=tmp_path / "store", provider=SyntheticProvider()))
+    cfg = EngineConfig(
+        strategy_id="dual_ma",
+        symbols=["US:AAPL"],
+        start=date(2024, 1, 1),
+        end=date(2024, 12, 31),
+        initial_cash=1_000_000,
+        direction="short",
+        params={"fast": 5, "slow": 20},
+    )
+    result = BacktestEngine(cfg, data).run()
+    assert result.status == "finished", result.error
+
+    shorts = [p for p in result.positions if float(p.get("quantity", 0.0)) < 0]
+    assert shorts, "应留下空头持仓（否则断言无从校验）"
+    for pos in shorts:
+        assert pos.get("direction") == "short", pos
+        pnl = float(pos["unrealized_pnl"])
+        pct = float(pos["unrealized_pct"])
+        assert (pnl >= 0) == (pct >= 0), f"空头未实现收益率符号反了: pnl={pnl} pct={pct}"

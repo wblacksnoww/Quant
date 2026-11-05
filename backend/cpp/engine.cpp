@@ -5,6 +5,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <cmath>
+
 namespace py = pybind11;
 namespace qcore {
 
@@ -701,12 +703,14 @@ py::dict run_backtest_native(
     d["symbol"] = sym;
     d["quantity"] = pos.quantity;
     d["available"] = pos.available;
+    d["direction"] = pos.is_short() ? "short" : "long";
     d["avg_cost"] = py_round(pos.avg_cost, 4);
     d["last_price"] = py_round(pos.last_price, 4);
     d["cost_value"] = py_round(cost_value, 2);
     d["market_value"] = py_round(mv, 2);
     d["unrealized_pnl"] = py_round(mv - cost_value, 2);
-    d["unrealized_pct"] = py_round(cost_value != 0 ? (mv - cost_value) / cost_value : 0.0, 6);
+    // 分母取绝对值：空头 cost_value 为负，直接除会把盈亏符号翻反（与 Python 口径一致）
+    d["unrealized_pct"] = py_round(cost_value != 0 ? (mv - cost_value) / std::abs(cost_value) : 0.0, 6);
     d["realized_pnl"] = py_round(pos.realized_pnl, 2);
     d["total_pnl"] = py_round(pos.realized_pnl + (mv - cost_value), 2);
     d["opened_at"] = pos.opened_ns ? py::cast<py::object>(py::str(iso_from_ns(pos.opened_ns))) : py::none();
