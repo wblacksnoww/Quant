@@ -14,7 +14,14 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from ...core.errors import DataError, DataNotFound
-from ...core.markets import Market, currency_symbol, parse_instrument, price_limits, rules_for
+from ...core.markets import (
+    Market,
+    currency_symbol,
+    market_rules,
+    parse_instrument,
+    price_limits,
+    rules_for,
+)
 from ...data.base import frame_to_bars
 from ...data.calendar import trading_days
 from ...storage.models import User
@@ -52,7 +59,7 @@ def _instrument(symbol: str):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.get("/markets", response_model=list[MarketOut], summary="支持的市场")
+@router.get("/markets", response_model=list[MarketOut], summary="支持的市场与交易能力")
 def markets(_: User = Depends(get_current_user)) -> list[MarketOut]:
     return [
         MarketOut(
@@ -60,6 +67,7 @@ def markets(_: User = Depends(get_current_user)) -> list[MarketOut]:
             label=m.label,
             currency=m.currency,
             currency_symbol=currency_symbol(m.currency),
+            **market_rules(m).capabilities(),
         )
         for m in Market
     ]
@@ -256,6 +264,7 @@ def instrument_info(
         lot_size=rules.lot_size,
         t_plus_1=rules.t_plus_1,
         price_digits=rules.price_digits,
+        **rules.capabilities(),
         price=quote.price if quote else 0.0,
         change=quote.change if quote else None,
         change_pct=quote.change_pct if quote else None,

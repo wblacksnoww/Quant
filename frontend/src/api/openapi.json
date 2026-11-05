@@ -1755,6 +1755,11 @@
             "title": "Board",
             "type": "string"
           },
+          "can_short": {
+            "default": false,
+            "title": "Can Short",
+            "type": "boolean"
+          },
           "change": {
             "anyOf": [
               {
@@ -1852,6 +1857,31 @@
             "title": "Price Digits",
             "type": "integer"
           },
+          "settlement_days": {
+            "default": 1,
+            "title": "Settlement Days",
+            "type": "integer"
+          },
+          "settlement_label": {
+            "default": "",
+            "title": "Settlement Label",
+            "type": "string"
+          },
+          "short_label": {
+            "default": "",
+            "title": "Short Label",
+            "type": "string"
+          },
+          "short_note": {
+            "default": "",
+            "title": "Short Note",
+            "type": "string"
+          },
+          "short_restricted": {
+            "default": false,
+            "title": "Short Restricted",
+            "type": "boolean"
+          },
           "source": {
             "default": "",
             "title": "Source",
@@ -1865,6 +1895,16 @@
             "default": true,
             "title": "T Plus 1",
             "type": "boolean"
+          },
+          "trade_mode": {
+            "default": "T+1",
+            "title": "Trade Mode",
+            "type": "string"
+          },
+          "trade_mode_label": {
+            "default": "",
+            "title": "Trade Mode Label",
+            "type": "string"
           },
           "volume": {
             "anyOf": [
@@ -2274,8 +2314,13 @@
         "type": "object"
       },
       "MarketOut": {
-        "description": "市场元信息，前端市场分类标签用。",
+        "description": "市场元信息 + 交易能力，前端市场分类标签与「能否做空」判断用。",
         "properties": {
+          "can_short": {
+            "default": false,
+            "title": "Can Short",
+            "type": "boolean"
+          },
           "code": {
             "title": "Code",
             "type": "string"
@@ -2290,6 +2335,41 @@
           },
           "label": {
             "title": "Label",
+            "type": "string"
+          },
+          "settlement_days": {
+            "default": 1,
+            "title": "Settlement Days",
+            "type": "integer"
+          },
+          "settlement_label": {
+            "default": "",
+            "title": "Settlement Label",
+            "type": "string"
+          },
+          "short_label": {
+            "default": "",
+            "title": "Short Label",
+            "type": "string"
+          },
+          "short_note": {
+            "default": "",
+            "title": "Short Note",
+            "type": "string"
+          },
+          "short_restricted": {
+            "default": false,
+            "title": "Short Restricted",
+            "type": "boolean"
+          },
+          "trade_mode": {
+            "default": "T+1",
+            "title": "Trade Mode",
+            "type": "string"
+          },
+          "trade_mode_label": {
+            "default": "",
+            "title": "Trade Mode Label",
             "type": "string"
           }
         },
@@ -7385,7 +7465,7 @@
             "description": "Successful Response"
           }
         },
-        "summary": "支持的市场",
+        "summary": "支持的市场与交易能力",
         "tags": [
           "行情"
         ]

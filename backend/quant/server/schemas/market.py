@@ -119,6 +119,15 @@ class InstrumentOut(BaseModel):
     lot_size: int = 1
     t_plus_1: bool = True
     price_digits: int = 2
+    # --- 市场能力（回转 / 交收 / 做空），由 BoardRules.capabilities() 统一给出 --- #
+    trade_mode: str = "T+1"  # T+0 / T+1：当日能否回转卖出
+    trade_mode_label: str = ""
+    settlement_days: int = 1  # 交收 T+N（信息字段，不参与撮合）
+    settlement_label: str = ""
+    can_short: bool = False
+    short_restricted: bool = False  # 可空但受名单约束（港股）
+    short_label: str = ""
+    short_note: str = ""
     price: float = 0.0
     change: float | None = None
     change_pct: float | None = None
@@ -131,12 +140,21 @@ class InstrumentOut(BaseModel):
 
 
 class MarketOut(BaseModel):
-    """市场元信息，前端市场分类标签用。"""
+    """市场元信息 + 交易能力，前端市场分类标签与「能否做空」判断用。"""
 
-    code: str  # CN / US / HK
-    label: str  # A股 / 美股 / 港股
-    currency: str  # CNY / USD / HKD
-    currency_symbol: str  # ¥ / $ / HK$
+    code: str  # CN / US / HK / CRYPTO / FUND
+    label: str  # A股 / 美股 / 港股 / 虚拟货币 / 基金
+    currency: str  # CNY / USD / HKD / USDT
+    currency_symbol: str  # ¥ / $ / HK$ / USDT
+    # --- 交易能力（同一运行只能单市场，市场级判断足够） --- #
+    trade_mode: str = "T+1"
+    trade_mode_label: str = ""
+    settlement_days: int = 1
+    settlement_label: str = ""
+    can_short: bool = False
+    short_restricted: bool = False
+    short_label: str = ""
+    short_note: str = ""
 
 
 class WatchlistUpdate(BaseModel):

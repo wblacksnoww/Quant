@@ -885,7 +885,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 支持的市场 */
+        /** 支持的市场与交易能力 */
         get: operations["markets_api_market_markets_get"];
         put?: never;
         post?: never;
@@ -2428,6 +2428,11 @@ export interface components {
              * @default
              */
             board: string;
+            /**
+             * Can Short
+             * @default false
+             */
+            can_short: boolean;
             /** Change */
             change?: number | null;
             /** Change Pct */
@@ -2475,6 +2480,31 @@ export interface components {
              */
             price_digits: number;
             /**
+             * Settlement Days
+             * @default 1
+             */
+            settlement_days: number;
+            /**
+             * Settlement Label
+             * @default
+             */
+            settlement_label: string;
+            /**
+             * Short Label
+             * @default
+             */
+            short_label: string;
+            /**
+             * Short Note
+             * @default
+             */
+            short_note: string;
+            /**
+             * Short Restricted
+             * @default false
+             */
+            short_restricted: boolean;
+            /**
              * Source
              * @default
              */
@@ -2486,6 +2516,16 @@ export interface components {
              * @default true
              */
             t_plus_1: boolean;
+            /**
+             * Trade Mode
+             * @default T+1
+             */
+            trade_mode: string;
+            /**
+             * Trade Mode Label
+             * @default
+             */
+            trade_mode_label: string;
             /** Volume */
             volume?: number | null;
         };
@@ -2663,9 +2703,14 @@ export interface components {
         };
         /**
          * MarketOut
-         * @description 市场元信息，前端市场分类标签用。
+         * @description 市场元信息 + 交易能力，前端市场分类标签与「能否做空」判断用。
          */
         MarketOut: {
+            /**
+             * Can Short
+             * @default false
+             */
+            can_short: boolean;
             /** Code */
             code: string;
             /** Currency */
@@ -2674,6 +2719,41 @@ export interface components {
             currency_symbol: string;
             /** Label */
             label: string;
+            /**
+             * Settlement Days
+             * @default 1
+             */
+            settlement_days: number;
+            /**
+             * Settlement Label
+             * @default
+             */
+            settlement_label: string;
+            /**
+             * Short Label
+             * @default
+             */
+            short_label: string;
+            /**
+             * Short Note
+             * @default
+             */
+            short_note: string;
+            /**
+             * Short Restricted
+             * @default false
+             */
+            short_restricted: boolean;
+            /**
+             * Trade Mode
+             * @default T+1
+             */
+            trade_mode: string;
+            /**
+             * Trade Mode Label
+             * @default
+             */
+            trade_mode_label: string;
         };
         /**
          * Message
