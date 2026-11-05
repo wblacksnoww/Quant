@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { ApiError, backtestApi, riskApi, strategyApi } from '../api/client'
+import { ApiError, backtestApi, marketApi, riskApi, strategyApi } from '../api/client'
 import type {
   BacktestRequest,
   BarInterval,
   CostConfig,
+  Direction,
+  MarketInfo,
   RiskPresets,
   RiskRuleInput,
   RunDetail,
@@ -24,7 +26,7 @@ import { usePolling } from '../hooks/usePolling'
 import { useEvents } from '../store/events'
 import { useWatchlist } from '../store/watchlist'
 import { notify } from '../store/toast'
-import { durationText, fmtDateTime, fmtSignedPct, todayISO, yearsAgoISO } from '../utils/format'
+import { durationText, fmtDateTime, fmtSignedPct, marketCodeOf, todayISO, yearsAgoISO } from '../utils/format'
 
 const DEFAULT_COST: CostConfig = {
   commission_rate: 3e-4,
@@ -68,6 +70,8 @@ export function BacktestPage() {
   const [strategyId, setStrategyId] = useState('')
   const [symbols, setSymbols] = useState<string[]>([])
   const [barInterval, setBarInterval] = useState<BarInterval>('1d')
+  const [direction, setDirection] = useState<Direction>('long')
+  const [markets, setMarkets] = useState<MarketInfo[]>([])
   const [start, setStart] = useState(yearsAgoISO(3))
   const [end, setEnd] = useState(todayISO())
   const [initialCash, setInitialCash] = useState(1_000_000)
@@ -80,6 +84,31 @@ export function BacktestPage() {
   const isCustomRule = strategyId === 'custom_rule'
 
   const strategy = useMemo(() => strategies.find((item) => item.id === strategyId), [strategies, strategyId])
+
+  // 市场能力（T+0/T+1、能否做空）：一次拉取，方向选项按所选标的的市场启用/禁用
+  useEffect(() => {
+    let alive = true
+    marketApi
+      .markets()
+      .then((items) => {
+        if (alive) setMarkets(items)
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const marketInfo = useMemo(() => {
+    const code = marketCodeOf(symbols[0])
+    return code ? markets.find((item) => item.code === code) : undefined
+  }, [markets, symbols])
+  const canShort = marketInfo?.can_short ?? false
+
+  // 换到不可做空的市场时回落到做多，避免提交一个后端必然拒绝的组合
+  useEffect(() => {
+    if (marketInfo && !marketInfo.can_short && direction === 'short') setDirection('long')
+  }, [marketInfo, direction])
 
   // 通用参数表单要渲染的参数（拼装策略的 spec 由下面专门的下拉处理，不渲染 JSON 输入）
   const formParams = useMemo(
@@ -273,6 +302,7 @@ export function BacktestPage() {
       risk: riskRules,
       risk_free_rate: 0.02,
       bar_interval: barInterval,
+      direction,
     }
 
     setSubmitting(true)
@@ -377,20 +407,43 @@ export function BacktestPage() {
 
             {isCustomRule && <CustomStrategySelect value={selectedCustom} onChange={setSelectedCustom} />}
 
-            <Field label="K 线周期" hint="分钟级目前仅虚拟货币支持历史回测；日线策略不受影响">
-              <select
-                className="select"
-                value={barInterval}
-                onChange={(event) => setBarInterval(event.target.value as BarInterval)}
+            <div className="form-grid">
+              <Field
+                label="持仓方向"
+                hint={
+                  marketInfo
+                    ? `${marketInfo.label}：${marketInfo.trade_mode_label}，${marketInfo.short_label}${
+                        marketInfo.short_note ? `（${marketInfo.short_note}）` : ''
+                      }`
+                    : '选择标的后面板按市场自动判断；A 股、场内 ETF 不可做空'
+                }
               >
-                <option value="1d">日线（默认）</option>
-                <option value="60m">60 分钟</option>
-                <option value="30m">30 分钟</option>
-                <option value="15m">15 分钟</option>
-                <option value="5m">5 分钟</option>
-                <option value="1m">1 分钟（高频）</option>
-              </select>
-            </Field>
+                <select
+                  className="select"
+                  value={direction}
+                  onChange={(event) => setDirection(event.target.value as Direction)}
+                  disabled={!canShort}
+                >
+                  <option value="long">做多（Long）</option>
+                  <option value="short">做空（Short，信号翻转）</option>
+                </select>
+              </Field>
+
+              <Field label="K 线周期" hint="分钟级目前仅虚拟货币支持历史回测；日线策略不受影响">
+                <select
+                  className="select"
+                  value={barInterval}
+                  onChange={(event) => setBarInterval(event.target.value as BarInterval)}
+                >
+                  <option value="1d">日线（默认）</option>
+                  <option value="60m">60 分钟</option>
+                  <option value="30m">30 分钟</option>
+                  <option value="15m">15 分钟</option>
+                  <option value="5m">5 分钟</option>
+                  <option value="1m">1 分钟（高频）</option>
+                </select>
+              </Field>
+            </div>
 
             <div className="form-grid-3">
               <Field label="开始日期">

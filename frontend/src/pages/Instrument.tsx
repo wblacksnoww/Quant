@@ -20,6 +20,7 @@ import type {
   BarsResponse,
   Credential,
   CustomStrategy,
+  Direction,
   InstrumentInfo,
   LiveAdapter,
   NewsFactor,
@@ -136,6 +137,7 @@ export function InstrumentPage() {
   const [params, setParams] = useState<Record<string, unknown>>({})
   const [customId, setCustomId] = useState<number | null>(null)
   const [initialCash, setInitialCash] = useState(1_000_000)
+  const [direction, setDirection] = useState<Direction>('long')
   const [paperMode, setPaperMode] = useState<'replay' | 'live'>('replay')
   const [riskPreset, setRiskPreset] = useState('balanced')
   const [adapter, setAdapter] = useState('ccxt')
@@ -148,6 +150,11 @@ export function InstrumentPage() {
   useEffect(() => {
     void loadWatchlist()
   }, [loadWatchlist])
+
+  // 切到不可做空的市场（A 股/场内 ETF）时回落到做多，避免提交必然被拒的组合
+  useEffect(() => {
+    if (info && !info.can_short && direction === 'short') setDirection('long')
+  }, [info, direction])
 
   const strategy = useMemo(() => strategies.find((item) => item.id === strategyId), [strategies, strategyId])
   const brokerCredentials = useMemo(() => credentials.filter((item) => item.kind === 'broker'), [credentials])
@@ -346,6 +353,7 @@ export function InstrumentPage() {
       replay_interval: 0.35,
       poll_interval: 5,
       respect_market_hours: true,
+      direction,
     }
     setStarting(true)
     try {
@@ -388,6 +396,7 @@ export function InstrumentPage() {
         confirm_live: confirmLive,
         poll_interval: 5,
         warmup_days: 120,
+        direction,
       })
       notify('success', `${symbol} 实盘已启动（${sandbox ? '测试网' : '真实资金'}）`)
       navigate('/live')
@@ -420,7 +429,7 @@ export function InstrumentPage() {
   const currency = info?.currency
   const changePct = info?.change_pct ?? null
   const limitText = info && info.limit_pct > 0 ? `±${(info.limit_pct * 100).toFixed(0)}%` : '无限制'
-  const settleText = info?.t_plus_1 ? 'T+1（次日可卖）' : 'T+0（当日可卖）'
+  const settleText = info?.trade_mode_label || (info?.t_plus_1 ? 'T+1（次日可卖）' : 'T+0（当日可卖）')
   const lotText = info && info.lot_size > 1 ? `${info.lot_size} 股/手` : '任意数量（含小数）'
 
   return (
@@ -574,8 +583,17 @@ export function InstrumentPage() {
             </dd>
             <dt>最小单位</dt>
             <dd>{lotText}</dd>
-            <dt>交收</dt>
+            <dt>当日回转</dt>
             <dd>{settleText}</dd>
+            <dt>交收周期</dt>
+            <dd>{info?.settlement_label || '—'}</dd>
+            <dt>做空</dt>
+            <dd>
+              <Badge tone={info?.can_short ? (info.short_restricted ? 'warn' : 'success') : 'neutral'}>
+                {info?.short_label || '—'}
+              </Badge>
+              {info?.short_note ? <span className="faint tiny"> {info.short_note}</span> : null}
+            </dd>
             <dt>报价精度</dt>
             <dd>{digits} 位小数</dd>
           </dl>
@@ -614,6 +632,27 @@ export function InstrumentPage() {
                     {item.name}（{item.id}）
                   </option>
                 ))}
+              </select>
+            </Field>
+
+            <Field
+              label="持仓方向"
+              hint={
+                info?.can_short
+                  ? `${info.trade_mode_label}，${info.short_label}${
+                      info.short_note ? `（${info.short_note}）` : ''
+                    }`
+                  : '该标的市场不支持做空（A 股融券、ETF 融券均未建模）'
+              }
+            >
+              <select
+                className="select"
+                value={direction}
+                onChange={(event) => setDirection(event.target.value as Direction)}
+                disabled={!info?.can_short}
+              >
+                <option value="long">做多（Long）</option>
+                <option value="short">做空（Short，信号翻转）</option>
               </select>
             </Field>
 

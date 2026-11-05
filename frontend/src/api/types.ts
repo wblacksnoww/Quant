@@ -93,6 +93,17 @@ export interface MarketInfo {
   label: string
   currency: string
   currency_symbol: string
+  /** 当日回转能力：T+0 当日可卖 / T+1 次日可卖 */
+  trade_mode: string
+  trade_mode_label: string
+  /** 交收周期 T+N（信息字段，不参与撮合） */
+  settlement_days: number
+  settlement_label: string
+  can_short: boolean
+  /** 可做空但受名单约束（港股仅指定可空证券） */
+  short_restricted: boolean
+  short_label: string
+  short_note: string
 }
 
 export interface IndexQuote {
@@ -118,6 +129,14 @@ export interface InstrumentInfo {
   lot_size: number
   t_plus_1: boolean
   price_digits: number
+  trade_mode: string
+  trade_mode_label: string
+  settlement_days: number
+  settlement_label: string
+  can_short: boolean
+  short_restricted: boolean
+  short_label: string
+  short_note: string
   price: number
   change: number | null
   change_pct: number | null
@@ -337,7 +356,11 @@ export interface BacktestRequest {
   benchmark?: string | null
   risk_free_rate?: number
   bar_interval?: BarInterval
+  /** 持仓方向：long 做多（默认）/ short 做空（仅可做空市场：CRYPTO/US/HK） */
+  direction?: Direction
 }
+
+export type Direction = 'long' | 'short'
 
 export interface PaperStartRequest extends BacktestRequest {
   mode: 'replay' | 'live'

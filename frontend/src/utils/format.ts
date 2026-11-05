@@ -142,6 +142,21 @@ export function marketTone(market: string | null | undefined): 'accent' | 'warn'
   return MARKET_TONES[market.toUpperCase()] ?? 'neutral'
 }
 
+/**
+ * 从任意标的写法推断市场代码（CN/US/HK/CRYPTO/FUND）。
+ *
+ * 用法：把市场能力（T+0/T+1、能否做空）挂到用户当前选的标的上。
+ * 规范 id 直接取前缀；裸代码交给 :func:`normalizeInstrumentId` 兜底。
+ */
+export function marketCodeOf(symbol: string | null | undefined): string {
+  const raw = (symbol ?? '').trim().toUpperCase()
+  if (!raw) return ''
+  const idx = raw.indexOf(':')
+  if (idx > 0) return raw.slice(0, idx)
+  const normalized = normalizeInstrumentId(raw)
+  return normalized ? normalized.split(':')[0] : ''
+}
+
 /** 货币符号（¥/$/HK$），未知货币原样返回。 */
 export function currencySymbol(currency: string | null | undefined): string {
   if (!currency) return ''

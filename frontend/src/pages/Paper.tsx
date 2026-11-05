@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { ApiError, backtestApi, paperApi, riskApi, strategyApi } from '../api/client'
+import { ApiError, backtestApi, marketApi, paperApi, riskApi, strategyApi } from '../api/client'
 import type {
   BarInterval,
+  Direction,
+  MarketInfo,
   PaperStartRequest,
   PaperState,
   RiskPresets,
@@ -25,7 +27,7 @@ import { usePolling } from '../hooks/usePolling'
 import { useEvents } from '../store/events'
 import { notify } from '../store/toast'
 import { useWatchlist } from '../store/watchlist'
-import { fmtMoney, fmtSignedPct } from '../utils/format'
+import { fmtMoney, fmtSignedPct, marketCodeOf } from '../utils/format'
 
 function defaultsFor(strategy: Strategy | undefined): Record<string, unknown> {
   if (!strategy) return {}
@@ -59,6 +61,8 @@ export function PaperPage() {
   const [mode, setMode] = useState<'replay' | 'live'>('replay')
   const [replayDays, setReplayDays] = useState(120)
   const [barInterval, setBarInterval] = useState<BarInterval>('1d')
+  const [direction, setDirection] = useState<Direction>('long')
+  const [markets, setMarkets] = useState<MarketInfo[]>([])
   const [replayInterval, setReplayInterval] = useState(0.35)
   const [pollInterval, setPollInterval] = useState(5)
   const [respectMarketHours, setRespectMarketHours] = useState(true)
@@ -77,6 +81,30 @@ export function PaperPage() {
   }, [loadWatchlist])
 
   const strategy = useMemo(() => strategies.find((item) => item.id === strategyId), [strategies, strategyId])
+
+  // 市场能力：方向选项按所选标的市场启用/禁用（A 股与场内 ETF 不可做空）
+  useEffect(() => {
+    let alive = true
+    marketApi
+      .markets()
+      .then((items) => {
+        if (alive) setMarkets(items)
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const marketInfo = useMemo(() => {
+    const code = marketCodeOf(symbols[0])
+    return code ? markets.find((item) => item.code === code) : undefined
+  }, [markets, symbols])
+  const canShort = marketInfo?.can_short ?? false
+
+  useEffect(() => {
+    if (marketInfo && !marketInfo.can_short && direction === 'short') setDirection('long')
+  }, [marketInfo, direction])
 
   // 通用参数表单（拼装策略的 spec 由下拉携带，不渲染 JSON 输入）
   const formParams = useMemo(
@@ -201,6 +229,7 @@ export function PaperPage() {
       poll_interval: pollInterval,
       respect_market_hours: respectMarketHours,
       bar_interval: barInterval,
+      direction,
     }
 
     setStarting(true)
@@ -405,7 +434,25 @@ export function PaperPage() {
 
             {isCustomRule && <CustomStrategySelect value={selectedCustom} onChange={setSelectedCustom} />}
 
-            <div className="form-grid">
+            <div className="form-grid-3">
+              <Field
+                label="持仓方向"
+                hint={
+                  marketInfo
+                    ? `${marketInfo.label}：${marketInfo.trade_mode_label}，${marketInfo.short_label}`
+                    : '按所选标的的市场自动判断'
+                }
+              >
+                <select
+                  className="select"
+                  value={direction}
+                  onChange={(event) => setDirection(event.target.value as Direction)}
+                  disabled={!canShort}
+                >
+                  <option value="long">做多（Long）</option>
+                  <option value="short">做空（Short，信号翻转）</option>
+                </select>
+              </Field>
               <Field label="K 线周期" hint="分钟级目前仅虚拟货币支持历史数据">
                 <select
                   className="select"
