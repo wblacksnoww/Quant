@@ -9,6 +9,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import {
   ApiError,
   credentialApi,
+  isPermanentError,
   liveApi,
   marketApi,
   newsApi,
@@ -226,6 +227,8 @@ export function InstrumentPage() {
   }, [symbol])
 
   // ---- K 线 ---------------------------------------------------------------- //
+  // 4xx（代码不合法、无权限）是永久性失败，继续每 15 秒重试只会刷一屏同样的错误
+  const [chartFatal, setChartFatal] = useState(false)
   const loadChart = useCallback(
     (_refresh = false) => {
       if (!symbol) return
@@ -236,10 +239,12 @@ export function InstrumentPage() {
         .then((result) => {
           setBars(result)
           setError('')
+          setChartFatal(false)
         })
         .catch((err) => {
           // 刷新失败保留上一份数据，只提示错误
           setError(err instanceof ApiError ? err.message : '行情加载失败')
+          setChartFatal(isPermanentError(err))
         })
         .finally(() => setBarsLoading(false))
     },
@@ -253,7 +258,7 @@ export function InstrumentPage() {
   // 今日/本周是分钟线：每 15 秒自动刷新（页面可见时）
   usePolling(loadChart, {
     interval: 15_000,
-    enabled: range === 'today' || range === 'week',
+    enabled: (range === 'today' || range === 'week') && !chartFatal,
     immediate: false,
   })
 

@@ -84,6 +84,16 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * 4xx 表示「请求本身不对」（代码不合法、无权限、已删除），重试多少次都一样；
+ * 408/429 是例外，属于「等会儿再来」。轮询类调用应当据此停手，别把同一句报错刷满日志。
+ */
+export function isPermanentError(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false
+  const status = error.status
+  return status >= 400 && status < 500 && status !== 408 && status !== 429
+}
+
 // --------------------------------------------------------------------------- //
 // 会话状态
 // --------------------------------------------------------------------------- //
