@@ -168,11 +168,7 @@ def stop(ctx: Any, *, user_id: int, credential_id: int | None = None) -> dict[st
     if ctx.live.running(user_id, credential_id):
         # 全停（credential_id=None）时也要逐个释放租约，否则协调器里会留下
         # 陈旧的 running 快照，前端点了停止仍然显示运行中。
-        local_ids = (
-            [credential_id]
-            if credential_id is not None
-            else ctx.live.active_credentials(user_id)
-        )
+        local_ids = [credential_id] if credential_id is not None else ctx.live.active_credentials(user_id)
         stopped = ctx.live.stop(user_id, credential_id)
         open_orders = len(engine.broker.open_orders) if engine and engine.broker else 0
         coord = _coordinator(ctx)

@@ -22,15 +22,15 @@ from quant.storage.repositories.runs import RunRepository
 
 
 def _config(**kwargs) -> EngineConfig:
-    base = dict(
-        strategy_id="dual_ma",
-        symbols=["CN:000001"],
-        start=date(2026, 1, 1),
-        end=date(2026, 11, 6),
-        initial_cash=1_000_000.0,
-        run_id="run_unit_0001",
-        user_id=1,
-    )
+    base = {
+        "strategy_id": "dual_ma",
+        "symbols": ["CN:000001"],
+        "start": date(2026, 1, 1),
+        "end": date(2026, 11, 6),
+        "initial_cash": 1_000_000.0,
+        "run_id": "run_unit_0001",
+        "user_id": 1,
+    }
     base.update(kwargs)
     return EngineConfig(**base)
 
@@ -198,6 +198,7 @@ def test_paper_minute_replay_respects_explicit_start():
 
 def test_paper_daily_replay_untouched():
     """日线回放不受分钟线上限影响。"""
+
     class _DailyData(_RecordingData):
         def bars(self, symbol, start, end):  # noqa: D102
             import pandas as pd
@@ -215,9 +216,7 @@ def test_paper_daily_replay_untouched():
             )
 
     data = _DailyData()
-    engine = _paper_engine(
-        data, replay_days=30, start=date(2026, 1, 1), end=date(2026, 11, 6), interval="1d"
-    )
+    engine = _paper_engine(data, replay_days=30, start=date(2026, 1, 1), end=date(2026, 11, 6), interval="1d")
     frames = engine._load_frames()
     assert frames, "日线回放没有取到数据"
     assert not data.calls, "日线回放不该请求分钟线"

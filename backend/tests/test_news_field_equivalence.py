@@ -313,18 +313,16 @@ class TestNewsCoverageIsVisible:
     def test_zero_coverage_emits_warning(self, context):
         result = _run(context, "news_zero_cov", news=SilentNewsSource())
         assert result.status == "finished", result.error
-        warnings = [l for l in result.logs if l.get("level") == "warning"]
-        assert any("覆盖 0/" in l["message"] for l in warnings), (
+        warnings = [entry for entry in result.logs if entry.get("level") == "warning"]
+        assert any("覆盖 0/" in entry["message"] for entry in warnings), (
             "新闻覆盖率为 0 时没有任何告警 —— 用户会以为新闻过滤生效了。"
-            f"实际日志：{[l.get('message', '')[:60] for l in result.logs]}"
+            f"实际日志：{[entry.get('message', '')[:60] for entry in result.logs]}"
         )
 
     def test_full_coverage_logs_info_without_warning(self, context):
         news = RecordingNewsSource()
         result = _run(context, "news_cov_info", news=news)
         assert result.status == "finished", result.error
-        coverage = [l for l in result.logs if "覆盖" in l.get("message", "")]
+        coverage = [entry for entry in result.logs if "覆盖" in entry.get("message", "")]
         assert coverage, "有新闻时也要说明覆盖了多少根 bar"
-        assert not any(l.get("level") == "warning" for l in coverage), (
-            "覆盖率正常时不该报警告"
-        )
+        assert not any(entry.get("level") == "warning" for entry in coverage), "覆盖率正常时不该报警告"

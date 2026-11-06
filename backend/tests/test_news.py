@@ -391,15 +391,11 @@ def test_backfilled_news_is_visible_from_publish_time():
         "confidence": 0.9,
     }
     # 补录前一天的 as_of：应当能看到（信息在 11-03 就公开了）
-    visible = compute_factor(
-        [item], symbol="CRYPTO:BTC/USDT", as_of=datetime(2026, 11, 4), window="7d"
-    )
+    visible = compute_factor([item], symbol="CRYPTO:BTC/USDT", as_of=datetime(2026, 11, 4), window="7d")
     assert visible.event_count == 1, "补录新闻没有在发布时间之后变得可见"
     assert visible.sentiment < 0
     # 发布之前的 as_of 仍然看不到（不能有未来函数）
-    before = compute_factor(
-        [item], symbol="CRYPTO:BTC/USDT", as_of=datetime(2026, 11, 2), window="7d"
-    )
+    before = compute_factor([item], symbol="CRYPTO:BTC/USDT", as_of=datetime(2026, 11, 2), window="7d")
     assert before.event_count == 0, "发布时间之前就看到了新闻，等于引入未来函数"
 
 
@@ -415,9 +411,7 @@ def test_future_publish_time_falls_back_to_ingest_time():
     }
     now = compute_factor([item], symbol="CN:600519", as_of=datetime(2026, 11, 5, 15, 0), window="1d")
     assert now.event_count == 1, "未来发布时间把条目挡在了时间窗外，应退回入库时间"
-    earlier = compute_factor(
-        [item], symbol="CN:600519", as_of=datetime(2026, 11, 5, 13, 0), window="1d"
-    )
+    earlier = compute_factor([item], symbol="CN:600519", as_of=datetime(2026, 11, 5, 13, 0), window="1d")
     assert earlier.event_count == 0
 
 

@@ -326,7 +326,8 @@ def stop(ctx: Any, *, user_id: int, run_id: str | None = None) -> int:
         # 先记下本地在跑的 run_id：不传 run_id 时是"全部停止"，
         # 但租约要逐个释放，否则会留在协调器里变成陈旧的 running 快照。
         local_ids = [
-            rid for rid, runner in ctx.paper.runners(user_id).items()
+            rid
+            for rid, runner in ctx.paper.runners(user_id).items()
             if runner.running and (run_id is None or rid == run_id)
         ]
         stopped = ctx.paper.stop(user_id, run_id)

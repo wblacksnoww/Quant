@@ -241,7 +241,7 @@ class GatewayManager:
         while not self._stop_reader.is_set() and self.running:
             try:
                 chunk = sock.recv(65536)
-            except socket.timeout:
+            except TimeoutError:
                 continue
             except OSError:
                 break

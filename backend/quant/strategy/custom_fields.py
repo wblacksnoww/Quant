@@ -29,9 +29,7 @@ def news_field(metric: str, window: str) -> str:
 
 # field -> (NewsFactor 属性, 聚合窗口)
 NEWS_FIELDS: dict[str, tuple[str, str]] = {
-    news_field(metric, window): (metric, window)
-    for window in NEWS_WINDOWS
-    for metric, _ in NEWS_METRICS
+    news_field(metric, window): (metric, window) for window in NEWS_WINDOWS for metric, _ in NEWS_METRICS
 }
 
 ALL_FIELDS: tuple[str, ...] = PRICE_FIELDS + tuple(NEWS_FIELDS)

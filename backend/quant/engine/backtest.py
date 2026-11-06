@@ -520,15 +520,12 @@ class BacktestEngine(BaseEngine):
             _, window = NEWS_FIELDS[field]
             if window not in by_window:
                 by_window[window] = [
-                    self.news.factor(symbol, as_of=row.to_pydatetime(), window=window)
-                    for row in stamps
+                    self.news.factor(symbol, as_of=row.to_pydatetime(), window=window) for row in stamps
                 ]
         extra: dict[str, np.ndarray] = {}
         for field in news_fields:
             metric, window = NEWS_FIELDS[field]
-            extra[field] = np.array(
-                [getattr(f, metric) for f in by_window[window]], dtype="float64"
-            )
+            extra[field] = np.array([getattr(f, metric) for f in by_window[window]], dtype="float64")
         # 覆盖率按首个字段所用窗口统计：绝大多数 spec 只用一个窗口，
         # 混用（1h + 1d）时以第一条为准，足以反映"新闻到底有没有进来"。
         first_window = NEWS_FIELDS[news_fields[0]][1]
@@ -564,9 +561,7 @@ class BacktestEngine(BaseEngine):
         elif ratio < 0.05:
             message += "覆盖率低于 5%，新闻过滤对结果的影响可以忽略。"
         log.log(logging.WARNING if level == "warning" else logging.INFO, message)
-        result.logs.append(
-            {"ts": datetime.now().isoformat(), "level": level, "message": message}
-        )
+        result.logs.append({"ts": datetime.now().isoformat(), "level": level, "message": message})
         # 日线 + 1h 窗口是典型的"永远看不到新闻"组合：日线 bar 的时间戳是
         # 交易日 00:00，1h 窗口只能看到前一天 23:00~00:00 的新闻。
         if self.config.bar_interval == "1d" and "1h" in windows and covered == 0:
@@ -575,9 +570,7 @@ class BacktestEngine(BaseEngine):
                 "如需新闻真正参与，请把 news_window 设为 1d。"
             )
             log.warning(hint)
-            result.logs.append(
-                {"ts": datetime.now().isoformat(), "level": "warning", "message": hint}
-            )
+            result.logs.append({"ts": datetime.now().isoformat(), "level": "warning", "message": hint})
 
     def _load_frames(self) -> dict[str, pd.DataFrame]:
         frames: dict[str, pd.DataFrame] = {}

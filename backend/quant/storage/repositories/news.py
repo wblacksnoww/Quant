@@ -101,13 +101,9 @@ class NewsRepository:
         # 精确的窗口裁剪交给 compute_factor（它按 min(published_at,
         # effective_at) 逐条判断）。
         if start is not None:
-            stmt = stmt.where(
-                (NewsItem.published_at >= start) | (NewsItem.effective_at >= start)
-            )
+            stmt = stmt.where((NewsItem.published_at >= start) | (NewsItem.effective_at >= start))
         if end is not None:
-            stmt = stmt.where(
-                (NewsItem.published_at <= end) | (NewsItem.effective_at <= end)
-            )
+            stmt = stmt.where((NewsItem.published_at <= end) | (NewsItem.effective_at <= end))
         rows = list(self.session.scalars(stmt))
         wanted = set(symbols)
         return [row for row in rows if _matches_any(row, wanted)]
