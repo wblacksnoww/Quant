@@ -12,6 +12,7 @@ import time
 from datetime import date, datetime
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from ..core.clock import SimClock
@@ -320,20 +321,15 @@ class BacktestEngine(BaseEngine):
                     }
                 )
             if news_fields and self.news is not None:
+                covered_bars = 0
+                total_bars = 0
                 for s in symbols:
                     frame = frames[s]
-                    extra: dict[str, np.ndarray] = {}
-                    for field in news_fields:
-                        metric, window = NEWS_FIELDS[field]
-                        # NewsFactorProvider 的接口是 factor()；早期这里误写成
-                        # news_factor_at()（那是 Strategy 基类的方法），导致
-                        # 拼装策略一旦用到新闻字段、走 C++ 路径就 AttributeError。
-                        values = [
-                            self.news.factor(s, as_of=row.to_pydatetime(), window=window)
-                            for row in pd.to_datetime(frame["date"])
-                        ]
-                        extra[field] = np.array([getattr(f, metric) for f in values], dtype="float64")
+                    extra, covered, total = self._news_extras(s, frame, news_fields)
                     extras.append(extra)
+                    covered_bars += covered
+                    total_bars += total
+                self._report_news_coverage(result, news_fields, covered_bars, total_bars)
             elif news_fields:
                 # spec 引用了新闻字段但这次运行没有新闻数据源。
                 #
@@ -495,6 +491,86 @@ class BacktestEngine(BaseEngine):
                 recorder.update_progress(progress, message)
 
         return cb
+
+    def _news_extras(
+        self,
+        symbol: str,
+        frame: pd.DataFrame,
+        news_fields: list[str],
+    ) -> tuple[dict[str, np.ndarray], int, int]:
+        """按 bar 生成新闻列，并返回（列, 有新闻的 bar 数, 总 bar 数）。
+
+        同一根 bar 上多个新闻字段共用一次 ``factor()`` 调用 —— provider 内部
+        按 ``(symbol, as_of, window)`` 缓存，重复调用不会重算，但拿到同一个
+        对象能让"这根 bar 有没有新闻"只判断一次。
+        """
+        stamps = pd.to_datetime(frame["date"])
+        # NewsFactorProvider 的接口是 factor()；早期这里误写成
+        # news_factor_at()（那是 Strategy 基类的方法），导致拼装策略一旦
+        # 用到新闻字段、走 C++ 路径就 AttributeError。
+        by_window: dict[str, list] = {}
+        for field in news_fields:
+            _, window = NEWS_FIELDS[field]
+            if window not in by_window:
+                by_window[window] = [
+                    self.news.factor(symbol, as_of=row.to_pydatetime(), window=window)
+                    for row in stamps
+                ]
+        extra: dict[str, np.ndarray] = {}
+        for field in news_fields:
+            metric, window = NEWS_FIELDS[field]
+            extra[field] = np.array(
+                [getattr(f, metric) for f in by_window[window]], dtype="float64"
+            )
+        # 覆盖率按首个字段所用窗口统计：绝大多数 spec 只用一个窗口，
+        # 混用（1h + 1d）时以第一条为准，足以反映"新闻到底有没有进来"。
+        first_window = NEWS_FIELDS[news_fields[0]][1]
+        covered = sum(1 for f in by_window[first_window] if getattr(f, "event_count", 0))
+        return extra, covered, len(stamps)
+
+    def _report_news_coverage(
+        self,
+        result: EngineResult,
+        news_fields: list[str],
+        covered: int,
+        total: int,
+    ) -> None:
+        """把"新闻因子覆盖了多少根 bar"写进运行日志。
+
+        不写会怎样：新闻源接上了、因子全是中性值，C++ 照常求值，条件恒被
+        满足或被拒绝，最终结果与"没有新闻"一模一样，而用户看到的只是一份
+        正常的回测报告。这种"看起来成功"的失效必须留下痕迹。
+        """
+        windows = sorted({NEWS_FIELDS[f][1] for f in news_fields})
+        ratio = (covered / total) if total else 0.0
+        message = (
+            f"新闻因子覆盖 {covered}/{total} 根 bar（{ratio:.0%}），窗口 {','.join(windows)}；"
+            f"其余 bar 按中性因子（情绪 0 / 置信度 0）参与计算。"
+        )
+        level = "info"
+        if covered == 0:
+            level = "warning"
+            message += (
+                "本区间没有任何新闻落入窗口，新闻条件实际不起作用，"
+                "策略等价于纯技术信号。请检查新闻数据的时间范围是否覆盖回测区间。"
+            )
+        elif ratio < 0.05:
+            message += "覆盖率低于 5%，新闻过滤对结果的影响可以忽略。"
+        log.log(logging.WARNING if level == "warning" else logging.INFO, message)
+        result.logs.append(
+            {"ts": datetime.now().isoformat(), "level": level, "message": message}
+        )
+        # 日线 + 1h 窗口是典型的"永远看不到新闻"组合：日线 bar 的时间戳是
+        # 交易日 00:00，1h 窗口只能看到前一天 23:00~00:00 的新闻。
+        if self.config.bar_interval == "1d" and "1h" in windows and covered == 0:
+            hint = (
+                "日线回测配 1h 新闻窗口时，每根 bar 只能看到前一日 23:00~00:00 的新闻；"
+                "如需新闻真正参与，请把 news_window 设为 1d。"
+            )
+            log.warning(hint)
+            result.logs.append(
+                {"ts": datetime.now().isoformat(), "level": "warning", "message": hint}
+            )
 
     def _load_frames(self) -> dict[str, pd.DataFrame]:
         frames: dict[str, pd.DataFrame] = {}

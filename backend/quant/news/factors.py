@@ -67,8 +67,7 @@ def _item_matches(raw: dict[str, Any], symbol: str) -> bool:
     return bool(raw.get("market")) and str(raw["market"]).upper() == market
 
 
-def _item_dt(raw: dict[str, Any]) -> datetime | None:
-    value = raw.get("effective_at") or raw.get("published_at")
+def _parse_dt(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         return _naive_utc(value)
     if isinstance(value, str) and value:
@@ -79,6 +78,27 @@ def _item_dt(raw: dict[str, Any]) -> datetime | None:
     return None
 
 
+def _item_dt(raw: dict[str, Any]) -> datetime | None:
+    """条目对策略"可见"的时刻（PIT 时钟）。
+
+    取 ``published_at``（新闻公开发布的时间），而不是 ``effective_at``
+    （我们的入库时间）。原因很实际：``effective_at`` 由抓取任务写入，历史
+    新闻补录时会被统一盖成"补录当天"。早前用它做时钟，导致一次补录之后
+    整段历史新闻在回测里**全部落在未来**，任何 bar 都看不到 —— 实测 A 股
+    日线 202/202 根 bar 的新闻因子恒为中性，"带新闻的策略"退化成纯双均线，
+    且没有任何报错。
+
+    用 ``published_at`` 表示"信息在那一刻已经公开，策略本可以读到"，这才是
+    回测该有的口径；两者都用 ``min`` 取更早的一个，是为了在 ``published_at``
+    缺失或被填成未来时间时退回入库时刻，避免真的引入未来函数。
+    """
+    published = _parse_dt(raw.get("published_at"))
+    effective = _parse_dt(raw.get("effective_at"))
+    if published is not None and effective is not None:
+        return min(published, effective)
+    return published if published is not None else effective
+
+
 def compute_factor(
     items: Iterable[dict[str, Any]],
     *,
@@ -87,7 +107,7 @@ def compute_factor(
     window: str = "1h",
     half_life_hours: float = 24.0,
 ) -> NewsFactor:
-    """按 effective_at 做 Point-in-Time 聚合。
+    """按新闻的可见时刻做 Point-in-Time 聚合。
 
     * ``sentiment``：按置信度与时间衰减加权平均，[-1, 1]；
     * ``policy_risk``：窗口内最大风险（取 ``policy_risk * confidence``，避免被平均值稀释）；

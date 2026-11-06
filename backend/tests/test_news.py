@@ -365,3 +365,126 @@ def test_news_dual_ma_refuses_python_path(context):
 
     assert result.status == "failed", "无 Python 腿的策略不该在 native 缺失时'成功'跑完"
     assert "C++" in (result.error or ""), f"错误信息应指明需要 C++，实际：{result.error}"
+
+
+# --------------------------------------------------------------------------- #
+# PIT 时钟：新闻什么时候对策略"可见"
+# --------------------------------------------------------------------------- #
+
+
+def test_backfilled_news_is_visible_from_publish_time():
+    """补录的历史新闻必须按发布时间可见，而不是补录入库的时间。
+
+    这是"带新闻的策略变成纯双均线"的根因：一次补录会把整批历史新闻的
+    ``effective_at`` 统一盖成补录当天，用入库时间做 PIT 时钟时，回测里
+    没有任何 bar 能看见它们，因子恒为中性且不报错。实测 A 股日线
+    202/202 根 bar 覆盖为 0。
+    """
+    published = datetime(2026, 11, 3, 10, 0)
+    ingested = datetime(2026, 11, 6, 0, 8)
+    item = {
+        "symbols": ["CRYPTO:BTC/USDT"],
+        "published_at": published,
+        "effective_at": ingested,
+        "sentiment": -0.8,
+        "policy_risk": 0.4,
+        "confidence": 0.9,
+    }
+    # 补录前一天的 as_of：应当能看到（信息在 11-03 就公开了）
+    visible = compute_factor(
+        [item], symbol="CRYPTO:BTC/USDT", as_of=datetime(2026, 11, 4), window="7d"
+    )
+    assert visible.event_count == 1, "补录新闻没有在发布时间之后变得可见"
+    assert visible.sentiment < 0
+    # 发布之前的 as_of 仍然看不到（不能有未来函数）
+    before = compute_factor(
+        [item], symbol="CRYPTO:BTC/USDT", as_of=datetime(2026, 11, 2), window="7d"
+    )
+    assert before.event_count == 0, "发布时间之前就看到了新闻，等于引入未来函数"
+
+
+def test_future_publish_time_falls_back_to_ingest_time():
+    """发布时间被填成未来时，退回入库时间 —— 宁可晚看见，不能提前看见。"""
+    item = {
+        "symbols": ["CN:600519"],
+        "published_at": datetime(2026, 12, 1, 0, 0),  # 明显错误/未来
+        "effective_at": datetime(2026, 11, 5, 14, 0),
+        "sentiment": 0.5,
+        "policy_risk": 0.1,
+        "confidence": 0.9,
+    }
+    now = compute_factor([item], symbol="CN:600519", as_of=datetime(2026, 11, 5, 15, 0), window="1d")
+    assert now.event_count == 1, "未来发布时间把条目挡在了时间窗外，应退回入库时间"
+    earlier = compute_factor(
+        [item], symbol="CN:600519", as_of=datetime(2026, 11, 5, 13, 0), window="1d"
+    )
+    assert earlier.event_count == 0
+
+
+def test_repository_loads_backfilled_rows_for_earlier_range(context):
+    """回测区间早于入库时间时，仓储层不能把补录的历史新闻滤掉。"""
+    from quant.storage.repositories.news import NewsRepository
+
+    with context.db.session() as session:
+        repo = NewsRepository(session)
+        repo.create(
+            title="补录：比特币 ETF 获批",
+            published_at=datetime(2026, 10, 20, 0, 0),  # 发布在 10 月
+            ingested_at=datetime(2026, 11, 5, 14, 14),  # 补录在 11 月
+            effective_at=datetime(2026, 11, 5, 14, 14),
+            symbols=["CRYPTO:BTC/USDT"],
+            market="CRYPTO",
+            sentiment=0.8,
+            confidence=0.9,
+        )
+        rows = repo.for_symbols(
+            ["CRYPTO:BTC/USDT"],
+            start=datetime(2026, 10, 1),
+            end=datetime(2026, 10, 25),  # 终点早于 effective_at
+            limit=50,
+        )
+    assert rows, "区间早于入库时间就查不到补录新闻，因子层再改也拿不到数据"
+
+
+# --------------------------------------------------------------------------- #
+# 新闻字段白名单：窗口 × 指标必须成套
+# --------------------------------------------------------------------------- #
+
+
+def test_news_field_whitelist_covers_every_window_and_metric():
+    from quant.strategy.custom_fields import (
+        NEWS_FIELDS,
+        NEWS_METRICS,
+        NEWS_WINDOWS,
+        news_field,
+    )
+
+    missing = [
+        news_field(metric, window)
+        for window in NEWS_WINDOWS
+        for metric, _ in NEWS_METRICS
+        if news_field(metric, window) not in NEWS_FIELDS
+    ]
+    assert not missing, f"白名单缺字段：{missing}"
+
+
+def test_news_spec_fields_exist_in_whitelist_for_every_window():
+    """策略拼出的 spec 里每个新闻字段都必须能在白名单里查到。
+
+    守的是 ``news_window=1d`` 一跑就 KeyError 的事故：策略会按窗口拼出
+    ／情绪/置信度/政策风险/事件数／四个字段名，白名单只加了其中两个。
+    """
+    from quant.strategy.builtin.news_dual_ma import build_spec
+    from quant.strategy.custom_fields import NEWS_FIELDS, NEWS_WINDOWS
+
+    for window in NEWS_WINDOWS:
+        spec = build_spec(news_window=window, require_news=True, max_policy_risk=0.5)
+        fields = {
+            str(item.get("field"))
+            for cond in spec["entry"] + spec["exit"]
+            for item in (cond.get("left"), cond.get("right"))
+            if isinstance(item, dict) and str(item.get("field", "")).startswith("news_")
+        }
+        assert fields, f"news_window={window} 没有拼出任何新闻字段"
+        unknown = fields - set(NEWS_FIELDS)
+        assert not unknown, f"news_window={window} 拼出了白名单外的字段：{unknown}"

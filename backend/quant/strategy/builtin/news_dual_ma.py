@@ -24,6 +24,7 @@ from typing import Any
 from ...core.types import Bar
 from ..base import ParamSpec, Strategy
 from ..builtin.dual_ma import DualMaStrategy
+from ..custom_fields import news_field
 from ..registry import register_strategy
 
 STRATEGY_ID = "news_dual_ma"
@@ -46,13 +47,13 @@ def build_spec(
 
     新闻字段名与聚合窗口绑定（见 ``custom_fields.NEWS_FIELDS``）：
     ``news_sentiment`` 是 1h 窗口，``news_sentiment_1d`` 是 1d 窗口。
-    这里按 ``news_window`` 选择对应后缀。
+    这里按 ``news_window`` 取对应后缀 —— 早前写成"不是 1h 就用 _1d"，
+    于是选 15m / 4h 都会悄悄落到 1d 字段，参数与行为不一致。
     """
-    suffix = "" if news_window == "1h" else "_1d"
-    sentiment_field = f"news_sentiment{suffix}"
-    confidence_field = f"news_confidence{suffix}"
-    policy_field = f"news_policy_risk{suffix}"
-    count_field = f"news_event_count{suffix}"
+    sentiment_field = news_field("sentiment", news_window)
+    confidence_field = news_field("confidence", news_window)
+    policy_field = news_field("policy_risk", news_window)
+    count_field = news_field("event_count", news_window)
 
     sma_fast = {"kind": "indicator", "name": "sma", "params": {"period": int(fast)}}
     sma_slow = {"kind": "indicator", "name": "sma", "params": {"period": int(slow)}}

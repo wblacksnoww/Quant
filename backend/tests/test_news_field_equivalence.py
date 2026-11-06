@@ -287,3 +287,44 @@ class TestNewsDualMaNative:
             "1h 窗口不该用 _1d 后缀字段"
         )
         assert "news_sentiment_1d" in spec_1d, "1d 窗口应使用 _1d 后缀字段"
+
+
+class SilentNewsSource:
+    """永远返回中性因子（event_count=0）—— 模拟"新闻源接上了但没有数据"。"""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def factor(
+        self,
+        symbol: str,
+        *,
+        as_of: datetime,
+        window: str = "1h",
+        half_life_hours: float = 24.0,
+    ) -> NewsFactor:
+        self.calls += 1
+        return NewsFactor.neutral(symbol, as_of, window)
+
+
+class TestNewsCoverageIsVisible:
+    """新闻覆盖率必须出现在运行日志里，不能"看起来跑成功了"。"""
+
+    def test_zero_coverage_emits_warning(self, context):
+        result = _run(context, "news_zero_cov", news=SilentNewsSource())
+        assert result.status == "finished", result.error
+        warnings = [l for l in result.logs if l.get("level") == "warning"]
+        assert any("覆盖 0/" in l["message"] for l in warnings), (
+            "新闻覆盖率为 0 时没有任何告警 —— 用户会以为新闻过滤生效了。"
+            f"实际日志：{[l.get('message', '')[:60] for l in result.logs]}"
+        )
+
+    def test_full_coverage_logs_info_without_warning(self, context):
+        news = RecordingNewsSource()
+        result = _run(context, "news_cov_info", news=news)
+        assert result.status == "finished", result.error
+        coverage = [l for l in result.logs if "覆盖" in l.get("message", "")]
+        assert coverage, "有新闻时也要说明覆盖了多少根 bar"
+        assert not any(l.get("level") == "warning" for l in coverage), (
+            "覆盖率正常时不该报警告"
+        )

@@ -46,6 +46,8 @@ const NEWS_FIELD_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'news_event_count', label: '新闻事件数（1h）' },
   { value: 'news_sentiment_1d', label: '新闻情绪（1d）' },
   { value: 'news_policy_risk_1d', label: '政策风险（1d）' },
+  { value: 'news_confidence_1d', label: '新闻置信度（1d）' },
+  { value: 'news_event_count_1d', label: '新闻事件数（1d）' },
 ]
 
 const INDICATOR_META: Record<string, { label: string; params: string[] }> = {

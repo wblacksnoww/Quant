@@ -93,10 +93,21 @@ class NewsRepository:
         limit: int = 5000,
     ) -> list[NewsItem]:
         stmt = select(NewsItem).order_by(NewsItem.effective_at.asc()).limit(limit)
+        # 区间过滤要按"策略可见时刻"判断，而不是只看 effective_at（入库时间）。
+        #
+        # 补录历史新闻时，effective_at 会被统一盖成补录当天，于是"回测区间
+        # 只到上个月"的查询在 SQL 阶段就把这些条目全滤掉了 —— 因子层再怎么
+        # 改 PIT 时钟也拿不到数据。这里用 OR 放宽成"任一时刻落在区间内"，
+        # 精确的窗口裁剪交给 compute_factor（它按 min(published_at,
+        # effective_at) 逐条判断）。
         if start is not None:
-            stmt = stmt.where(NewsItem.effective_at >= start)
+            stmt = stmt.where(
+                (NewsItem.published_at >= start) | (NewsItem.effective_at >= start)
+            )
         if end is not None:
-            stmt = stmt.where(NewsItem.effective_at <= end)
+            stmt = stmt.where(
+                (NewsItem.published_at <= end) | (NewsItem.effective_at <= end)
+            )
         rows = list(self.session.scalars(stmt))
         wanted = set(symbols)
         return [row for row in rows if _matches_any(row, wanted)]

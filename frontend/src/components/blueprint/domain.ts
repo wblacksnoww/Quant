@@ -118,6 +118,8 @@ const DATA_DEFS: [string, string, string][] = [
   ['news_event_count', '新闻事件数 1h', '1 小时窗口内命中的新闻条数'],
   ['news_sentiment_1d', '新闻情绪 1d', '1 天窗口的加权新闻情绪（-1~1）'],
   ['news_policy_risk_1d', '政策风险 1d', '1 天窗口的政策风险（0~1）'],
+  ['news_confidence_1d', '新闻置信度 1d', '1 天窗口的最高新闻置信度'],
+  ['news_event_count_1d', '新闻事件数 1d', '1 天窗口内命中的新闻条数'],
 ]
 
 function buildDefs(): Record<string, BpDef> {
