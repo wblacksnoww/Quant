@@ -102,7 +102,7 @@ export function GatewayPage() {
     setStarting(true)
     try {
       await gatewayApi.start({
-        strategy_type: strategyType as 'grid' | 'breakout' | 'tick_momentum',
+        strategy_type: strategyType as 'grid' | 'breakout' | 'tick_momentum' | 'bar_spec',
         params,
         symbols,
         bar_interval_sec: barSec,
@@ -134,6 +134,11 @@ export function GatewayPage() {
   if (loading) return <Loading text="正在读取网关状态…" />
 
   const running = status?.running ?? false
+  // 只展示真正的事件；历史版本里混进过 IPC 应答（无 type），别再渲染成一行「undefined」
+  const recentEvents = (status?.recent_events ?? []).filter(
+    (event): event is Record<string, unknown> & { type: string } =>
+      typeof (event as Record<string, unknown>)?.type === 'string',
+  )
   const meta = STRATEGY_TYPES.find((s) => s.value === strategyType)
 
   return (
@@ -309,7 +314,7 @@ export function GatewayPage() {
         </Card>
       )}
 
-      {running && (status?.recent_events?.length ?? 0) > 0 && (
+      {running && recentEvents.length > 0 && (
         <Card title="事件流" description="最近事件（订单/成交/日志，每 2 秒刷新）" flush>
           <div className="table-wrap" style={{ maxHeight: 420 }}>
             <table>
@@ -320,34 +325,32 @@ export function GatewayPage() {
                 </tr>
               </thead>
               <tbody>
-                {[...(status?.recent_events ?? [])]
-                  .reverse()
-                  .map((event: Record<string, unknown>, index: number) => (
-                    <tr key={index}>
-                      <td>
-                        <Badge
-                          tone={
-                            event.type === 'fill'
-                              ? 'success'
-                              : event.type === 'order'
-                                ? 'accent'
-                                : event.type === 'log'
-                                  ? 'warn'
-                                  : 'neutral'
-                          }
-                        >
-                          {String(event.type)}
-                        </Badge>
-                      </td>
-                      <td className="tiny mono" style={{ whiteSpace: 'pre-wrap' }}>
-                        {String(
-                          JSON.stringify(
-                            Object.fromEntries(Object.entries(event).filter(([k]) => k !== 'type')),
-                          ),
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                {[...recentEvents].reverse().map((event: Record<string, unknown>, index: number) => (
+                  <tr key={index}>
+                    <td>
+                      <Badge
+                        tone={
+                          event.type === 'fill'
+                            ? 'success'
+                            : event.type === 'order'
+                              ? 'accent'
+                              : event.type === 'log'
+                                ? 'warn'
+                                : 'neutral'
+                        }
+                      >
+                        {typeof event.type === 'string' && event.type ? event.type : '未知'}
+                      </Badge>
+                    </td>
+                    <td className="tiny mono" style={{ whiteSpace: 'pre-wrap' }}>
+                      {String(
+                        JSON.stringify(
+                          Object.fromEntries(Object.entries(event).filter(([k]) => k !== 'type')),
+                        ),
+                      )}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

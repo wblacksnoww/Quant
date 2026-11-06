@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import socket
 import subprocess
 import threading
@@ -59,6 +60,10 @@ class GatewayManager:
         self._sock: socket.socket | None = None
         self._reader_thread: threading.Thread | None = None
         self._stop_reader = threading.Event()
+        # 命令应答队列：socket 只能有一个读者（_read_loop），否则应答会被当成事件吞掉，
+        # 前端就会出现一条「类型 undefined、内容是 {ok:true,...}」的假事件。
+        self._replies: queue.Queue[dict[str, Any]] = queue.Queue()
+        self._cmd_lock = threading.Lock()
 
     # ------------------------------------------------------------------ #
     def start(
@@ -149,6 +154,7 @@ class GatewayManager:
             self.config = config
             self.events = []
             self.stats = {"ticks": 0, "orders": 0, "fills": 0}
+            self._replies = queue.Queue()
             self._stop_reader.clear()
             self._sock = socket.create_connection(("127.0.0.1", LISTEN_PORT), timeout=5)
             self._reader_thread = threading.Thread(target=self._read_loop, daemon=True)
@@ -177,7 +183,7 @@ class GatewayManager:
             return self.stop_process()
 
     def stop_process(self) -> dict[str, Any]:
-        self._send_command({"cmd": "shutdown"})
+        self._send_command({"cmd": "shutdown"}, timeout=2.0)
         if self.process is not None:
             try:
                 self.process.wait(timeout=5)
@@ -206,40 +212,43 @@ class GatewayManager:
                 pass
 
     # ------------------------------------------------------------------ #
-    def _send_command(self, cmd: dict[str, Any]) -> dict[str, Any] | None:
+    def _send_command(self, cmd: dict[str, Any], timeout: float = 5.0) -> dict[str, Any] | None:
         if self._sock is None:
             return None
-        try:
-            payload = json.dumps(cmd).encode()
-            self._sock.sendall(len(payload).to_bytes(4, "little") + payload)
-            header = b""
-            while len(header) < 4:
-                chunk = self._sock.recv(4 - len(header))
-                if not chunk:
-                    return None
-                header += chunk
-            length = int.from_bytes(header, "little")
-            data = b""
-            while len(data) < length:
-                chunk = self._sock.recv(length - len(data))
-                if not chunk:
-                    return None
-                data += chunk
-            return json.loads(data)
-        except (OSError, json.JSONDecodeError, ValueError):
-            return None
+        with self._cmd_lock:
+            try:
+                payload = json.dumps(cmd).encode()
+                self._sock.sendall(len(payload).to_bytes(4, "little") + payload)
+            except OSError:
+                return None
+            # 应答由 _read_loop 统一收取后放进队列，这里只等结果
+            try:
+                return self._replies.get(timeout=timeout)
+            except queue.Empty:
+                return None
 
     def _read_loop(self) -> None:
         sock = self._sock
         if sock is None:
             return
+        # 设个短超时，好让 _stop_reader 及时生效；但超时只代表「暂时没数据」，
+        # 不能当成连接断了——否则没有 tick 时读线程 5 秒就退出，后续命令应答全收不到。
+        try:
+            sock.settimeout(1.0)
+        except OSError:
+            return
         buffer = b""
         while not self._stop_reader.is_set() and self.running:
             try:
                 chunk = sock.recv(65536)
-                if not chunk:
-                    break
-                buffer += chunk
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            if not chunk:
+                break
+            buffer += chunk
+            try:
                 while len(buffer) >= 4:
                     length = int.from_bytes(buffer[:4], "little")
                     if len(buffer) < 4 + length:
@@ -247,9 +256,16 @@ class GatewayManager:
                     payload = buffer[4 : 4 + length]
                     buffer = buffer[4 + length :]
                     event = json.loads(payload)
-                    self._on_event(event)
-            except (OSError, json.JSONDecodeError, ValueError):
-                break
+                    if not isinstance(event, dict):
+                        continue
+                    # 命令应答没有 type，交给 _send_command；其余才是事件
+                    if "type" in event:
+                        self._on_event(event)
+                    else:
+                        self._replies.put(event)
+            except (json.JSONDecodeError, ValueError):
+                buffer = b""
+                continue
 
     def _on_event(self, event: dict[str, Any]) -> None:
         etype = event.get("type", "")
