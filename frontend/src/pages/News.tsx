@@ -231,16 +231,16 @@ export function NewsPage() {
             <Stat
               label="情绪"
               value={fmtSignedPct(factor?.sentiment ?? 0)}
-              sub="[-1, 1] 加权平均"
+              sub="方向 + 量级，[-1, 1]"
               tone={(factor?.sentiment ?? 0) >= 0 ? 'up' : 'down'}
             />
             <Stat
               label="政策风险"
               value={fmtPct(factor?.policy_risk ?? 0)}
-              sub="窗口内最大风险"
+              sub="打压性政策才计入"
               tone={(factor?.policy_risk ?? 0) > 0.5 ? 'down' : undefined}
             />
-            <Stat label="置信度" value={fmtPct(factor?.confidence ?? 0)} sub="最高条目置信度" />
+            <Stat label="置信度" value={fmtPct(factor?.confidence ?? 0)} sub="最高条目可判断度" />
             <Stat label="事件数" value={factor?.event_count ?? 0} sub={`${factorWindow} 窗口`} />
           </div>
         )}
@@ -344,7 +344,7 @@ export function NewsPage() {
           </form>
         </Card>
 
-        <Card title="因子明细" description="按影响强度排序的前 5 条">
+        <Card title="因子明细" description="按影响强度排序的前 5 条；情绪 = 方向 + 量级">
           {factorItems.length === 0 ? (
             <Empty title="窗口内没有新闻" hint="录入一条新闻后，策略即可读取因子。" />
           ) : (
@@ -366,7 +366,11 @@ export function NewsPage() {
         </Card>
       </div>
 
-      <Card title="新闻列表" description="手动录入的条目；删除后策略不再使用" flush>
+      <Card
+        title="新闻列表"
+        description="情绪按事件量级与幅度打分，利好为正、利空为负；旧条目的分数可用 quant news rescore 重算"
+        flush
+      >
         {items.length === 0 ? (
           <Empty title="暂无新闻" hint="在上方录入政策、监管或市场新闻。" />
         ) : (

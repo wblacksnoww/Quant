@@ -66,6 +66,9 @@
 - **新闻/政策因子**：录入新闻/政策条目（标题、情绪、政策风险、置信度、生效时间），
   后端按 Point-in-Time 聚合成 `sentiment` / `policy_risk` / `confidence` 因子；回测只使用
   当时可见的新闻，策略通过 `StrategyContext.news_factor()` 读取，不在 bar 内调外部 API。
+  `sentiment` 同时携带**方向与量级**（事件强度 × 幅度，如「降息 50bp」强于「上涨 1%」），
+  `policy_risk` 只统计打压性政策动作、`confidence` 衡量文本可判断程度。词表调整后可用
+  `quant news rescore` 重算历史条目（`--dry-run` 先看差异）。
   内置「双均线 + 新闻政策」策略：金叉叠加新闻门槛，政策风险/负面情绪触发统一退出。
 - **统一退出决策**：`ExitPolicy` 把止损、止盈、信号、新闻、政策风险收敛成唯一动作，
   订单携带结构化退出原因（`stop_loss` / `policy_risk` / `news_risk` / `signal` …），
@@ -300,6 +303,7 @@ quant doctor                                # 环境、密钥、数据库自检
 quant keygen --file master.key              # 生成主密钥
 quant user create --username alice --password '...' --role user
 quant user passwd --username admin --password '...'   # 忘记密码时重置（并解除锁定）
+quant news rescore                          # 按当前打分器重算历史新闻因子（--dry-run 先看）
 ```
 
 容器内执行：`docker compose exec backend quant doctor`。

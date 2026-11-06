@@ -373,7 +373,62 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.set_defaults(func=user)
 
+    p = sub.add_parser("news", help="新闻因子维护")
+    p.add_argument("action", choices=["rescore"])
+    p.add_argument("--dry-run", action="store_true", help="只打印将要发生的变更，不写库")
+    p.set_defaults(func=news)
+
     return parser
+
+
+def news(args: argparse.Namespace) -> int:
+    """按当前打分器重算历史新闻的因子字段。
+
+    词表或权重调整后，库里旧条目仍是旧分数，混着用会让因子聚合前后不一致。
+    ``--dry-run`` 只看差异不写库。
+    """
+    from sqlalchemy import select
+
+    from quant.config import get_settings
+    from quant.news.classifier import classify
+    from quant.storage.db import Database
+    from quant.storage.models import NewsItem
+
+    _setup_logging(args.verbose)
+    if args.action != "rescore":
+        print("目前仅支持 rescore", file=sys.stderr)
+        return 2
+
+    db = Database(get_settings().database_url)
+    db.create_all()
+    total = changed = 0
+    try:
+        with db.session() as session:
+            rows = list(session.scalars(select(NewsItem).order_by(NewsItem.id)))
+            for row in rows:
+                total += 1
+                text = f"{row.title} {row.summary}".strip()
+                scored = classify(text, default_market=row.market or "", default_symbols=row.symbols or ())
+                before = (row.sentiment, row.policy_risk, row.confidence, row.event_type)
+                after = (
+                    scored["sentiment"],
+                    scored["policy_risk"],
+                    scored["confidence"],
+                    scored["event_type"],
+                )
+                if before == after:
+                    continue
+                changed += 1
+                if args.verbose or args.dry_run:
+                    print(f"#{row.id} {before} -> {after} | {row.title[:48]}")
+                if not args.dry_run:
+                    row.sentiment, row.policy_risk, row.confidence, row.event_type = after
+    finally:
+        db.dispose()
+
+    suffix = "（dry-run，未写入）" if args.dry_run else ""
+    print(f"共 {total} 条，需变更 {changed} 条{suffix}")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
