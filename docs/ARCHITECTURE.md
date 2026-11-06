@@ -106,9 +106,16 @@
   worker 用条件更新原子认领；`QUANT_MAX_CONCURRENT_BACKTESTS` 控制本实例并发，
   `QUANT_MAX_QUEUED_BACKTESTS` 控制队列长度。提交返回 `202` + `run_id`，前端轮询
   `GET /api/backtests/{id}` 并订阅 WS 进度；重启后 queued 任务保留、失联的 running 自动重排。
+  worker 从 `config` 重建 `EngineConfig`，因此**入库的配置字段必须与 `_config_from_payload`
+  完全对齐**（`bar_interval`、`direction` 少了任何一个，分钟级/做空请求都会静默退化）。
 - 纸盘**按用户隔离、可多开**：`PaperManager` 为每个用户的每个 `run_id` 维护一个 `PaperRunner`
   （默认每用户最多 5 个并发会话）；每个会话有独立的虚拟账户与线程，可分别查看/停止。
   不同账号互不影响（各自线程、各自落库）。
+- 纸盘分钟回放受数据源限制：`minute_bars()` 单次最多 90 个自然日，所以
+  `replay_days` 会被裁到 89，用户显式指定的 `start` 若更近则以其为准。
+- 会话状态以**本实例内存**为准：`GET /api/paper/state` 本地查不到时不会再回落到
+  协调器租约里的快照（那是上一次心跳的副本，会话停掉后会残留成 running/stopping）。
+  停止会话时同步释放租约，`stop` 不传 `run_id` 会逐个释放全部本地租约。
 - 结果统一落 `runs` 表：指标、权益曲线、成交、委托、持仓、日志（JSON 压缩存储），
   大 payload 由 `CompressedJSON` 类型 zlib 压缩。
 

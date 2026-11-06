@@ -316,6 +316,11 @@ class SessionCoordinator:
         for lease in self.leases.active_for_user(user_id):
             if lease["kind"] != kind:
                 continue
+            # 本实例自己持有的租约不叫"远程"：它存的是上一次心跳的快照，
+            # 本地会话结束后快照还会残留成 running/stopping，前端就会一直
+            # 显示"停止中"。本实例读不到本地状态，就是真的没有会话了。
+            if lease.get("owner") == self.instance_id:
+                continue
             if run_id is not None and lease["run_id"] != run_id:
                 continue
             state = lease.get("state") or {}

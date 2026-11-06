@@ -229,6 +229,13 @@ class BacktestEngine(BaseEngine):
             result.status = "failed"
             result.error = f"{type(exc).__name__}: {exc}"
             self.bus.emit_status("failed", result.error)
+            # 成功路径靠 _finalize / _run_native 末尾落库，异常路径必须自己补一次，
+            # 否则 runs 表停在 running：前端轮询永远转圈，错误信息一条也看不到。
+            if self.recorder is not None:
+                try:
+                    self.recorder.finalize(result)
+                except Exception:  # noqa: BLE001
+                    log.exception("回测失败状态落库失败 %s", cfg.run_id)
         finally:
             result.finished_at = datetime.now()
             result.elapsed_seconds = time.monotonic() - started

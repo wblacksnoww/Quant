@@ -134,3 +134,94 @@ def test_backtest_queue_runs_to_completion(context):
 
         record = RunRepository(session).get(config.run_id)
         assert record is not None and record.status == "finished"
+
+
+# --------------------------------------------------------------------------- #
+# 停止会话后的状态一致性
+# --------------------------------------------------------------------------- #
+
+
+class _FakeLeases:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def active_for_user(self, user_id):  # noqa: ANN001
+        return [dict(row) for row in self.rows]
+
+
+def _state(run_id: str, status: str = "running") -> dict:
+    return {
+        "run_id": run_id,
+        "strategy_id": "dual_ma",
+        "symbols": ["CRYPTO:BTC/USDT"],
+        "mode": "replay",
+        "status": status,
+    }
+
+
+def _bare_coordinator(instance_id: str, rows):
+    from quant.services.coordinator import SessionCoordinator
+
+    coord = object.__new__(SessionCoordinator)
+    coord.instance_id = instance_id
+    coord.leases = _FakeLeases(rows)
+    return coord
+
+
+def test_remote_state_ignores_own_instance_snapshot():
+    """本实例的租约快照不是"远程状态"。
+
+    会话停掉后本地已经查不到，但租约里还留着上一次心跳的 running 快照。
+    如果 state 回落到这份快照，前端点了停止会一直显示"运行中"。
+    """
+    coord = _bare_coordinator(
+        "me",
+        [
+            {"kind": "paper", "owner": "me", "run_id": "run_mine", "state": _state("run_mine")},
+            {"kind": "paper", "owner": "other", "run_id": "run_other", "state": _state("run_other")},
+        ],
+    )
+    got = coord.remote_state(1, kind="paper")
+    assert got is not None
+    assert got["run_id"] == "run_other", "把自己的陈旧快照当成了远程会话状态"
+
+    # 指定自己那个 run_id 时，必须返回 None（本地没有就是真没有）
+    assert coord.remote_state(1, run_id="run_mine", kind="paper") is None
+
+
+def test_paper_stop_all_releases_every_local_lease():
+    """不传 run_id 的"全部停止"也要逐个释放租约，不能只释放第一个。"""
+    released: list[str] = []
+
+    class _FakeCoordinator:
+        instance_id = "me"
+
+        def __init__(self) -> None:
+            self.leases = _FakeLeases([])
+
+        def release(self, key: str) -> None:
+            released.append(key)
+
+        def request(self, key, action, payload=None):  # noqa: ANN001, D401
+            raise AssertionError("本地会话不该走远程命令")
+
+    class _Runner:
+        running = True
+
+    class _FakePaper:
+        def running(self, user_id, run_id=None):  # noqa: ANN001
+            return True
+
+        def runners(self, user_id):  # noqa: ANN001
+            return {"run_a": _Runner(), "run_b": _Runner()}
+
+        def stop(self, user_id, run_id=None, timeout=10.0):  # noqa: ANN001
+            return 2
+
+    ctx = SimpleNamespace(paper=_FakePaper(), coordinator=_FakeCoordinator())
+    stopped = paper_service.stop(ctx, user_id=1)
+
+    assert stopped == 2
+    assert set(released) == {"paper:run_a", "paper:run_b"}, (
+        f"停止全部会话只释放了 {released}，残留租约会让状态查询返回陈旧的 running 快照"
+    )

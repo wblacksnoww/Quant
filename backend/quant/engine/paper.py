@@ -40,6 +40,9 @@ from .session import TradingSession, bar_from_frame
 
 log = logging.getLogger(__name__)
 
+# 分钟线单次可拉取的最大自然日数（数据源硬限制 90 天，留 1 天余量）
+_MINUTE_REPLAY_DAYS = 89
+
 
 @dataclass
 class PaperResumeState:
@@ -115,6 +118,11 @@ class PaperEngine(BaseEngine):
             frames = self._load_frames()
             if not frames:
                 raise RuntimeError("纸盘启动失败：没有可用的历史行情")
+            # 加载行情是阻塞 IO，期间可能已经收到停止请求：不要白跑一遍回放。
+            if self.cancelled:
+                self.status = EngineStatus.STOPPED
+                result.status = self.status.value
+                return result
             session = self._build_session(frames)
             self.session = session
             session.begin()
@@ -170,8 +178,14 @@ class PaperEngine(BaseEngine):
         minute = self.config.bar_interval != "1d"
         if self.options.mode == "replay":
             if minute:
-                # 分钟回放：回放最近 replay_days 个自然日的分钟 bar
-                start = end - timedelta(days=max(1, self.options.replay_days))
+                # 分钟线单次最多拉 90 天（见 CryptoProvider.minute_bars）。
+                # 默认 replay_days=120 直接超限，分钟级纸盘一启动就失败；
+                # 同时用户显式指定的 start 也不该被整段丢掉。
+                span = max(1, min(self.options.replay_days, _MINUTE_REPLAY_DAYS))
+                earliest = end - timedelta(days=span)
+                start = self.config.start if self.config.start > earliest else earliest
+                if start >= end:
+                    start = end - timedelta(days=min(7, span))
                 start_dt = datetime.combine(start, datetime.min.time())
                 end_dt = datetime.combine(end, datetime.max.time())
                 for symbol in self.config.symbols:
@@ -675,7 +689,18 @@ class PaperRunner:
         engine.stop()
         if thread is not None:
             thread.join(timeout=timeout)
-        return not (thread and thread.is_alive())
+        if thread is not None and thread.is_alive():
+            # 线程卡在无法中断的阻塞调用里（典型是行情 REST 超时，几秒到几十秒）：
+            # 停止意图已经生效，但 UI 不能一直停在"停止中"。这里先落终态并留痕，
+            # 线程真正退出时 run() 会再写一次终态（幂等）。
+            log.warning(
+                "纸盘线程 %.0fs 内未退出，先行标记为已停止 run_id=%s",
+                timeout,
+                engine.config.run_id,
+            )
+            engine.status = EngineStatus.STOPPED
+            return True
+        return True
 
     @property
     def engine(self) -> PaperEngine | None:

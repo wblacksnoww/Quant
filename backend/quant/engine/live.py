@@ -496,6 +496,12 @@ class LiveManager:
             return bool(runner and runner.running)
         return any(runner.running for (uid, _cid), runner in self._runners.items() if uid == user_id)
 
+    def active_credentials(self, user_id: int) -> list[int]:
+        """该用户当前在跑的凭证 id 列表（停止全部时用来逐个释放会话租约）。"""
+        return sorted(
+            cid for (uid, cid), runner in self._runners.items() if uid == user_id and runner.running
+        )
+
     def start(self, user_id: int, credential_id: int, engine: LiveEngine) -> None:
         key = (user_id, int(credential_id))
         with self._lock:

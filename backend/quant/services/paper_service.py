@@ -321,18 +321,24 @@ def continue_run(ctx: Any, *, user_id: int, run_id: str) -> dict[str, Any]:
 
 def stop(ctx: Any, *, user_id: int, run_id: str | None = None) -> int:
     stopped = 0
+    coord = _coordinator(ctx)
     if ctx.paper.running(user_id, run_id):
+        # 先记下本地在跑的 run_id：不传 run_id 时是"全部停止"，
+        # 但租约要逐个释放，否则会留在协调器里变成陈旧的 running 快照。
+        local_ids = [
+            rid for rid, runner in ctx.paper.runners(user_id).items()
+            if runner.running and (run_id is None or rid == run_id)
+        ]
         stopped = ctx.paper.stop(user_id, run_id)
-        coord = _coordinator(ctx)
-        if coord is not None and run_id:
-            coord.release(_lease_key(run_id))
+        if coord is not None:
+            for rid in local_ids:
+                coord.release(_lease_key(rid))
     remote = [
         lease
         for lease in _remote_leases(ctx, user_id)
-        if lease["owner"] != getattr(_coordinator(ctx), "instance_id", None)
+        if lease["owner"] != getattr(coord, "instance_id", None)
         and (run_id is None or lease["run_id"] == run_id)
     ]
-    coord = _coordinator(ctx)
     if coord is not None:
         for lease in remote:
             coord.request(_lease_key(lease["run_id"]), "stop")

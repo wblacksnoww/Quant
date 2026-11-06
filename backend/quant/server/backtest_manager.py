@@ -156,6 +156,9 @@ class BacktestManager:
             except Exception as exc:  # noqa: BLE001
                 log.exception("回测线程异常 run_id=%s", config.run_id)
                 self.jobs.finish(config.run_id, "failed", str(exc))
+                # 引擎抛异常时不会走到 finalize()，runs 表会停在 running。
+                # 前端轮询的就是 runs 表，于是任务永远显示"运行中"，错误也看不到。
+                self._mark_run_failed(config.run_id, str(exc))
                 self.ctx.hub.publish(
                     "run.failed",
                     {"run_id": config.run_id, "error": str(exc)},
@@ -252,6 +255,10 @@ class BacktestManager:
             "adjust": config.adjust,
             "volume_limit_pct": config.volume_limit_pct,
             "risk_free_rate": config.risk_free_rate,
+            # 少了这一项，分钟级回测入库后就会被还原成 1d：worker 从
+            # payload 重建 EngineConfig，取不到 bar_interval 时默认 "1d"，
+            # 于是 15m/60m 的请求静默按日线跑，2 天区间只剩 1~2 根 bar，零成交。
+            "bar_interval": config.bar_interval,
             "direction": config.direction,
         }
 
