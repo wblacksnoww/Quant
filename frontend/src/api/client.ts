@@ -531,7 +531,7 @@ export const watchlistApi = {
 export const gatewayApi = {
   status: () => request<GatewayStatus>('/gateway/status'),
   start: (body: {
-    strategy_type: 'grid' | 'breakout' | 'tick_momentum'
+    strategy_type: 'grid' | 'breakout' | 'tick_momentum' | 'bar_spec'
     params: Record<string, unknown>
     symbols: string[]
     bar_interval_sec: number

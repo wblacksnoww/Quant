@@ -19,6 +19,7 @@ import {
   marketLabel,
   todayISO,
   yearsAgoISO,
+  moveTone,
 } from '../utils/format'
 import { notify } from '../store/toast'
 
@@ -173,13 +174,13 @@ export function FundsPage() {
           label="累计收益"
           value={fmtMoney(totals.total_pnl)}
           sub={`已实现 ${fmtMoney(totals.realized_pnl)}`}
-          tone={(totals.total_pnl ?? 0) >= 0 ? 'up' : 'down'}
+          tone={moveTone(totals.total_pnl)}
         />
         <Stat
           label="持仓收益率"
           value={fmtSignedPct(totals.return_pct)}
           sub={`未实现 ${fmtMoney(totals.unrealized_pnl)}`}
-          tone={(totals.return_pct ?? 0) >= 0 ? 'up' : 'down'}
+          tone={moveTone(totals.return_pct)}
         />
       </div>
 

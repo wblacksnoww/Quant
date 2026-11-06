@@ -17,7 +17,7 @@ import type {
 } from '../api/types'
 import { Banner, Button, Card, Empty, Field, Loading, Stat } from '../components/ui'
 import { notify } from '../store/toast'
-import { fmtNumber, fmtSignedPct, parseSymbols, todayISO, yearsAgoISO } from '../utils/format'
+import { fmtNumber, fmtSignedPct, parseSymbols, todayISO, yearsAgoISO, moveTone } from '../utils/format'
 
 const METHOD_FALLBACK: PortfolioMethodOption[] = [
   { key: 'risk_parity', label: '风险平价' },
@@ -206,7 +206,7 @@ export function PortfolioPage() {
             <Stat
               label="预期年化收益"
               value={fmtSignedPct(result.expected_return)}
-              tone={result.expected_return >= 0 ? 'up' : 'down'}
+              tone={moveTone(result.expected_return)}
             />
             <Stat label="组合波动率" value={fmtSignedPct(result.volatility)} sub="年化" />
             <Stat label="夏普" value={fmtNumber(result.sharpe, 2)} />

@@ -20,7 +20,7 @@ import type {
 import { Badge, Banner, Button, Card, Empty, Field, Progress, Stat } from '../components/ui'
 import { usePolling } from '../hooks/usePolling'
 import { notify } from '../store/toast'
-import { fmtNumber, fmtSignedPct, parseSymbols, todayISO, yearsAgoISO } from '../utils/format'
+import { fmtNumber, fmtSignedPct, parseSymbols, todayISO, yearsAgoISO, moveTone } from '../utils/format'
 
 const OBJECTIVE_FALLBACK: OptimizeObjectiveOption[] = [
   { key: 'sharpe', label: '夏普比率' },
@@ -154,6 +154,10 @@ export function OptimizePage() {
   const trials = job?.trials ?? []
   const folds = job?.folds ?? []
   const wfe = summary.wfe
+  // 全区间搜索没有样本外数据：结论区不能拿 WFE/稳定性充数，否则会显示一排「—」和「否」
+  const isSearchOnly = (job?.mode ?? 'search') === 'search'
+  const bestMetrics = (job?.best?.metrics ?? {}) as Record<string, number | null | undefined>
+  const objectiveLabel = typeof summary.objective_label === 'string' ? summary.objective_label : '目标值'
 
   const modeLabel: Record<OptimizeMode, string> = useMemo(
     () => ({ search: '全区间搜索', walk_forward: 'Walk-forward 滚动验证' }),
@@ -320,37 +324,77 @@ export function OptimizePage() {
       )}
 
       {job?.status === 'finished' && (
-        <Card title="结论" description="先看 WFE 与参数稳定性，再看收益。样本内好看、样本外打折是常态。">
-          <div className="grid grid-4">
-            <Stat
-              label="样本外收益"
-              value={pct(summary.oos_return)}
-              sub="各折测试段复利拼接"
-              tone={Number(summary.oos_return) >= 0 ? 'up' : 'down'}
-            />
-            <Stat label="样本内收益" value={pct(summary.is_return)} sub="同期训练段" />
-            <Stat
-              label="WFE"
-              value={wfe === null || wfe === undefined ? '—' : num(wfe, 2)}
-              sub="样本外年化 / 样本内年化"
-              tone={typeof wfe === 'number' && wfe >= 0.5 ? 'up' : 'down'}
-            />
-            <Stat
-              label="参数稳定"
-              value={summary.params_stable ? '是' : '否'}
-              sub={summary.params_stable ? '各折选出同一组参数' : '各折参数不一致，过拟合风险高'}
-              tone={summary.params_stable ? 'up' : 'down'}
-            />
-          </div>
-          {typeof summary.wfe_hint === 'string' && summary.wfe_hint && (
-            <div style={{ marginTop: 12 }}>
-              <Banner kind="warn">{summary.wfe_hint}</Banner>
-            </div>
+        <Card
+          title="结论"
+          description={
+            isSearchOnly
+              ? '全区间搜索只在样本内选参，没有样本外验证；结论只能当参考，实盘前建议开 walk-forward。'
+              : '先看 WFE 与参数稳定性，再看收益。样本内好看、样本外打折是常态。'
+          }
+        >
+          {isSearchOnly ? (
+            <>
+              <div className="grid grid-4">
+                <Stat
+                  label={`${objectiveLabel}（最优）`}
+                  value={num(summary.score_max, 2)}
+                  sub={`${Number(summary.ok ?? 0)} / ${Number(summary.total ?? 0)} 组有效`}
+                  tone={moveTone(Number(summary.score_max))}
+                />
+                <Stat
+                  label="总收益"
+                  value={pct(bestMetrics.total_return)}
+                  sub="全区间，未做样本外验证"
+                  tone={moveTone(Number(bestMetrics.total_return))}
+                />
+                <Stat label="最大回撤" value={pct(bestMetrics.max_drawdown)} sub="全区间" />
+                <Stat
+                  label="成交次数"
+                  value={num(bestMetrics.trade_count, 0)}
+                  sub={Number(bestMetrics.trade_count ?? 0) === 0 ? '没有成交，参数基本无效' : '全区间累计'}
+                />
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <Banner kind="warn">
+                  这次是「全区间搜索」：用同一段行情选参数又用同一段行情评估，收益必然偏乐观。
+                  要判断能不能上实盘，勾选 walk-forward 重跑一次。
+                </Banner>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="grid grid-4">
+                <Stat
+                  label="样本外收益"
+                  value={pct(summary.oos_return)}
+                  sub="各折测试段复利拼接"
+                  tone={moveTone(Number(summary.oos_return))}
+                />
+                <Stat label="样本内收益" value={pct(summary.is_return)} sub="同期训练段" />
+                <Stat
+                  label="WFE"
+                  value={wfe === null || wfe === undefined ? '—' : num(wfe, 2)}
+                  sub="样本外年化 / 样本内年化"
+                  tone={typeof wfe === 'number' && wfe >= 0.5 ? 'up' : 'down'}
+                />
+                <Stat
+                  label="参数稳定"
+                  value={summary.params_stable ? '是' : '否'}
+                  sub={summary.params_stable ? '各折选出同一组参数' : '各折参数不一致，过拟合风险高'}
+                  tone={summary.params_stable ? 'up' : 'down'}
+                />
+              </div>
+              {typeof summary.wfe_hint === 'string' && summary.wfe_hint && (
+                <div style={{ marginTop: 12 }}>
+                  <Banner kind="warn">{summary.wfe_hint}</Banner>
+                </div>
+              )}
+            </>
           )}
           {job.best && (
             <div style={{ marginTop: 14 }}>
               <div className="tiny faint" style={{ marginBottom: 6 }}>
-                训练段最优参数
+                {isSearchOnly ? '全区间最优参数' : '训练段最优参数'}
               </div>
               <pre className="mono tiny" style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
                 {JSON.stringify(job.best.params, null, 2)}
@@ -386,10 +430,10 @@ export function OptimizePage() {
                     <td className="tiny mono">
                       {item.fold.test_start} → {item.fold.test_end}
                     </td>
-                    <td className={Number(item.train_metrics.total_return) >= 0 ? 'up' : 'down'}>
+                    <td className={moveTone(Number(item.train_metrics.total_return))}>
                       {pct(item.train_metrics.total_return)}
                     </td>
-                    <td className={Number(item.test_metrics.total_return) >= 0 ? 'up' : 'down'}>
+                    <td className={moveTone(Number(item.test_metrics.total_return))}>
                       {pct(item.test_metrics.total_return)}
                     </td>
                     <td>{num(item.test_metrics.sharpe)}</td>
@@ -431,7 +475,7 @@ export function OptimizePage() {
                     <td>{trial.index}</td>
                     <td className="tiny mono">{JSON.stringify(trial.params)}</td>
                     <td>{num(trial.metrics.objective, 3)}</td>
-                    <td className={Number(trial.metrics.total_return) >= 0 ? 'up' : 'down'}>
+                    <td className={moveTone(Number(trial.metrics.total_return))}>
                       {pct(trial.metrics.total_return)}
                     </td>
                     <td>{pct(trial.metrics.annual_return)}</td>

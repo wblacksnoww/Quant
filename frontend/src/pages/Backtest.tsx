@@ -32,8 +32,10 @@ import {
   fmtSignedPct,
   marketCodeOf,
   marketLabel,
+  riskPresetLabel,
   todayISO,
   yearsAgoISO,
+  moveTone,
 } from '../utils/format'
 
 const DEFAULT_COST: CostConfig = {
@@ -145,12 +147,16 @@ export function BacktestPage() {
 
   const selectRun = useCallback(
     (runId: string, updateUrl = true) => {
-      setSelectedId(runId)
-      setDetail(null)
-      setDetailError('')
+      // 重复点当前这条记录时不能清空 detail：selectedId 没变，下面的取数 effect 不会重跑，
+      // 结果就是「点一下自己，详情面板整个空掉」。
+      if (runId !== selectedId) {
+        setSelectedId(runId)
+        setDetail(null)
+        setDetailError('')
+      }
       if (updateUrl) setSearchParams({ run: runId }, { replace: true })
     },
-    [setSearchParams],
+    [selectedId, setSearchParams],
   )
 
   // 首次加载：策略、风控预设、历史记录
@@ -375,18 +381,7 @@ export function BacktestPage() {
         <Card
           title="新建回测"
           description="事件驱动 · 收盘价撮合在下一根 K 线 · 默认含 A 股涨跌停与整手约束"
-          actions={
-            <Badge tone="accent">
-              默认风控：
-              {riskPreset === 'balanced'
-                ? '均衡'
-                : riskPreset === 'conservative'
-                  ? '保守'
-                  : riskPreset === 'aggressive'
-                    ? '激进'
-                    : riskPreset}
-            </Badge>
-          }
+          actions={<Badge tone="accent">默认风控：{riskPresetLabel(riskPreset)}</Badge>}
         >
           <form className="col" style={{ gap: 14 }} onSubmit={submit}>
             <div className="form-grid">
@@ -412,13 +407,7 @@ export function BacktestPage() {
                 >
                   {(presets ? Object.keys(presets.presets) : ['balanced']).map((key) => (
                     <option key={key} value={key}>
-                      {key === 'conservative'
-                        ? '保守'
-                        : key === 'balanced'
-                          ? '均衡'
-                          : key === 'aggressive'
-                            ? '激进'
-                            : key}
+                      {riskPresetLabel(key)}
                     </option>
                   ))}
                 </select>
@@ -688,9 +677,7 @@ export function BacktestPage() {
                         <div className="tiny faint mono">{run.symbols.join(' · ')}</div>
                         <div className="tiny faint">{fmtDateTime(run.created_at)}</div>
                       </td>
-                      <td
-                        className={`right num ${Number(run.metrics?.total_return ?? 0) >= 0 ? 'up' : 'down'}`}
-                      >
+                      <td className={`right num ${moveTone(Number(run.metrics?.total_return ?? 0)) ?? ''}`}>
                         {run.status === 'finished' ? fmtSignedPct(run.metrics?.total_return) : '—'}
                         {isActive(run.status) && (
                           <div style={{ marginTop: 4 }}>

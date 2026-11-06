@@ -4,7 +4,17 @@ import { useState } from 'react'
 import type { RunDetail } from '../api/types'
 import { EquityChart, MonthlyReturnChart } from './Charts'
 import { Card, Empty, Stat, StatusBadge, Tabs } from './ui'
-import { cx, fmtDateTime, fmtMoney, fmtNumber, fmtPct, fmtSignedPct, reasonLabel } from '../utils/format'
+import {
+  cx,
+  fmtBarTime,
+  fmtDateTime,
+  fmtMoney,
+  fmtNumber,
+  fmtPct,
+  fmtSignedPct,
+  reasonLabel,
+  moveTone,
+} from '../utils/format'
 
 type ResultTab = 'trades' | 'orders' | 'positions' | 'logs' | 'config'
 
@@ -17,7 +27,7 @@ export function RunMetrics({ detail }: { detail: RunDetail }) {
         label="总收益率"
         value={fmtSignedPct(metrics.total_return)}
         sub={`年化 ${fmtSignedPct(metrics.annual_return)}`}
-        tone={Number(metrics.total_return ?? 0) >= 0 ? 'up' : 'down'}
+        tone={moveTone(Number(metrics.total_return ?? 0))}
       />
       <Stat
         label="夏普 / 索提诺"
@@ -78,7 +88,7 @@ export function RunDetailBody({ detail }: { detail: RunDetail }) {
               <tbody>
                 <tr>
                   <td>总收益率</td>
-                  <td className={cx('right num', Number(metrics.total_return ?? 0) >= 0 ? 'up' : 'down')}>
+                  <td className={cx('right num', moveTone(metrics.total_return))}>
                     {fmtSignedPct(metrics.total_return)}
                   </td>
                 </tr>
@@ -153,7 +163,7 @@ export function RunDetailBody({ detail }: { detail: RunDetail }) {
                 <tbody>
                   {detail.trades.map((trade) => (
                     <tr key={trade.id}>
-                      <td className="tiny faint nowrap">{fmtDateTime(trade.dt)}</td>
+                      <td className="tiny faint nowrap">{fmtBarTime(trade.dt)}</td>
                       <td className="strong mono">{trade.symbol}</td>
                       <td>
                         <span className={trade.side === 'buy' ? 'up' : 'down'}>
@@ -263,10 +273,10 @@ export function RunDetailBody({ detail }: { detail: RunDetail }) {
                       <td className="right num">{fmtMoney(position.avg_cost)}</td>
                       <td className="right num">{fmtMoney(position.last_price)}</td>
                       <td className="right num">{fmtMoney(position.market_value)}</td>
-                      <td className={cx('right num', position.unrealized_pnl >= 0 ? 'up' : 'down')}>
+                      <td className={cx('right num', moveTone(position.unrealized_pnl))}>
                         {fmtMoney(position.unrealized_pnl)}（{fmtSignedPct(position.unrealized_pct)}）
                       </td>
-                      <td className={cx('right num', position.realized_pnl >= 0 ? 'up' : 'down')}>
+                      <td className={cx('right num', moveTone(position.realized_pnl))}>
                         {fmtMoney(position.realized_pnl)}
                       </td>
                     </tr>

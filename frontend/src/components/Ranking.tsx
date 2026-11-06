@@ -4,7 +4,7 @@
  * 虚拟货币取主流交易对；后端 60 秒缓存，前端同样 60 秒自动刷新。
  */
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { marketApi } from '../api/client'
 import type { QuoteItem, Ranking } from '../api/types'
 import { usePolling } from '../hooks/usePolling'
@@ -69,7 +69,13 @@ export function HotPicks({
       .catch(() => setItems([]))
   }, [market])
 
-  usePolling(load, { interval: 30_000 })
+  // 轮询只按固定间隔跑，不会因为参数变化立刻重跑：切市场时必须手动触发一次，
+  // 否则会继续展示上一个市场的推荐最多 30 秒。
+  useEffect(() => {
+    load()
+  }, [load])
+
+  usePolling(load, { interval: 30_000, immediate: false })
 
   if (items.length === 0) return null
 
@@ -159,7 +165,12 @@ export function RankingBoard({
       .finally(() => setLoading(false))
   }, [market, sortField, sortOrder, period])
 
-  usePolling(load, { interval: period === 'day' ? DAY_REFRESH_MS : WINDOW_REFRESH_MS })
+  // 切换市场 / 口径要立刻重查：轮询定时器不会因为依赖函数变化而重建
+  useEffect(() => {
+    load()
+  }, [load])
+
+  usePolling(load, { interval: period === 'day' ? DAY_REFRESH_MS : WINDOW_REFRESH_MS, immediate: false })
 
   const items = data?.items ?? []
 

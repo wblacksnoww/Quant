@@ -8,7 +8,7 @@ import { notify } from '../store/toast'
 import { useAuth } from '../store/auth'
 import { Badge, Banner, Button, Card, Empty, Field, Loading, Stat } from '../components/ui'
 import { IconRefresh, IconTrash } from '../components/icons'
-import { fmtDateTime, fmtPct, fmtSignedPct } from '../utils/format'
+import { fmtDateTime, fmtPct, fmtSignedPct, moveTone } from '../utils/format'
 
 const EVENT_TYPES = ['policy', 'regulation', 'macro', 'etf', 'security', 'exchange', 'other'] as const
 
@@ -171,7 +171,7 @@ export function NewsPage() {
     <div className="col" style={{ gap: 18 }}>
       <Card
         title="新闻/政策因子"
-        description="Point-in-Time 聚合：策略只能看到 effective_at 之前的数据；无新闻时返回中性值"
+        description="Point-in-Time 聚合：按发布时间对齐，策略只能看到当时已发布的数据；无新闻时返回中性值"
         actions={
           <div className="row" style={{ gap: 6 }}>
             <Button size="sm" loading={fetching} onClick={() => void triggerFetch()}>
@@ -232,7 +232,7 @@ export function NewsPage() {
               label="情绪"
               value={fmtSignedPct(factor?.sentiment ?? 0)}
               sub="方向 + 量级，[-1, 1]"
-              tone={(factor?.sentiment ?? 0) >= 0 ? 'up' : 'down'}
+              tone={moveTone(factor?.sentiment ?? 0)}
             />
             <Stat
               label="政策风险"
@@ -356,7 +356,7 @@ export function NewsPage() {
                     <Badge tone={item.policy_risk > 0.5 ? 'warn' : 'neutral'}>{item.event_type}</Badge>
                   </div>
                   <span className="tiny faint">
-                    {fmtDateTime(item.effective_at ?? item.published_at)} · 情绪{' '}
+                    {fmtDateTime(item.published_at ?? item.effective_at)} · 情绪{' '}
                     {fmtSignedPct(item.sentiment)} · 风险 {fmtPct(item.policy_risk)}
                   </span>
                 </div>
@@ -378,7 +378,7 @@ export function NewsPage() {
             <table>
               <thead>
                 <tr>
-                  <th>生效时间</th>
+                  <th>发布 / 生效</th>
                   <th>标题</th>
                   <th>类型</th>
                   <th>标的</th>
@@ -392,7 +392,13 @@ export function NewsPage() {
               <tbody>
                 {items.map((item) => (
                   <tr key={item.id}>
-                    <td className="tiny faint nowrap">{fmtDateTime(item.effective_at)}</td>
+                    <td className="tiny faint nowrap">
+                      <div>{fmtDateTime(item.published_at)}</div>
+                      {/* 生效时间与发布时间不同才显示：补录会把它盖成入库时刻，回测按发布时间可见 */}
+                      {item.effective_at && item.effective_at !== item.published_at && (
+                        <div style={{ opacity: 0.7 }}>生效 {fmtDateTime(item.effective_at)}</div>
+                      )}
+                    </td>
                     <td>
                       <div className="strong">{item.title}</div>
                       {item.summary && <div className="tiny faint truncate">{item.summary}</div>}

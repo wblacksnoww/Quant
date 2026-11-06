@@ -4,7 +4,7 @@ import type { PaperState, RunDetail, RunSummary } from '../../api/types'
 import { RunDetailBody, RunMetrics } from '../RunDetail'
 import { Badge, Banner, Button, Card, Empty, Loading, Modal, StatusBadge } from '../ui'
 import { IconTrash } from '../icons'
-import { cx, durationText, fmtDateTime, fmtSignedPct } from '../../utils/format'
+import { cx, durationText, fmtDateTime, fmtSignedPct, moveTone } from '../../utils/format'
 
 export function PaperHistory({
   runs,
@@ -64,9 +64,7 @@ export function PaperHistory({
                     <td>
                       <StatusBadge status={run.status} />
                     </td>
-                    <td
-                      className={cx('right num', Number(run.metrics?.total_return ?? 0) >= 0 ? 'up' : 'down')}
-                    >
+                    <td className={cx('right num', moveTone(run.metrics?.total_return))}>
                       {run.metrics?.total_return !== undefined ? fmtSignedPct(run.metrics.total_return) : '—'}
                     </td>
                     <td className="right num tiny">{durationText(run.elapsed_seconds)}</td>

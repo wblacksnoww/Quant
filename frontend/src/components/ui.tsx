@@ -1,7 +1,7 @@
 /** 无样式依赖的小组件集，页面只用这些拼装，避免样式散落。 */
 
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
-import { useEffect } from 'react'
+import { Children, isValidElement, useEffect, useId } from 'react'
 import { cx } from '../utils/format'
 import { IconX } from './icons'
 
@@ -83,6 +83,22 @@ export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputEleme
   return <input className={cx('input', className)} {...rest} />
 }
 
+// <label> 只对单个表单控件做隐式关联；块内如果有多个控件/按钮，浏览器会把整段标签文字
+// 当成第一个控件的可访问名（读屏会把「标的 搜索添加 0/30 …」念成一个按钮名）。
+const NATIVE_CONTROLS = new Set(['input', 'select', 'textarea'])
+const WRAPPED_CONTROLS = new Set(['Input', 'Select', 'Textarea'])
+
+function isSingleControl(children: ReactNode): boolean {
+  const items = Children.toArray(children)
+  if (items.length !== 1) return false
+  const only = items[0]
+  if (!isValidElement<{ children?: ReactNode }>(only)) return false
+  const type = only.type as unknown
+  if (typeof type === 'string') return NATIVE_CONTROLS.has(type)
+  const name = typeof type === 'function' ? (type as { name?: string }).name : undefined
+  return Boolean(name && WRAPPED_CONTROLS.has(name))
+}
+
 export function Field({
   label,
   hint,
@@ -96,12 +112,37 @@ export function Field({
   className?: string
   style?: React.CSSProperties
 }) {
-  return (
-    <label className={cx('field', className)} style={style}>
-      {label && <span className="label">{label}</span>}
+  const labelId = useId()
+  const body = (
+    <>
+      {label && (
+        <span className="label" id={labelId}>
+          {label}
+        </span>
+      )}
       {children}
       {hint && <span className="hint">{hint}</span>}
-    </label>
+    </>
+  )
+
+  if (isSingleControl(children)) {
+    return (
+      <label className={cx('field', className)} style={style}>
+        {body}
+      </label>
+    )
+  }
+
+  // 复杂内容（标的选择器、多输入组合等）用 group 承载标签，避免污染子控件的可访问名
+  return (
+    <div
+      className={cx('field', className)}
+      style={style}
+      role={label ? 'group' : undefined}
+      aria-labelledby={label ? labelId : undefined}
+    >
+      {body}
+    </div>
   )
 }
 

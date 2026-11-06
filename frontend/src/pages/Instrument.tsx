@@ -41,6 +41,8 @@ import {
   marketLabel,
   marketTone,
   priceDigits,
+  riskPresetLabel,
+  moveTone,
 } from '../utils/format'
 import { cleanParams, defaultsFor, riskRulesFor } from '../utils/strategy'
 import { segmentToSymbol } from '../utils/symbolPath'
@@ -464,7 +466,7 @@ export function InstrumentPage() {
           label="现价"
           value={info && info.price > 0 ? fmtPrice(info.price, currency, digits) : '—'}
           sub={info?.source || ''}
-          tone={changePct !== null ? (changePct >= 0 ? 'up' : 'down') : undefined}
+          tone={moveTone(changePct)}
         />
         <Stat
           label="涨跌幅"
@@ -474,7 +476,7 @@ export function InstrumentPage() {
               ? `${info.change >= 0 ? '+' : ''}${fmtNumber(info.change, digits)}`
               : ''
           }
-          tone={changePct !== null ? (changePct >= 0 ? 'up' : 'down') : undefined}
+          tone={moveTone(changePct)}
         />
         <Stat
           label="昨收 / 今开"
@@ -494,7 +496,7 @@ export function InstrumentPage() {
 
       <Card
         title="新闻/政策因子"
-        description="1h 窗口 · 情绪/政策风险来自「新闻」页；回测按有效时间 Point-in-Time 对齐"
+        description="1h 窗口 · 情绪/政策风险来自「新闻」页；回测按发布时间 Point-in-Time 对齐"
         actions={
           <Button size="sm" variant="ghost" onClick={() => navigate('/news')}>
             管理新闻
@@ -506,7 +508,7 @@ export function InstrumentPage() {
             label="新闻情绪"
             value={fmtSignedPct(newsFactor?.sentiment ?? 0)}
             sub={`${newsFactor?.event_count ?? 0} 条事件`}
-            tone={(newsFactor?.sentiment ?? 0) >= 0 ? 'up' : 'down'}
+            tone={moveTone(newsFactor?.sentiment ?? 0)}
           />
           <Stat
             label="政策风险"
@@ -750,7 +752,7 @@ export function InstrumentPage() {
                     >
                       {(presets ? Object.keys(presets.presets) : ['balanced']).map((key) => (
                         <option key={key} value={key}>
-                          {key}
+                          {riskPresetLabel(key)}
                         </option>
                       ))}
                     </select>

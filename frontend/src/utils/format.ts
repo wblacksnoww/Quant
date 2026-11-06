@@ -40,27 +40,74 @@ export function fmtCompact(value: number | null | undefined): string {
   return value.toFixed(0)
 }
 
+/**
+ * 涨跌配色（A 股习惯：涨红跌绿）。0 与缺失值一律返回 undefined = 中性，
+ * 否则空仓、零收益也会被染成红色，看起来像「赚了」。
+ */
+export function moveTone(value: unknown): 'up' | 'down' | undefined {
+  const num = Number(value)
+  if (!Number.isFinite(num) || num === 0) return undefined
+  return num > 0 ? 'up' : 'down'
+}
+
+/**
+ * 后端把时间统一存成 **UTC 且不带时区后缀**（``2026-11-06T11:59:47``），
+ * 直接 slice 会把 UTC 当本地时间显示——北京时间用户的「最后登录」会差 8 小时，
+ * 跨零点时日期也会差一天。这里补上 Z 按 UTC 解析，再交给本地时区格式化。
+ * 带时区的时间串（``Z`` / ``+08:00``）原样解析，纯日期（``2026-11-06``）不参与换算。
+ */
+function parseServerTime(value: string): Date | null {
+  const text = value.trim().replace(' ', 'T')
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return new Date(`${text}T00:00:00`)
+  const zoned = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text) ? text : `${text}Z`
+  const date = new Date(zoned)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+const pad2 = (value: number): string => String(value).padStart(2, '0')
+
+function localDate(date: Date): string {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
+}
+
 export function fmtDate(value: string | null | undefined): string {
   if (!value) return '—'
-  return value.slice(0, 10)
+  if (value.length <= 10) return value.slice(0, 10)
+  const date = parseServerTime(value)
+  return date ? localDate(date) : value.slice(0, 10)
 }
 
 export function fmtDateTime(value: string | null | undefined): string {
   if (!value) return '—'
-  const text = value.replace('T', ' ')
-  return text.slice(0, 19)
+  if (value.length <= 10) return value.slice(0, 10)
+  const date = parseServerTime(value)
+  if (!date) return value.replace('T', ' ').slice(0, 19)
+  return `${localDate(date)} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`
 }
 
+/** 本地日期（YYYY-MM-DD）。不能用 toISOString：那是 UTC，凌晨会算成昨天。 */
 export function todayISO(offsetDays = 0): string {
   const date = new Date()
   date.setDate(date.getDate() + offsetDays)
-  return date.toISOString().slice(0, 10)
+  return localDate(date)
+}
+
+/**
+ * 行情时间（K 线、成交）：交易所当地时间，**不能再做时区换算**。
+ * 日线只有日期，00:00:00 的时间部分不展示。
+ */
+export function fmtBarTime(value: string | null | undefined): string {
+  if (!value) return '—'
+  const text = value.replace('T', ' ')
+  const [date, time] = text.split(' ')
+  if (!time || time.startsWith('00:00:00')) return date.slice(0, 10)
+  return `${date} ${time.slice(0, 8)}`
 }
 
 export function yearsAgoISO(years = 3): string {
   const date = new Date()
   date.setFullYear(date.getFullYear() - years)
-  return date.toISOString().slice(0, 10)
+  return localDate(date)
 }
 
 export function durationText(seconds: number | null | undefined): string {
@@ -238,6 +285,18 @@ export function fmtPrice(value: number | null | undefined, currency?: string | n
   const text = fmtNumber(value, digits)
   const symbol = currencySymbol(currency)
   return symbol ? `${symbol}${text}` : text
+}
+
+/** 风控预设的中文名（后端 key 直出会显示成 conservative / balanced）。 */
+const RISK_PRESET_LABELS: Record<string, string> = {
+  conservative: '保守',
+  balanced: '均衡',
+  aggressive: '激进',
+}
+
+export function riskPresetLabel(key: string | null | undefined): string {
+  if (!key) return '—'
+  return RISK_PRESET_LABELS[key] ?? key
 }
 
 const EXIT_REASON_LABELS: Record<string, string> = {

@@ -678,9 +678,12 @@ td.strong {
   flex-direction: column;
   gap: 8px;
   max-width: 380px;
+  /* 容器铺在页面右下角，不能吃掉下面按钮的点击；只有提示卡片本身可点 */
+  pointer-events: none;
 }
 
 .toast {
+  pointer-events: auto;
   display: flex;
   align-items: flex-start;
   gap: 10px;

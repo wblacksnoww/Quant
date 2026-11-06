@@ -13,7 +13,16 @@ import { SwitchStrategyModal } from '../components/SwitchStrategy'
 import { Badge, Banner, Button, Card, Empty, Field, Loading, Stat, StatusBadge } from '../components/ui'
 import { IconPlay, IconRefresh, IconStop } from '../components/icons'
 import { usePolling } from '../hooks/usePolling'
-import { classForSign, fmtDateTime, fmtMoney, fmtNumber, fmtSignedPct, parseSymbols } from '../utils/format'
+import {
+  classForSign,
+  fmtBarTime,
+  fmtDateTime,
+  fmtMoney,
+  fmtNumber,
+  fmtSignedPct,
+  parseSymbols,
+  moveTone,
+} from '../utils/format'
 import { notify } from '../store/toast'
 
 function defaultsFor(strategy?: Strategy): Record<string, unknown> {
@@ -257,7 +266,7 @@ export function LivePage() {
                         </Badge>
                       </td>
                       <td className="right num">{fmtMoney(item.equity)}</td>
-                      <td className={`right num ${item.total_return >= 0 ? 'up' : 'down'}`}>
+                      <td className={`right num ${moveTone(item.total_return) ?? ''}`}>
                         {fmtSignedPct(item.total_return)}
                       </td>
                       <td className="right">
@@ -498,13 +507,13 @@ export function LivePage() {
               label="总权益"
               value={fmtMoney(state.equity)}
               sub={`现金 ${fmtMoney(state.cash)} · 冻结 ${fmtMoney(state.frozen_cash)}`}
-              tone={state.total_return >= 0 ? 'up' : 'down'}
+              tone={moveTone(state.total_return)}
             />
             <Stat
               label="总收益率"
               value={fmtSignedPct(state.total_return)}
               sub={`${state.positions.length} 个持仓`}
-              tone={state.total_return >= 0 ? 'up' : 'down'}
+              tone={moveTone(state.total_return)}
             />
             <Stat label="挂单" value={state.open_orders.length} sub="交易所未终态委托" />
             <Stat label="成交" value={state.recent_fills.length} sub="最近 50 笔" />
@@ -525,6 +534,7 @@ export function LivePage() {
                   <thead>
                     <tr>
                       <th>标的</th>
+                      <th>方向</th>
                       <th className="right">数量</th>
                       <th className="right">可卖</th>
                       <th className="right">成本价</th>
@@ -627,7 +637,7 @@ export function LivePage() {
                   <tbody>
                     {state.recent_fills.map((item) => (
                       <tr key={item.id}>
-                        <td className="tiny">{fmtDateTime(item.dt)}</td>
+                        <td className="tiny">{fmtBarTime(item.dt)}</td>
                         <td className="mono">{item.symbol}</td>
                         <td>
                           <Badge tone={item.side === 'buy' ? 'accent' : 'warn'}>

@@ -8,7 +8,7 @@ import { CardBoard } from '../components/CardBoard'
 import { Badge, Banner, Button, Card, Empty, Loading, Stat, StatusBadge } from '../components/ui'
 import { IconFlask, IconPlay, IconRefresh, IconShield } from '../components/icons'
 import { usePolling } from '../hooks/usePolling'
-import { fmtDateTime, fmtMoney, fmtPct, fmtSignedPct } from '../utils/format'
+import { fmtDateTime, fmtMoney, fmtPct, fmtSignedPct, moveTone } from '../utils/format'
 
 function uptimeText(seconds: number): string {
   const days = Math.floor(seconds / 86400)
@@ -181,7 +181,7 @@ export function DashboardPage() {
                               <StatusBadge status={run.status} />
                             </td>
                             <td
-                              className={`right ${Number(run.metrics?.total_return ?? 0) >= 0 ? 'up' : 'down'} num`}
+                              className={`right ${moveTone(Number(run.metrics?.total_return ?? 0)) ?? ''} num`}
                             >
                               {run.status === 'finished' ? fmtSignedPct(run.metrics?.total_return) : '—'}
                             </td>
@@ -267,7 +267,7 @@ export function DashboardPage() {
                       <div className="stat-value" style={{ fontSize: 28 }}>
                         {fmtMoney(paper.equity)}
                       </div>
-                      <div className={`small num ${paper.total_return >= 0 ? 'up' : 'down'}`}>
+                      <div className={`small num ${moveTone(paper.total_return) ?? ''}`}>
                         {fmtSignedPct(paper.total_return)} · {paper.steps} 步
                       </div>
                     </div>

@@ -39,16 +39,33 @@ const FIELD_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'amount', label: '成交额' },
 ]
 
-const NEWS_FIELD_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'news_sentiment', label: '新闻情绪（1h）' },
-  { value: 'news_policy_risk', label: '政策风险（1h）' },
-  { value: 'news_confidence', label: '新闻置信度（1h）' },
-  { value: 'news_event_count', label: '新闻事件数（1h）' },
-  { value: 'news_sentiment_1d', label: '新闻情绪（1d）' },
-  { value: 'news_policy_risk_1d', label: '政策风险（1d）' },
-  { value: 'news_confidence_1d', label: '新闻置信度（1d）' },
-  { value: 'news_event_count_1d', label: '新闻事件数（1d）' },
+// 新闻字段 = 指标 × 聚合窗口，与后端 quant/strategy/custom_fields.py 的笛卡尔积一致。
+// 手写列表漏过 15m/4h：界面上选不到，但后端其实支持，等于白做了两个窗口。
+const NEWS_WINDOWS = ['15m', '1h', '4h', '1d'] as const
+
+const NEWS_METRICS: Array<{ key: string; label: string }> = [
+  { key: 'sentiment', label: '新闻情绪' },
+  { key: 'policy_risk', label: '政策风险' },
+  { key: 'confidence', label: '新闻置信度' },
+  { key: 'event_count', label: '新闻事件数' },
 ]
+
+/** 字段名约定：1h 无后缀（历史兼容），其余窗口加 `_<窗口>`。 */
+function newsField(metric: string, window: string): string {
+  return `news_${metric}${window === '1h' ? '' : `_${window}`}`
+}
+
+const NEWS_GROUPS = NEWS_WINDOWS.map((window) => ({
+  window,
+  options: NEWS_METRICS.map((metric) => ({
+    value: newsField(metric.key, window),
+    label: `${metric.label}（${window}）`,
+  })),
+}))
+
+const NEWS_FIELD_OPTIONS: Array<{ value: string; label: string }> = NEWS_GROUPS.flatMap(
+  (group) => group.options,
+)
 
 const INDICATOR_META: Record<string, { label: string; params: string[] }> = {
   sma: { label: 'SMA 均线', params: ['period'] },
@@ -202,13 +219,15 @@ function OperandEditor({ op, onChange }: { op: UiOperand; onChange: (next: UiOpe
             </option>
           ))}
         </optgroup>
-        <optgroup label="新闻 / 政策">
-          {NEWS_FIELD_OPTIONS.map((field) => (
-            <option key={field.value} value={`field:${field.value}`}>
-              {field.label}
-            </option>
-          ))}
-        </optgroup>
+        {NEWS_GROUPS.map((group) => (
+          <optgroup key={group.window} label={`新闻 ${group.window}`}>
+            {group.options.map((field) => (
+              <option key={field.value} value={`field:${field.value}`}>
+                {field.label}
+              </option>
+            ))}
+          </optgroup>
+        ))}
         <optgroup label="指标">
           {Object.entries(INDICATOR_META).map(([key, item]) => (
             <option key={key} value={`ind:${key}`}>

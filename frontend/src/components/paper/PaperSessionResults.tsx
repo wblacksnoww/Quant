@@ -3,7 +3,15 @@
 import type { PaperState } from '../../api/types'
 import { EquityChart } from '../Charts'
 import { Card, Empty, Stat, StatusBadge } from '../ui'
-import { cx, fmtDateTime, fmtMoney, fmtSignedPct, reasonLabel } from '../../utils/format'
+import {
+  cx,
+  fmtBarTime,
+  fmtDateTime,
+  fmtMoney,
+  fmtSignedPct,
+  moveTone,
+  reasonLabel,
+} from '../../utils/format'
 
 export function PaperSessionResults({ state }: { state: PaperState }) {
   return (
@@ -13,13 +21,13 @@ export function PaperSessionResults({ state }: { state: PaperState }) {
           label="总权益"
           value={fmtMoney(state.equity)}
           sub={`现金 ${fmtMoney(state.cash)}`}
-          tone={state.total_return >= 0 ? 'up' : 'down'}
+          tone={moveTone(state.total_return)}
         />
         <Stat
           label="总收益率"
           value={fmtSignedPct(state.total_return)}
           sub={`冻结 ${fmtMoney(state.frozen_cash)}`}
-          tone={state.total_return >= 0 ? 'up' : 'down'}
+          tone={moveTone(state.total_return)}
         />
         <Stat
           label="持仓数量"
@@ -66,7 +74,7 @@ export function PaperSessionResults({ state }: { state: PaperState }) {
                       <td className="right num">{position.available.toLocaleString('zh-CN')}</td>
                       <td className="right num">{fmtMoney(position.avg_cost)}</td>
                       <td className="right num">{fmtMoney(position.last_price)}</td>
-                      <td className={cx('right num', position.unrealized_pnl >= 0 ? 'up' : 'down')}>
+                      <td className={cx('right num', moveTone(position.unrealized_pnl))}>
                         {fmtMoney(position.unrealized_pnl)}（{fmtSignedPct(position.unrealized_pct)}）
                       </td>
                     </tr>
@@ -139,7 +147,7 @@ export function PaperSessionResults({ state }: { state: PaperState }) {
               <tbody>
                 {[...state.recent_fills].reverse().map((fill) => (
                   <tr key={fill.id}>
-                    <td className="tiny faint nowrap">{fmtDateTime(fill.dt)}</td>
+                    <td className="tiny faint nowrap">{fmtBarTime(fill.dt)}</td>
                     <td className="strong mono">{fill.symbol}</td>
                     <td className={fill.side === 'buy' ? 'up' : 'down'}>
                       {fill.side === 'buy' ? '买入' : '卖出'}

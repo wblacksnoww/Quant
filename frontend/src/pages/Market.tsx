@@ -24,6 +24,7 @@ import {
   priceDigits,
   todayISO,
   yearsAgoISO,
+  moveTone,
 } from '../utils/format'
 import { notify } from '../store/toast'
 import { symbolToSegment } from '../utils/symbolPath'
@@ -89,6 +90,8 @@ export function MarketPage() {
   const [searchMarket, setSearchMarket] = useState<'ALL' | RankMarket>('ALL')
   const [suggestions, setSuggestions] = useState<SymbolInfo[]>([])
   const [searching, setSearching] = useState(false)
+  // 命中条数：搜索有结果但都被自选过滤掉时，要提示「已在自选中」而不是「无匹配结果」
+  const [hitCount, setHitCount] = useState(0)
   // 缓存表按标的刷新：没有反馈的话，跳缓存拉数据期间按钮看起来就像坏了
   const [refreshingSymbol, setRefreshingSymbol] = useState<string | null>(null)
 
@@ -192,14 +195,21 @@ export function MarketPage() {
     const keyword = searchText.trim()
     if (!keyword) {
       setSuggestions([])
+      setHitCount(0)
       return
     }
     const timer = window.setTimeout(() => {
       setSearching(true)
       void marketApi
         .search(keyword, 8, searchMarket === 'ALL' ? null : searchMarket)
-        .then((items) => setSuggestions(items.filter((item) => !watchlist.includes(item.symbol))))
-        .catch(() => setSuggestions([]))
+        .then((items) => {
+          setHitCount(items.length)
+          setSuggestions(items.filter((item) => !watchlist.includes(item.symbol)))
+        })
+        .catch(() => {
+          setHitCount(0)
+          setSuggestions([])
+        })
         .finally(() => setSearching(false))
     }, 300)
     return () => window.clearTimeout(timer)
@@ -346,9 +356,11 @@ export function MarketPage() {
                         {searching && <div className="suggest-item faint">搜索中…</div>}
                         {!searching && suggestions.length === 0 && (
                           <div className="suggest-item faint">
-                            {normalizeInstrumentId(searchText)
-                              ? '无匹配结果，回车按代码直接加入'
-                              : '无匹配标的'}
+                            {hitCount > 0
+                              ? '命中标的都已在自选中'
+                              : normalizeInstrumentId(searchText)
+                                ? '无匹配结果，回车按代码直接加入'
+                                : '无匹配标的'}
                           </div>
                         )}
                         {suggestions.map((item) => (
@@ -639,11 +651,11 @@ export function MarketPage() {
                         label={`${displayCode(data.symbol)} ${data.name || ''}`}
                         value={fmtPrice(stats.last.close, data.currency)}
                         sub={
-                          <span className={stats.change >= 0 ? 'up' : 'down'}>
+                          <span className={moveTone(stats.change)}>
                             {fmtSignedPct(stats.change)} · 昨收 {fmtPrice(stats.prevClose, data.currency)}
                           </span>
                         }
-                        tone={stats.change >= 0 ? 'up' : 'down'}
+                        tone={moveTone(stats.change)}
                       />
                       <Stat
                         label="区间最高 / 最低"

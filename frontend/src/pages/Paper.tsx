@@ -27,7 +27,7 @@ import { usePolling } from '../hooks/usePolling'
 import { useEvents } from '../store/events'
 import { notify } from '../store/toast'
 import { useWatchlist } from '../store/watchlist'
-import { fmtMoney, fmtSignedPct, marketCodeOf, marketLabel } from '../utils/format'
+import { fmtMoney, fmtSignedPct, marketCodeOf, marketLabel, riskPresetLabel, moveTone } from '../utils/format'
 
 function defaultsFor(strategy: Strategy | undefined): Record<string, unknown> {
   if (!strategy) return {}
@@ -384,7 +384,7 @@ export function PaperPage() {
                       <td className="mono tiny">{item.symbols.join(' · ')}</td>
                       <td>{item.mode === 'replay' ? '回放' : '实时'}</td>
                       <td className="right num">{fmtMoney(item.equity)}</td>
-                      <td className={`right num ${item.total_return >= 0 ? 'up' : 'down'}`}>
+                      <td className={`right num ${moveTone(item.total_return) ?? ''}`}>
                         {fmtSignedPct(item.total_return)}
                       </td>
                       <td className="right">
@@ -536,13 +536,7 @@ export function PaperPage() {
                   >
                     {(presets ? Object.keys(presets.presets) : ['balanced']).map((key) => (
                       <option key={key} value={key}>
-                        {key === 'conservative'
-                          ? '保守'
-                          : key === 'balanced'
-                            ? '均衡'
-                            : key === 'aggressive'
-                              ? '激进'
-                              : key}
+                        {riskPresetLabel(key)}
                       </option>
                     ))}
                   </select>
@@ -569,13 +563,7 @@ export function PaperPage() {
                   >
                     {(presets ? Object.keys(presets.presets) : ['balanced']).map((key) => (
                       <option key={key} value={key}>
-                        {key === 'conservative'
-                          ? '保守'
-                          : key === 'balanced'
-                            ? '均衡'
-                            : key === 'aggressive'
-                              ? '激进'
-                              : key}
+                        {riskPresetLabel(key)}
                       </option>
                     ))}
                   </select>
